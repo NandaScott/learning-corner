@@ -1,0 +1,244 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 8 — Interleaved review</title>
+
+<p class="eyebrow">Celery + Redis · Lesson 8 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading feels like learning but mostly builds <em>fluency</em> — the illusion of mastery. Retrieving from memory, cold, with topics shuffled, is what builds <em>storage strength</em>. That's the whole point of this page.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all seven lessons and <strong>shuffled</strong> every run — by design. Interleaving (mixing topics rather than blocking them) is harder than reviewing one lesson at a time, and that difficulty is exactly what makes it stick.<sup><a href="#s1">1</a></sup> Many questions pit the right answer against a <em>near-miss</em> — the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em> and run it again in a few days — that spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag which one — it's worth re-explaining a different way, or drilling just that concept. When you can clear this cold two sessions apart, you can explain Celery-on-Redis from the metal up without notes.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0007-acks-late-and-idempotency.html">← Lesson 7</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST is correct; the SECOND is a deliberate
+// "near-miss" (right idea, subtly wrong) to force precise discrimination.
+// The engine shuffles option order on render, so position is never a clue.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "Physically, what is a Celery queue on the Redis broker?",
+    options: [
+      "A Redis list, keyed by the queue name",
+      "A Redis set, keyed by the queue name",
+      "A dedicated Redis Stream per task type",
+      "An in-memory buffer inside the worker"
+    ], answer: 0,
+    explain: "A <em>list</em> — order matters, so it can't be a set. <code>.delay()</code> LPUSHes onto it; the worker BRPOPs. (<a href='0001-a-task-is-a-message-in-a-list.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "What does a task message actually carry to the worker?",
+    options: [
+      "The task's registered name plus its arguments",
+      "The task's source code plus its arguments",
+      "A pickled, ready-to-run Task object",
+      "A pointer to the function in the web process"
+    ], answer: 0,
+    explain: "The near-miss is the trap: the <em>code</em> is never sent — only the task's name. The worker must already have that task defined. (<a href='0001-a-task-is-a-message-in-a-list.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Which command pair carries a task from producer to worker?",
+    options: [
+      "LPUSH to enqueue, BRPOP to consume",
+      "RPUSH to enqueue, BRPOP to consume",
+      "PUBLISH to enqueue, SUBSCRIBE to consume",
+      "SET to enqueue, GET to consume"
+    ], answer: 0,
+    explain: "Push-left, pop-right gives FIFO. RPUSH+BRPOP would pop the newest first (LIFO) — right commands, wrong end. (<a href='0001-a-task-is-a-message-in-a-list.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "What does a worker's main (supervisor) process do?",
+    options: [
+      "Brokers and dispatches work; runs no task code",
+      "Runs the first task itself, then dispatches the rest",
+      "Executes every task inside one event loop",
+      "Only schedules retries and ETA tasks"
+    ], answer: 0,
+    explain: "It runs zero task code — it's the Consumer + bookkeeping. Child processes in the pool run your functions. (<a href='0002-how-the-worker-pulls-work.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Prefetch (worker_prefetch_multiplier) controls…",
+    options: [
+      "how many messages are reserved ahead into memory",
+      "how many tasks the worker runs in parallel",
+      "the size of the result-backend cache",
+      "the blocking timeout used by BRPOP"
+    ], answer: 0,
+    explain: "The near-miss conflates it with concurrency. Prefetch only deepens the in-memory buffer (mult × concurrency); parallelism is the pool size. (<a href='0002-how-the-worker-pulls-work.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Where does a task's return value go?",
+    options: [
+      "To the result backend, a store separate from the broker",
+      "Back onto the broker queue it came from",
+      "Into the unacked hash until the client reads it",
+      "To the worker's standard output only"
+    ], answer: 0,
+    explain: "Broker = work in; backend = results out. They're independent systems (both can be Redis, different keys). (<a href='0002-how-the-worker-pulls-work.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Handler order for a task that succeeds?",
+    options: [
+      "before_start → run → record state → on_success → after_return",
+      "before_start → run → on_success → after_return → record state",
+      "run → before_start → on_success → after_return",
+      "on_success → run → before_start → after_return"
+    ], answer: 0,
+    explain: "State is recorded <em>before</em> the outcome handler — which is why the result is already visible when on_success fires. (<a href='0003-the-task-lifecycle.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Does after_return run when a task calls self.retry()?",
+    options: [
+      "No — RETRY is an IGNORE_STATE, so it's skipped",
+      "No — the Retry exception aborts the trace before it",
+      "Yes — after_return always runs, every outcome",
+      "Yes, but only once max_retries is exhausted"
+    ], answer: 0,
+    explain: "The near-miss has the right outcome, wrong reason: after_return is reached but guarded by IGNORE_STATES = {RETRY, IGNORED, REJECTED}. (<a href='0003-the-task-lifecycle.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "When on_failure runs, what state is already in the backend?",
+    options: [
+      "FAILURE — the state is recorded before the handler",
+      "STARTED — it stays STARTED until after_return",
+      "PENDING — nothing is written until the task ends",
+      "RETRY — failure is recorded as a retry first"
+    ], answer: 0,
+    explain: "mark_as_failure runs before the outcome handler, so the exception + traceback are stored by the time on_failure sees them. (<a href='0003-the-task-lifecycle.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "In which process does before_task_publish fire?",
+    options: [
+      "The producer — whoever called .delay()",
+      "The worker's main (Consumer) process",
+      "The child process that runs the task",
+      "The result-backend connection process"
+    ], answer: 0,
+    explain: "Publish signals fire where the send happens — your web process. A handler connected only in worker code never fires for it. (<a href='0004-celery-signals-timeline.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "To count every execution attempt, retries included, use…",
+    options: [
+      "task_postrun — it fires on all outcomes, even retry",
+      "after_return — it runs last on every outcome",
+      "task_success — it fires when a task completes",
+      "task_prerun — it fires once per attempt up front"
+    ], answer: 0,
+    explain: "after_return skips retries (IGNORE_STATES), so it undercounts. task_postrun is always sent — that's the difference. (<a href='0004-celery-signals-timeline.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Which signal fires once in every forked pool child?",
+    options: [
+      "worker_process_init",
+      "worker_init",
+      "celeryd_init",
+      "task_received"
+    ], answer: 0,
+    explain: "worker_init / celeryd_init fire once in the main process; worker_process_init fires per child — where you reopen DB connections. (<a href='0004-celery-signals-timeline.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Right after a worker BRPOPs a message, where does it live?",
+    options: [
+      "Only in the unacked ledger (the hash + sorted set)",
+      "In both the queue list and the unacked hash",
+      "Only in the queue list, now marked in-flight",
+      "In the result backend, keyed by task id"
+    ], answer: 0,
+    explain: "BRPOP is destructive — the list no longer has it. The ledger is its only home, which is why it's never in both at once. (<a href='0005-acks-are-emulated.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What does 'acking' physically do on Redis?",
+    options: [
+      "Deletes the ledger entry: ZREM unacked_index + HDEL unacked",
+      "LPUSHes the message back, then clears its tag",
+      "Sends Redis a native ACK command for the tag",
+      "Sets a short TTL so the entry expires itself"
+    ], answer: 0,
+    explain: "Redis has no ACK command — that's the whole point. Acking is just deleting the in-flight copy from both keys, pipelined. (<a href='0005-acks-are-emulated.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "With the default ack setting, a worker crash mid-task…",
+    options: [
+      "loses the task — it was acked before running",
+      "redelivers it once the visibility timeout elapses",
+      "retries it immediately on another worker",
+      "records it as FAILURE in the backend"
+    ], answer: 0,
+    explain: "Default acks_late=False acks before run, so the ledger entry is already gone — nothing to restore. Late-ack is what makes the crash recoverable. (<a href='0005-acks-are-emulated.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "What runs every 10 seconds in each worker?",
+    options: [
+      "A loop re-queuing unacked entries older than the timeout",
+      "A loop acking every task that has finished running",
+      "A heartbeat ping to the result backend",
+      "A re-fetch of all prefetched messages"
+    ], answer: 0,
+    explain: "restore_visible scans unacked_index for entries delivered longer ago than visibility_timeout and LPUSHes them back. (<a href='0006-visibility-timeout.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Clean SIGTERM vs hard kill -9: how fast does in-flight work return?",
+    options: [
+      "Clean: immediately. Hard kill: up to the visibility timeout",
+      "Both wait out the full visibility timeout",
+      "Both redeliver immediately on worker exit",
+      "Clean loses the work; only a hard kill restores it"
+    ], answer: 0,
+    explain: "restore_at_shutdown re-queues everything on a clean close; a hard kill skips cleanup, so the 10s loop only recovers it after it expires. (<a href='0006-visibility-timeout.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "How can a task run twice with no worker ever crashing?",
+    options: [
+      "An ETA/countdown longer than the visibility timeout",
+      "A worker_prefetch_multiplier set too high",
+      "Two workers both listening on the same queue",
+      "Leaving acks_late at its default of False"
+    ], answer: 0,
+    explain: "The task waits unacked in memory; once it's been out longer than the timeout, the restore loop mistakes it for lost and re-queues it. (<a href='0006-visibility-timeout.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Setting acks_late=True gives which delivery guarantee?",
+    options: [
+      "At-least-once",
+      "Exactly-once",
+      "At-most-once",
+      "No guarantee at all"
+    ], answer: 0,
+    explain: "The seductive near-miss is exactly-once — which Celery on Redis cannot provide. Late-ack moves you from at-most-once to at-<em>least</em>-once. (<a href='0007-acks-late-and-idempotency.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Why can't Celery on Redis offer exactly-once delivery?",
+    options: [
+      "Acking and the task's side effects can't commit atomically",
+      "Redis has no native ACK command to make it precise",
+      "Workers are multi-process, so timing is nondeterministic",
+      "Prefetch can reorder messages before they run"
+    ], answer: 0,
+    explain: "Two separate systems — a crash can always land between side-effect and ack. Ack-first risks loss, ack-last risks repeat; no instant is safe for both. (<a href='0007-acks-late-and-idempotency.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "With acks_late=True, does an ordinary exception get redelivered?",
+    options: [
+      "No — it's still acked (acks_on_failure_or_timeout)",
+      "Yes — any unacknowledged task is redelivered",
+      "Only if max_retries has been exceeded",
+      "Only when reject_on_worker_lost is disabled"
+    ], answer: 0,
+    explain: "Late-ack protects against worker <em>death</em>, not your code raising — a normal failure still acks and is recorded FAILURE. Use retry to re-run. (<a href='0007-acks-late-and-idempotency.html'>L7</a>)" }
+]);
+</script>

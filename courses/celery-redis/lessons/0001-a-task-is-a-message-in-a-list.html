@@ -1,0 +1,148 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — A task is a message in a Redis list</title>
+
+<p class="eyebrow">Celery + Redis · Lesson 1</p>
+<h1>A task is a message in a Redis list</h1>
+<p class="lede">Before acks, prefetch, or visibility timeouts make any sense, you have to see what physically lands in Redis when you call <code>.delay()</code>. So we open the box first — every later lesson sits on top of this one fact.</p>
+
+<h2>The concept</h2>
+
+<p>When you write <code>add.delay(2, 3)</code>, it's tempting to picture Celery "sending the task to the worker." Nothing of the sort happens. The web process and the worker never talk to each other. They talk to <strong>Redis</strong>, and the only thing that moves between them is a <em>string</em>.</p>
+
+<p>The fact underneath the whole course:</p>
+
+<p><strong>Redis is not a queue. It's a key-value store with a few data structures, and a Celery "queue" is literally a Redis <code>LIST</code>.</strong> Calling <code>.delay()</code> serializes your task request into a JSON message and <code>LPUSH</code>es that string onto a list. A worker <code>BRPOP</code>s the string back off. That's the entire transport.<sup><a href="#s1">1</a></sup></p>
+
+<p>RabbitMQ is a real message broker with native queues and acknowledgements built in. Redis isn't — so kombu (Celery's messaging layer) has to <em>build</em> queue behaviour out of plain Redis commands. This lesson is the foundation it builds on; Lessons 3–4 are where the clever emulation lives.</p>
+
+<h2>The steps</h2>
+
+<p>Here's the full path of one <code>.delay()</code> call, from your view to the worker's hands. We'll walk each step underneath.</p>
+
+<div class="figure">
+<pre><code>1. .delay(2, 3)        in the web process    build a task-request message
+2. serialize           message → JSON         body base64-encoded, headers + properties wrap it
+3. pick the list       routing_key "celery"   → Redis key "celery"
+4. LPUSH               web proc → Redis        prepend the JSON string onto list "celery"
+   ───────────────  ( the web process is now done — returns an AsyncResult ) ───────────────
+5. BRPOP               worker  ← Redis         blocking pop from the right of "celery"
+6. deserialize         JSON → task name+args   look up the registered task, decode the body
+7. run the function    add(2, 3) → 5           execute in a worker child process</code></pre>
+<p class="cap">Steps 1–4 happen in your web request. Steps 5–7 happen later, in the worker. Redis is the only thing they share.</p>
+</div>
+
+<h3>Step 1 — <code>.delay()</code> builds a request, not a result</h3>
+<p><code>add.delay(2, 3)</code> is sugar for <code>add.apply_async(args=(2, 3))</code>. It does <em>not</em> call <code>add</code>. It packages a description — "run the task named <code>myapp.add</code> with args <code>(2, 3)</code>" — and hands you back an <code>AsyncResult</code> (a promise keyed by a task id) almost instantly. The actual addition happens elsewhere, later.</p>
+
+<h3>Step 2 — Serialize into a JSON envelope</h3>
+<p>The request becomes a self-contained message. Redis stores bytes, so everything the worker needs to reconstruct the call has to be <em>inside</em> that message. Its shape (Celery protocol v2):<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>{
+  "headers": {
+    "task": "myapp.add",            ← which function to run
+    "id":   "f3c8…-…-…",            ← task id (your AsyncResult tracks this)
+    "argsrepr": "(2, 3)", …          ← metadata
+  },
+  "properties": {
+    "delivery_tag": "a91f…",        ← used later for ack tracking (L3)
+    "delivery_info": { "exchange": "", "routing_key": "celery" },
+    "body_encoding": "base64", …
+  },
+  "body": "WzIsIDNd…"                ← base64 of the args/kwargs: [[2,3],{},…]
+}</code></pre>
+<p class="cap">The task <em>name</em> travels in <code>headers</code>, the <em>arguments</em> in the base64 <code>body</code>. The function's code is never sent — only its registered name. The worker must already have that task defined.</p>
+</div>
+
+<h3>Step 3 — The routing key picks a list</h3>
+<p>Celery has an AMQP-flavoured vocabulary — exchanges, routing keys, queues — inherited from RabbitMQ. On Redis most of that machinery collapses: the <strong>routing key becomes the Redis list name</strong>. Send to the default queue and the routing key is <code>celery</code>, so the target key is the list <code>celery</code>. Route to a queue named <code>emails</code> and it's the list <code>emails</code>. One queue = one list.</p>
+
+<div class="callout gotcha">
+  <span class="tag">Flag — abstraction ≠ implementation</span>
+  Exchanges and bindings are real on RabbitMQ. On the Redis transport they're mostly a thin compatibility shim — direct routing maps straight to a list key. Don't reason about Redis as if it ran AMQP; it's emulating just enough of it.
+</div>
+
+<h3>Step 4 — <code>LPUSH</code>: the task is now a string in Redis</h3>
+<p>The web process runs one Redis command and is done:</p>
+
+<div class="figure">
+<pre><code>  web process                         Redis
+      │   LPUSH celery "{…json…}"        ┌──────────────────────────────┐
+      │ ───────────────────────────────▶│ key "celery"  (a LIST)        │
+      │                                  │  ┌────┬────┬────┐             │
+      │ ◀─── returns AsyncResult ───     │  │ m3 │ m2 │ m1 │ ← older     │
+      ▼                                  │  └────┴────┴────┘             │
+  (request ends, task not yet run)       └──────────────────────────────┘
+                                          new messages pushed on the LEFT</code></pre>
+<p class="cap">The whole "send" is a single <code>LPUSH</code>. If no worker is running, the message just sits in the list — durable as long as Redis keeps it. Nothing is lost simply because no worker was listening.</p>
+</div>
+
+<h3>Step 5 — <code>BRPOP</code>: the worker pulls from the other end</h3>
+<p>A worker blocks on <code>BRPOP celery</code> — "pop the rightmost element, and if the list is empty, <em>wait</em> until something arrives (up to a timeout) rather than busy-polling."<sup><a href="#s1">1</a></sup> Push on the left, pop on the right ⇒ oldest message comes out first — <strong>FIFO</strong>.</p>
+
+<div class="figure">
+<pre><code>      LPUSH ──▶  [ m3 ][ m2 ][ m1 ]  ──▶ BRPOP
+                   ▲                  ▲
+                 newest            oldest comes out first  (FIFO)</code></pre>
+<p class="cap">Blocking is the point: <code>BRPOP</code> lets an idle worker sleep on the socket instead of hammering Redis with "anything yet?" — near-zero latency when work arrives, near-zero load when it doesn't.</p>
+</div>
+
+<h3>Steps 6–7 — Deserialize and run</h3>
+<p>The worker parses the JSON, reads <code>headers.task</code> (<code>myapp.add</code>), looks that name up in its own task registry, base64-decodes the body to recover <code>(2, 3)</code>, and finally calls the real function in one of its child processes. Only now — well after the web request already returned — does <code>2 + 3</code> actually run.</p>
+
+<h2>Why this matters</h2>
+
+<p>Three consequences fall straight out of "a task is just a string in a list," and they set up the rest of the course.</p>
+
+<p><strong>1. The broker is dumb storage.</strong> Redis isn't tracking tasks, retries, or who's working on what. It's holding a list of strings. Every smart behaviour you associate with Celery — acknowledgement, redelivery, prefetch, priorities — is <em>emulated by kombu</em> using extra Redis keys and commands. Knowing the base case is a plain list is what makes the emulation (Lessons 3–4) legible instead of magic.</p>
+
+<p><strong>2. Producer and consumer are fully decoupled.</strong> The web process finishes at step 4 regardless of whether any worker exists. That's the entire value proposition — offload slow work, return fast — and also the first failure mode: a message sitting in a list with no worker draining it is invisible until you look at the list length.</p>
+
+<p><strong>3. The message is self-contained, and that has teeth.</strong> The worker needs the task <em>defined</em> under the same name, and it decodes whatever args were frozen in at publish time. Deploy a worker that doesn't know <code>myapp.add</code>, or change a task's signature while old messages are still in the list, and the worker chokes on a string it can't honour.</p>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "A Celery queue on Redis is literally a Redis <em>list</em>. <code>.delay()</code> serializes the task into a JSON message and <code>LPUSH</code>es it; the worker <code>BRPOP</code>s it off the other end — push-left, pop-right, so it's FIFO. Redis is dumb storage; everything else Celery does is emulated on top of that list."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow answer is "Celery sends the task to the worker." It doesn't — producer and worker never communicate; they only share a Redis list, and the only thing that crosses is a serialized <em>message</em>, not a function or an object. Naming that the message carries the task's <em>name</em> (not its code) and its <em>arguments</em> (frozen at publish time) is the tell of someone who's actually looked.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Physically, what is a Celery "queue" on the Redis broker?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A Redis <code>LIST</code>, keyed by the queue name (default <code>celery</code>). Not a special queue object — a list.</p></details>
+  <p>② Which two Redis commands move a task from producer to worker, and which way does each go?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>LPUSH</code> (producer prepends on the left) and <code>BRPOP</code> (worker blocking-pops from the right). Left-in, right-out ⇒ FIFO.</p></details>
+  <p>③ What's inside the message — and what is <em>not</em>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Inside: the task <em>name</em> (headers), the <em>arguments</em> (base64 body), and routing/tracking metadata (properties). Not inside: the function's code — only its registered name. The worker must already define that task.</p></details>
+  <p>④ Why does it matter that "Redis is not a queue"?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because every queue-like guarantee — acks, redelivery, prefetch, priority — is emulated by kombu on top of plain Redis structures. The broker itself just stores strings; the cleverness is in the client.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.celeryq.dev/projects/kombu/en/stable/_modules/kombu/transport/redis.html">kombu — <code>kombu/transport/redis.py</code> (source)</a>. The real transport. For this lesson, skim how the <code>Channel</code> does <code>_put</code> (the <code>LPUSH</code>) and <code>_brpop_start</code>/<code>_brpop_read</code> (the consume). Seeing it's a few dozen lines of plain Redis calls is the whole "it's just a list" insight made concrete. Pair with the <a href="https://docs.celeryq.dev/en/stable/internals/protocol.html">Celery message-protocol v2 spec</a> for the envelope.
+</div>
+
+<div class="ask-teacher">
+  <strong>Try it cold.</strong> Want to actually watch this happen? Start Redis, fire a task with no worker running, then <code>redis-cli LRANGE celery 0 -1</code> and <code>LLEN celery</code> — you'll see your JSON sitting in the list. Curious what changes with multiple queues, JSON vs pickle serialization, or how priorities split one queue into several lists? Those are exactly the threads an interviewer pulls — worth asking about.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-how-the-worker-pulls-work.html"><em>Next: Lesson 2 — how the worker gets the task →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> List-based queue, <code>LPUSH</code>/<code>BRPOP</code> consumption, fair rotation — <a href="https://docs.celeryq.dev/projects/kombu/en/stable/_modules/kombu/transport/redis.html">kombu Redis transport source</a>; <a href="https://docs.celeryq.dev/projects/kombu/en/stable/reference/kombu.transport.redis.html">kombu Redis transport reference</a>.<br>
+<span id="s2">2.</span> Message envelope (headers / body / properties, protocol v2) — <a href="https://docs.celeryq.dev/en/stable/internals/protocol.html">Celery docs: Message Protocol</a>.
+</p>

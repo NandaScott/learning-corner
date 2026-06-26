@@ -1,0 +1,158 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Celery + Redis — glossary</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">↑ Celery + Redis</a> · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">Canonical vocabulary for this course. Every lesson uses these words to mean exactly this. Verified against the kombu source and Celery docs — not generic message-queue theory.</p>
+
+<h2>The pieces</h2>
+
+<dl>
+<dt><strong>Broker</strong></dt>
+<dd>The message store that sits between producers (your web process) and consumers (workers). With Redis, the broker is <em>just a Redis server</em> — a key-value store, not a purpose-built queue. Everything queue-like is built on top by kombu.</dd>
+
+<dt><strong>kombu</strong></dt>
+<dd>Celery's messaging library. It owns the Redis "transport" — the code that turns Redis primitives (lists, sorted sets, pub/sub) into something with queue and acknowledgement semantics. When this course says "the Redis transport," it means kombu's <code>kombu/transport/redis.py</code>.</dd>
+
+<dt><strong>Producer</strong></dt>
+<dd>Whatever calls <code>task.delay(...)</code> / <code>task.apply_async(...)</code> — usually a Django view or another task. It serializes a message and pushes it onto the broker.</dd>
+
+<dt><strong>Worker</strong></dt>
+<dd>A long-running process that pulls messages off the broker and executes the task functions. One worker can run many child processes/threads (its concurrency).</dd>
+
+<dt><strong>Message</strong></dt>
+<dd>The serialized unit of work on the broker. A JSON envelope: <code>headers</code> (task name, task id), a base64-encoded <code>body</code> (the args/kwargs), and <code>properties</code> (routing info + a <code>delivery_tag</code>). Not a Python object — a string of bytes Redis stores verbatim.</dd>
+
+<dt><strong>Task</strong></dt>
+<dd>The Python function decorated with <code>@app.task</code>. A <em>message</em> is a request to run a task with specific arguments; the task is the code.</dd>
+
+<dt><strong>Queue</strong></dt>
+<dd>Physically, a Redis <strong>LIST</strong> keyed by the queue's name (default <code>celery</code>). "Putting a task on the queue" = <code>LPUSH</code> onto that list. There is no special queue object — it's a list.</dd>
+</dl>
+
+<h2>Redis operations</h2>
+
+<dl>
+<dt><strong>LPUSH / BRPOP</strong></dt>
+<dd>Produce / consume. The producer <code>LPUSH</code>es a message onto the left of the list; the worker <code>BRPOP</code>s from the right (blocking pop — waits if the list is empty). Push-left + pop-right = FIFO order.</dd>
+
+<dt><strong>Sorted set (ZSET)</strong></dt>
+<dd>A Redis structure mapping members to a numeric <em>score</em>, kept ordered by score. kombu uses one (<code>unacked_index</code>) to track <em>when</em> each in-flight message was delivered, so it can find ones that have been out too long.</dd>
+</dl>
+
+<h2>Reliability machinery <span style="font-weight:400;color:var(--muted);font-size:0.8em">(defined in L3–L4)</span></h2>
+
+<dl>
+<dt><strong>Acknowledgement (ack)</strong></dt>
+<dd>The signal "this message is done, delete it for good." AMQP brokers have this natively; <strong>Redis does not</strong>. kombu <em>emulates</em> it (L3).</dd>
+
+<dt><strong>Delivery tag</strong></dt>
+<dd>A unique id kombu assigns each delivered message so it can track and later ack/restore that specific in-flight copy.</dd>
+
+<dt><strong><code>unacked</code> / <code>unacked_index</code></strong></dt>
+<dd>The two Redis keys behind emulated acks. <code>unacked</code> is a HASH (delivery_tag → the message payload). <code>unacked_index</code> is a ZSET (delivery_tag → delivery timestamp). Ack removes from both; nothing removes them if the worker dies — which is what makes recovery possible (L3).</dd>
+
+<dt><strong>Visibility timeout</strong></dt>
+<dd>How long a delivered-but-unacked message stays "invisible" before kombu assumes the worker died and re-queues it. Default <strong>3600s (1 hour)</strong>. The source of the classic duplicate-execution trap (L4).</dd>
+
+<dt><strong>Prefetch</strong></dt>
+<dd>How many messages a worker reserves at once beyond the ones it's actively running (<code>worker_prefetch_multiplier</code>). Reserved messages count as unacked (L2).</dd>
+
+<dt><strong><code>acks_late</code></strong></dt>
+<dd>Ack <em>after</em> the task finishes instead of when it's received. Turns delivery from at-most-once into at-least-once — survives crashes, but can double-run. Demands idempotent tasks (L5).</dd>
+</dl>
+
+<h2>Worker anatomy <span style="font-weight:400;color:var(--muted);font-size:0.8em">(L2)</span></h2>
+
+<dl>
+<dt><strong>Main process / supervisor</strong></dt>
+<dd>The process you launch with <code>celery worker</code>. Runs the Consumer and does bookkeeping; runs <em>no</em> task code itself.</dd>
+
+<dt><strong>Consumer</strong></dt>
+<dd>The component in the main process that owns the broker connection, <code>BRPOP</code>s messages, turns each into a <em>Request</em>, prefetches, and dispatches to the pool.</dd>
+
+<dt><strong>Request</strong></dt>
+<dd><code>celery.worker.request.Request</code> — the in-memory object a message becomes once received: this specific call, its args, id, and delivery tag.</dd>
+
+<dt><strong>Execution pool</strong></dt>
+<dd>The child processes (or threads/greenlets) that actually run task code. Default is <strong>prefork</strong> (forked child processes via <code>billiard</code>). Concurrency = pool size.</dd>
+
+<dt><strong>Prefetch</strong></dt>
+<dd>Messages reserved into the main process's memory ahead of free slots: <code>worker_prefetch_multiplier × concurrency</code> (default multiplier <strong>4</strong>). Prefetch ≠ concurrency.</dd>
+
+<dt><strong>Result backend</strong></dt>
+<dd>The separate store (Redis with different keys, or a DB) where return values land, keyed by task id. Distinct from the broker — work goes in via the broker, results come out via the backend.</dd>
+</dl>
+
+<h2>Task lifecycle <span style="font-weight:400;color:var(--muted);font-size:0.8em">(L3)</span></h2>
+
+<dl>
+<dt><strong>Tracer</strong></dt>
+<dd><code>celery.app.trace.build_tracer</code> — the compiled wrapper a child runs your task through. It calls the handler methods and sends the task signals in a fixed order.</dd>
+
+<dt><strong>Handler methods</strong></dt>
+<dd>Overridable Task methods, in order: <code>before_start</code> → <code>run</code> → (state recorded) → one of <code>on_success</code>/<code>on_retry</code>/<code>on_failure</code> → <code>after_return</code>. <code>before_start</code> blocks <code>run</code>; <code>after_return</code> is skipped for RETRY/IGNORED/REJECTED.</dd>
+
+<dt><strong><code>run()</code></strong></dt>
+<dd>Your <code>@app.task</code> function body — the decorator makes it the <code>run</code> method of a Task subclass.</dd>
+
+<dt><strong>Task states</strong></dt>
+<dd><code>PENDING</code> (implicit — no record), <code>RECEIVED</code>, <code>STARTED</code> (only with <code>task_track_started</code>), <code>SUCCESS</code>, <code>FAILURE</code>, <code>RETRY</code>, <code>REVOKED</code>.</dd>
+
+<dt><strong><code>IGNORE_STATES</code></strong></dt>
+<dd><code>{RETRY, IGNORED, REJECTED}</code> — the states for which the tracer skips <code>after_return</code>. The reason "retry doesn't run after_return."</dd>
+
+<dt><strong>Retry</strong></dt>
+<dd><code>self.retry()</code> raises a <code>Retry</code> exception, records <code>RETRY</code>, and <em>re-publishes</em> a fresh message. Not a pause — a new delivery that flows through the whole pipeline again.</dd>
+</dl>
+
+<h2>Signals <span style="font-weight:400;color:var(--muted);font-size:0.8em">(L4)</span></h2>
+
+<dl>
+<dt><strong>Signal</strong></dt>
+<dd>A blinker-style dispatch point Celery <code>send()</code>s at a fixed line. <code>signal.connect(fn)</code> runs <code>fn</code> synchronously there. <strong>Fires in whichever process reaches the line.</strong></dd>
+
+<dt><strong>Publish signals</strong></dt>
+<dd><code>before_task_publish</code> / <code>after_task_publish</code> — fire in the <em>producer</em> process (whoever called <code>.delay()</code>), around the broker send.</dd>
+
+<dt><strong><code>task_received</code></strong></dt>
+<dd>Fires in the worker's <em>main</em> process when the Consumer builds a Request.</dd>
+
+<dt><strong>Execution signals</strong></dt>
+<dd>Fire in the <em>child</em>, in trace order: <code>task_prerun</code> (before <code>before_start</code>) → <code>task_success</code>/<code>task_retry</code>/<code>task_failure</code> → <code>task_postrun</code> (after <code>after_return</code>; sent on <strong>every</strong> outcome, including retry).</dd>
+
+<dt><strong>Worker-lifecycle signals</strong></dt>
+<dd><code>celeryd_init</code> (first) → <code>worker_init</code> → <code>worker_process_init</code> (per child) → <code>worker_ready</code>; shutdown mirrors it. <code>worker_process_init</code>/<code>_shutdown</code> fire once per forked child — where per-process resources (DB connections) are opened/closed.</dd>
+</dl>
+
+<h2>Delivery guarantees <span style="font-weight:400;color:var(--muted);font-size:0.8em">(L5–L7)</span></h2>
+
+<dl>
+<dt><strong>Visibility timeout</strong></dt>
+<dd>The deadline an unacked ledger entry has before it's presumed lost and re-queued. Default <strong>3600s</strong>. A 10-second restore loop in each worker scans <code>unacked_index</code> for entries delivered longer ago than this and <code>LPUSH</code>es them back.</dd>
+
+<dt><strong>Restore</strong></dt>
+<dd><code>restore_by_tag</code> — reading a message body out of the <code>unacked</code> hash and <code>LPUSH</code>ing it back onto its queue. Triggered by the timeout sweep, an explicit reject-with-requeue, or clean shutdown (<code>restore_at_shutdown</code>).</dd>
+
+<dt><strong><code>acks_late</code></strong></dt>
+<dd>If <code>False</code> (default) the message is acked <em>before</em> the task runs (at-most-once); if <code>True</code>, <em>after</em> it returns (at-least-once). The single switch that picks the delivery guarantee.</dd>
+
+<dt><strong>At-most-once</strong></dt>
+<dd>Each message runs zero or one time. A worker crash drops in-flight work; no duplicates. The default (<code>acks_late=False</code>).</dd>
+
+<dt><strong>At-least-once</strong></dt>
+<dd>Each message runs one or more times. A worker crash redelivers it; duplicates possible. Requires idempotent tasks. Enabled by <code>acks_late=True</code>.</dd>
+
+<dt><strong>Idempotency</strong></dt>
+<dd>The property that running a task twice equals running it once. The precondition that makes at-least-once safe. Celery on Redis offers no exactly-once, so this is the task author's responsibility.</dd>
+
+<dt><strong><code>reject_on_worker_lost</code> / <code>acks_on_failure_or_timeout</code></strong></dt>
+<dd>The edge knobs. By default an abruptly-killed child's task is acked not redelivered (poison-pill protection), and an ordinary task failure under <code>acks_late</code> is still acked. So late-ack redelivers on <em>worker death</em>, not on every error.</dd>
+</dl>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../lessons/0001-a-task-is-a-message-in-a-list.html">Lesson 1 ↗</a></span>
+  <span><a href="../lessons/0005-acks-are-emulated.html">Lesson 5 ↗</a></span>
+  <span><a href="../lessons/0007-acks-late-and-idempotency.html">Lesson 7 ↗</a></span>
+</div>

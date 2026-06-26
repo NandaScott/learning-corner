@@ -84,7 +84,7 @@ DATABASES["default"]["CONN_MAX_AGE"] = 0          # don't double-pool</code></pr
 <p>Forked backend process (<a href="../lessons/0001-the-connection-handshake.html">L1</a>) → RAM/CPU ceiling &amp; downward throughput curve (<a href="../lessons/0002-what-a-connection-costs.html">L2</a>) → reuse a small fixed set (<a href="../lessons/0003-what-a-connection-pool-is.html">L3</a>) → <code>CONN_MAX_AGE</code> is per-worker, not shared (<a href="../lessons/0004-django-conn-max-age.html">L4</a>) → PgBouncer is the shared pool below the fleet; transaction mode trades session features for multiplexing (<a href="../lessons/0005-pgbouncer-and-pooling-modes.html">L5</a>).</p>
 
 <div class="ask-teacher">
-  Want this sized to <em>your</em> deploy? Tell your teacher your worker/thread/instance counts and <code>max_connections</code> — I'll compute whether you need PgBouncer and what <code>default_pool_size</code> to set.
+  Want this sized to a real deploy? Plug in worker/thread/instance counts and <code>max_connections</code> to compute whether PgBouncer is needed and what <code>default_pool_size</code> to set.
 </div>
 
 <div class="course-nav">

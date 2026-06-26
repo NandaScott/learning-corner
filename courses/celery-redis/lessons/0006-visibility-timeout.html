@@ -1,0 +1,139 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6 — The visibility timeout: how lost work comes back</title>
+
+<p class="eyebrow">Celery + Redis · Lesson 6</p>
+<h1>The visibility timeout: how lost work comes back</h1>
+<p class="lede">Lesson 5 left a question: a message popped by a worker lives only in the unacked ledger. So what happens to that ledger entry if the worker dies and never acks? Without an answer it sits there forever — the work silently lost. The visibility timeout is the answer, and it's also the source of Celery-on-Redis's most infamous bug.</p>
+
+<h2>The concept</h2>
+
+<p>The unacked ledger (Lesson 5) can leak. A worker <code>BRPOP</code>s a message, kombu records it in <code>unacked</code> + <code>unacked_index</code>, then the worker is <code>kill -9</code>'d mid-task. It never acks. That ledger entry now has no owner and would linger indefinitely. Something has to notice and recover it.</p>
+
+<p>The fact:</p>
+
+<p><strong>Every worker runs a recovery loop every 10 seconds that re-queues any in-flight message older than the <em>visibility timeout</em> (default 3600s / 1 hour).</strong> "Visibility timeout" is borrowed terminology — on Redis there's no native invisibility. Mechanically it's just a deadline: an unacked ledger entry whose delivery timestamp is older than <code>now − visibility_timeout</code> is assumed lost, and kombu <code>LPUSH</code>es it back onto its queue.<sup><a href="#s1">1</a></sup></p>
+
+<p>This is exactly what the <code>unacked_index</code> sorted set was built for (Lesson 5): it's keyed by <em>delivery time</em>, so "what's been out too long?" is a single range query.</p>
+
+<h2>The steps</h2>
+
+<p>The recovery loop, running in every worker, on a timer.</p>
+
+<div class="figure">
+<pre><code>  register_with_event_loop:
+     loop.call_repeatedly(10, maybe_restore_messages)   ── every 10 SECONDS:
+
+  1. ceil = time() - visibility_timeout          (default: now - 3600s)
+  2. with Mutex(unacked_mutex_key):               ── only ONE worker restores at a time
+  3.    expired = ZREVRANGEBYSCORE unacked_index  ceil  0   withscores
+            └─ every entry whose delivery timestamp is older than `ceil`
+  4.    for tag in expired:
+            restore_by_tag(tag)    →   LPUSH the message back onto its queue
+  ─────────────────────────────────────────────────────────────────────────
+  5. the message is back in the list → flows through the whole pipeline again
+                                        (Lesson 1 BRPOP, Lesson 2 consumer, Lesson 3 run)</code></pre>
+<p class="cap">The check runs every 10s; the <em>threshold</em> is the visibility timeout (1h default). So a lost message is recovered within ~10s <em>after</em> its hour is up — not 10s after the crash.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h3>Step 1 — The deadline: <code>now − visibility_timeout</code></h3>
+<p>Each pass computes a cutoff timestamp. The <code>unacked_index</code> scores are the times messages were delivered (Lesson 5). Anything delivered before the cutoff has been in-flight longer than the timeout allows, so it's presumed dead. Default cutoff is one hour ago.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 2 — The mutex: only one worker restores</h3>
+<p>Every worker runs this loop, so without coordination ten workers would each re-queue the same expired message ten times. kombu takes a Redis-based lock (<code>unacked_mutex_key</code>) around the restore, so exactly one worker performs each restoration pass.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 3 — The range query</h3>
+<p><code>ZREVRANGEBYSCORE unacked_index ceil 0</code> pulls every tag scored at or below the cutoff — the expired ones — in one shot (capped by <code>unacked_restore_limit</code> per pass). This is why the index is a <em>sorted</em> set and not part of the hash: the "expired?" question is a range scan over time.</p>
+
+<h3>Step 4 — Restore = <code>LPUSH</code> back</h3>
+<p><code>restore_by_tag</code> reads the body out of the <code>unacked</code> hash and <code>LPUSH</code>es it back onto its original queue, then clears the ledger entry. From here it's an ordinary queued message again — there is no "resume"; the task runs from the top.</p>
+
+<h2>Clean shutdown vs hard kill — the Lesson 5 cliffhanger</h2>
+
+<p>This is where the two crash modes split, and it's a favourite interview probe.</p>
+
+<div class="figure">
+<pre><code>  CLEAN shutdown (SIGTERM / warm shutdown / deploy restart)
+     restore_at_shutdown = True  →  on channel close, restore_unacked()
+     re-queues ALL in-flight messages IMMEDIATELY
+     ⇒ near-instant redelivery, no waiting
+
+  HARD kill (kill -9, OOM, power loss, network partition)
+     no chance to run any cleanup
+     ⇒ ledger entries just sit there until the 10s loop finds them
+        EXPIRED — i.e. up to visibility_timeout (default 1 HOUR) later</code></pre>
+<p class="cap">So the visibility timeout only governs the <em>ungraceful</em> path. A normal deploy restart redelivers instantly; only a genuine crash makes you wait out the timeout.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h2>The infamous trap: ETA / countdown tasks</h2>
+
+<p>Here's the bug everyone hits. An <code>eta</code>/<code>countdown</code> task is pulled into a worker's memory and held there until its due time — and crucially, <strong>it is not acked until it starts executing</strong>.<sup><a href="#s4">4</a></sup> So its unacked ledger entry is live the entire time it waits.</p>
+
+<div class="figure">
+<pre><code>  task.apply_async(countdown=7200)    # run in 2 hours
+     t=0      worker A pops it, holds in memory, NOT acked
+              unacked_index entry timestamp = t=0
+     t=3600   visibility_timeout elapses. Worker B's restore loop sees an
+              entry older than 1h, assumes it's lost → LPUSH back onto queue
+     t=3600   worker B (or A) pops the "recovered" copy, ALSO holds it
+     t=7200   BOTH copies fire  →  task runs TWICE</code></pre>
+<p class="cap">No worker crashed. The task was simply scheduled longer than the visibility timeout, so the recovery loop mistook a waiting task for a lost one. This is the canonical Celery-on-Redis duplicate-execution bug.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<p>The fixes, in order of preference: don't use long ETAs on Redis — use database-backed periodic scheduling (beat), which isn't subject to the timeout; or, if you must, raise <code>visibility_timeout</code> above your longest ETA/countdown/retry delay. Raising it is a real trade-off, though: it also delays redelivery of <em>genuinely</em> lost (hard-killed) tasks by the same amount.<sup><a href="#s2">2</a></sup></p>
+
+<h2>Why this matters</h2>
+
+<p><strong>1. "Redelivery" is a client-side sweep, not a broker feature.</strong> The same theme as Lesson 5: Redis isn't tracking timeouts. Every worker is polling the sorted set every 10 seconds and re-pushing stale entries. The broker just stores keys.</p>
+
+<p><strong>2. The default 1-hour timeout is a latency floor on crash recovery.</strong> Hard-kill a worker running 50 tasks and those 50 messages are stuck for up to an hour before any other worker retries them. People expect instant failover; on Redis with defaults, ungraceful failure means up-to-an-hour delay.</p>
+
+<p><strong>3. Visibility timeout × task duration is a design constraint.</strong> Any task — running or merely scheduled — that stays unacked longer than the timeout <em>will</em> be redelivered and re-run. So either keep tasks shorter than the timeout, or raise the timeout, or use <code>acks_late</code> deliberately and make the task idempotent (Lesson 7). You can't ignore the relationship.</p>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "On Redis there's no real ack and no real invisibility. Every worker runs a 10-second loop that scans the <code>unacked_index</code> sorted set for entries delivered more than <code>visibility_timeout</code> ago — default an hour — and <code>LPUSH</code>es them back onto the queue, under a mutex so only one worker does it. Clean shutdown re-queues in-flight work immediately; a hard kill makes you wait out the timeout."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Shallow: "the visibility timeout is how long Redis hides a delivered message." There's no hiding — the message was destructively popped (Lesson 5); it's in the unacked ledger, not the queue. The deep tell is the <em>duplicate-execution</em> failure: an <code>eta</code>/<code>countdown</code> task waits unacked in memory, and if it waits longer than the timeout, another worker's recovery loop re-queues it and it runs <strong>twice</strong> — no crash required. That's the bug that separates the read-about-it crowd from the got-paged-at-3am crowd.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What runs every 10 seconds in each worker, and what does it look for?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The restore loop (<code>maybe_restore_messages</code> → <code>restore_visible</code>). It range-scans <code>unacked_index</code> for entries delivered more than <code>visibility_timeout</code> ago (default 1h) and <code>LPUSH</code>es them back onto their queue.</p></details>
+  <p>② Why does the restore happen under a mutex?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Every worker runs the loop. Without a lock, N workers would each re-queue the same expired message N times. The <code>unacked_mutex_key</code> lock lets exactly one worker restore per pass.</p></details>
+  <p>③ Clean SIGTERM vs <code>kill -9</code>: how fast does in-flight work come back?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Clean shutdown re-queues everything immediately (<code>restore_at_shutdown=True</code> → <code>restore_unacked</code>). Hard kill skips cleanup, so messages wait until the recovery loop sees them expire — up to the full visibility timeout (default 1h).</p></details>
+  <p>④ How can a task run twice with no worker crashing?</p>
+  <details><summary>show answer</summary>
+  <p class="a">An <code>eta</code>/<code>countdown</code> longer than the visibility timeout: the task waits unacked in memory, the recovery loop mistakes the stale entry for a lost message and re-queues it, so two copies eventually fire. Fix: avoid long ETAs on Redis (use beat) or raise <code>visibility_timeout</code> above the longest delay.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout">Celery docs — Redis › Visibility Timeout</a> for the default, the ETA caveat, and the "shortest wins if shared" rule. Then read <code>QoS.restore_visible</code> and <code>register_with_event_loop</code> in <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu/transport/redis.py</a> to see the <code>call_repeatedly(10, …)</code> timer and the <code>zrevrangebyscore</code> cutoff — the mechanism behind the prose.
+</div>
+
+<div class="ask-teacher">
+  <strong>Force a redelivery.</strong> Set a tiny <code>visibility_timeout</code> (say 30s) and <code>acks_late=True</code>, start a task that sleeps 60s, and watch a second worker pick up a duplicate at the 30s mark — the trap, reproduced on purpose. Curious how <code>unacked_restore_limit</code> caps each pass, or how the mutex behaves if the restoring worker itself dies holding it? Ask. <strong>Lesson 7 closes the arc: <code>acks_late</code>, at-least-once, and why all of this forces idempotency.</strong>
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0005-acks-are-emulated.html">← Lesson 5</a></span>
+  <span><a href="0007-acks-late-and-idempotency.html"><em>Next: Lesson 7 — acks_late &amp; idempotency →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> <code>restore_visible</code> (cutoff <code>time() − visibility_timeout</code>, <code>ZREVRANGEBYSCORE unacked_index</code>, <code>restore_by_tag</code> → LPUSH, <code>Mutex(unacked_mutex_key)</code>); triggered by <code>loop.call_repeatedly(10, maybe_restore_messages)</code> — <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu/transport/redis.py, <code>QoS</code> + <code>register_with_event_loop</code></a>.<br>
+<span id="s2">2.</span> Default <code>visibility_timeout = 3600</code>; ETA/countdown/retry beyond it cause repeated execution; raising it delays lost-task redelivery; shortest wins if the broker is shared; use DB-backed periodic tasks for long schedules — <a href="https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout">Celery docs: Redis › Visibility Timeout</a>.<br>
+<span id="s3">3.</span> <code>restore_at_shutdown = True</code>; clean channel close re-queues all unacked via <code>restore_unacked</code> — <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu/transport/redis.py, <code>QoS.restore_at_shutdown</code></a>; redelivery on worker shutdown — <a href="https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout">Celery docs: Redis</a>.<br>
+<span id="s4">4.</span> ETA/countdown tasks held in worker memory and not acknowledged until execution starts; may be redelivered if the delay exceeds <code>visibility_timeout</code> — <a href="https://docs.celeryq.dev/en/stable/userguide/calling.html#eta-and-countdown">Celery docs: Calling › ETA and Countdown</a>.
+</p>

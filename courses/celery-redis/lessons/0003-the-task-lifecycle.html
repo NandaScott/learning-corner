@@ -1,0 +1,151 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3 — The task lifecycle: methods and states</title>
+
+<p class="eyebrow">Celery + Redis · Lesson 3</p>
+<h1>The task lifecycle: which method runs when</h1>
+<p class="lede">Lesson 2 dropped the message into a child process and said "it runs your function." That's the one step we now open up. When the child executes a task, your function is wrapped in a tracer that calls a fixed sequence of handler methods — and moves the task through a fixed sequence of states. Here's the exact order.</p>
+
+<h2>The concept</h2>
+
+<p>Your <code>@app.task</code> function is never called bare. When a child process picks up a Request (Lesson 2, step 5), it runs it through a compiled <strong>tracer</strong> (<code>celery.app.trace.build_tracer</code>) that surrounds your code with lifecycle hooks.<sup><a href="#s1">1</a></sup> Those hooks are methods on the Task class you can override:</p>
+
+<p><strong><code>before_start</code> → <code>run</code> → (record state) → one of <code>on_success</code> / <code>on_retry</code> / <code>on_failure</code> → <code>after_return</code>.</strong> The order is fixed and the same every time. Two facts trip people up, and we'll nail both: the outcome <em>state is written to the backend before</em> the outcome handler runs, and <code>after_return</code> does <em>not</em> run on a retry.<sup><a href="#s1">1</a></sup></p>
+
+<h2>The steps</h2>
+
+<p>This all happens inside one child process, synchronously, in one thread.<sup><a href="#s2">2</a></sup> Here's the timeline of one execution.</p>
+
+<div class="figure">
+<pre><code>  child process · trace_task(uuid, args, kwargs)
+  ─────────────────────────────────────────────────────────────────
+  1.  before_start(task_id, args, kwargs)     ← blocks; run() waits for it
+  2.  retval = run(*args, **kwargs)           ← YOUR @task function body
+        │
+        ├── returned normally ─────────▶  3a. backend.mark_as_done → SUCCESS
+        │                                  4a. on_success(retval, …)
+        │
+        ├── called self.retry() ───────▶  3b. backend.mark_as_retry → RETRY
+        │                                  4b. on_retry(exc, …)
+        │
+        └── raised an exception ───────▶  3c. backend.mark_as_failure → FAILURE
+                                           4c. on_failure(exc, …, einfo)
+  ─────────────────────────────────────────────────────────────────
+  5.  after_return(status, retval, …)   ← runs for SUCCESS / FAILURE only
+                                           SKIPPED for RETRY (and IGNORED/REJECTED)</code></pre>
+<p class="cap">Exactly one of the 3/4 branches fires per run. Step 3 (record state) always precedes step 4 (the handler) — the backend is updated <em>before</em> your handler sees the outcome.</p>
+</div>
+
+<h3>Step 1 — <code>before_start(task_id, args, kwargs)</code></h3>
+<p>The first hook, added in Celery 5.2. It runs <em>before</em> your function and <strong>blocks it</strong> — <code>run()</code> will not begin until <code>before_start</code> returns.<sup><a href="#s3">3</a></sup> Use it for per-execution setup (a request-scoped log context, a DB connection check). Anything slow here is latency added to every task.</p>
+
+<h3>Step 2 — <code>run()</code> — your function</h3>
+<p><code>run</code> <em>is</em> your task body. <code>@app.task</code> turns the function you wrote into the <code>run</code> method of a Task subclass; calling the task ultimately calls <code>run</code>. It ends in exactly one of three ways, and that choice drives everything after it:</p>
+<ul>
+<li><strong>returns a value</strong> → success path</li>
+<li><strong>calls <code>self.retry(...)</code></strong> → raises a special <code>Retry</code> exception → retry path</li>
+<li><strong>raises any other exception</strong> → failure path</li>
+</ul>
+
+<h3>Step 3 — The backend records the outcome <em>first</em></h3>
+<p>Before any outcome handler runs, the tracer writes the result to the <strong>result backend</strong> (Lesson 2, step 6):<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>  success →  mark_as_done(uuid, retval)     state = SUCCESS   (result = return value)
+  retry   →  mark_as_retry(uuid, exc)       state = RETRY     (result = the exception)
+  failure →  mark_as_failure(uuid, exc)     state = FAILURE   (result = exc + traceback)</code></pre>
+<p class="cap">This ordering is why <code>on_success</code>'s docstring can promise "the result is already visible to clients" — the backend write happened on the line before.</p>
+</div>
+
+<h3>Step 4 — Exactly one outcome handler</h3>
+<table>
+  <tr><th>Handler</th><th>Signature</th><th>Fires when</th></tr>
+  <tr><td><code>on_success</code></td><td><code>(retval, task_id, args, kwargs)</code></td><td>run() returned normally</td></tr>
+  <tr><td><code>on_retry</code></td><td><code>(exc, task_id, args, kwargs, einfo)</code></td><td>run() called <code>self.retry()</code></td></tr>
+  <tr><td><code>on_failure</code></td><td><code>(exc, task_id, args, kwargs, einfo)</code></td><td>run() raised any other exception</td></tr>
+</table>
+<p>Their return values are ignored — these are side-effect hooks (alerting, cleanup, metrics). When <code>on_failure</code> runs, the state in the backend is already <code>FAILURE</code>.</p>
+
+<h3>Step 5 — <code>after_return(status, retval, task_id, args, kwargs, einfo)</code></h3>
+<p>The "finally" hook — but with a sharp edge. It runs for <strong>terminal</strong> states only. The tracer guards it with <code>if state not in IGNORE_STATES</code>, and <code>IGNORE_STATES = {RETRY, IGNORED, REJECTED}</code>.<sup><a href="#s1">1</a></sup> So:</p>
+
+<div class="figure">
+<pre><code>  SUCCESS  → after_return runs   ✓
+  FAILURE  → after_return runs   ✓
+  RETRY    → after_return SKIPPED ✗   (the task isn't done — it'll run again)
+  IGNORED / REJECTED → SKIPPED   ✗</code></pre>
+<p class="cap">"after_return always runs last" is true <em>per terminal outcome</em> — a retried task simply hasn't reached a terminal outcome yet, so its <code>after_return</code> only fires on the attempt that finally succeeds or fails.</p>
+</div>
+
+<h2>The state machine</h2>
+
+<p>Alongside the method calls, the task moves through <strong>states</strong> — the thing <code>AsyncResult.state</code> reports. The handler outcomes above are the transitions into the terminal states.</p>
+
+<div class="figure">
+<pre><code>  PENDING ──▶ RECEIVED ──▶ (STARTED) ──▶ ┬─▶ SUCCESS
+   │            │                        ├─▶ FAILURE
+   │            │                        └─▶ RETRY ──┐
+   │            │                                    │ re-published as a new delivery
+   │            └◀───────────────────────────────────┘
+   └─ REVOKED (cancelled before it ran)</code></pre>
+<p class="cap">PENDING is implicit — it means "no record exists," so an unknown/typo'd id also reads PENDING. RECEIVED is set when the consumer picks the message up (Lesson 2). STARTED is only recorded if <code>task_track_started</code> is enabled (default off).<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h3>Retry is a re-delivery, not a pause</h3>
+<p><code>self.retry()</code> doesn't sleep the worker. It marks the task <code>RETRY</code>, <em>re-publishes</em> a fresh message (with an incrementing <code>retries</code> count and an optional countdown), and the current execution ends. That new message later flows through the entire pipeline again — Lesson 1's <code>LPUSH</code>, Lesson 2's consumer, and this lifecycle from the top. That's why <code>after_return</code> is skipped on <code>RETRY</code>: from the tracer's view this attempt is over, but the <em>task</em> isn't done.</p>
+
+<h2>Why this matters</h2>
+
+<p><strong>1. Where you put cleanup logic depends on this order.</strong> Need teardown on every terminal outcome? <code>after_return</code> — but remember it skips retries. Need it on every <em>attempt</em> including retries? You can't use <code>after_return</code>; you need a signal that fires on all paths (Lesson 4's <code>task_postrun</code>).</p>
+
+<p><strong>2. "Result visible" timing is exact.</strong> Because step 3 precedes step 4, a client polling <code>AsyncResult</code> can observe <code>SUCCESS</code> and the return value <em>before</em> your <code>on_success</code> has finished running. Don't write code that assumes <code>on_success</code> is a gate before the result exists — it isn't.</p>
+
+<p><strong>3. Retries quietly multiply executions.</strong> Each retry is a brand-new trip through the whole system. <code>before_start</code> and <code>run</code> fire again from scratch; there's no resumption. Combined with at-least-once delivery (a later lesson), this is why task bodies must be idempotent.</p>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "A task isn't just <code>run()</code> — the worker wraps it in a tracer: <code>before_start</code>, then <code>run</code>, then the backend records the state, then exactly one of <code>on_success</code>/<code>on_retry</code>/<code>on_failure</code>, then <code>after_return</code> — but <code>after_return</code> is skipped on retry, because a retry is a re-published new delivery, not a finished task."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Two shallow beliefs to avoid. First: "<code>after_return</code> always runs." It doesn't — <code>RETRY</code>, <code>IGNORED</code>, and <code>REJECTED</code> are in <code>IGNORE_STATES</code> and skip it. Second: "<code>on_success</code> runs, then the result becomes available." Backwards — the backend is written <em>before</em> the outcome handler, so the result is already visible when <code>on_success</code> fires.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① List the handler methods in execution order for a successful task.</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>before_start</code> → <code>run</code> → (backend records SUCCESS) → <code>on_success</code> → <code>after_return</code>.</p></details>
+  <p>② Does <code>after_return</code> run when a task calls <code>self.retry()</code>? Why or why not?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. <code>RETRY</code> is in <code>IGNORE_STATES</code> ({RETRY, IGNORED, REJECTED}). A retry re-publishes a new delivery, so this attempt isn't a terminal outcome — <code>after_return</code> only fires on the attempt that ends in SUCCESS or FAILURE.</p></details>
+  <p>③ When <code>on_failure</code> runs, what state is already in the backend?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>FAILURE</code> — the tracer calls <code>mark_as_failure</code> before the outcome handler, so the state (and the exception/traceback) is recorded first.</p></details>
+  <p>④ What does <code>before_start</code> block, and why care?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It blocks <code>run()</code> — your function won't start until <code>before_start</code> returns. Anything slow in it is latency added to every single task execution.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#handlers">Celery docs — Tasks › Handlers</a> for the handler signatures and the execution timeline, and <a href="https://docs.celeryq.dev/en/stable/reference/celery.states.html">celery.states</a> for the state set. To see the order is real, skim <a href="https://github.com/celery/celery/blob/main/celery/app/trace.py">trace.py</a> — find <code>task_before_start</code>, <code>mark_as_done</code>, <code>task_on_success</code>, and the <code>if state not in IGNORE_STATES</code> guard, in that order.</p>
+</div>
+
+<div class="ask-teacher">
+  <strong>Probe the edges.</strong> Want the exact retry mechanics — how <code>max_retries</code>, <code>countdown</code>, and <code>autoretry_for</code> change the loop? Or how <code>acks_late</code> interacts with this lifecycle (when is the message acked relative to <code>run</code>)? That ack-timing question is the bridge to the reliability lessons — ask if you want it next. <strong>Lesson 4 overlays the signal timeline on top of these methods.</strong>
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-how-the-worker-pulls-work.html">← Lesson 2</a></span>
+  <span><a href="0004-celery-signals-timeline.html"><em>Next: Lesson 4 — the signal timeline →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Tracer call order — <code>before_start</code> → <code>run</code> → <code>mark_as_*</code> → outcome handler → <code>after_return</code> guarded by <code>IGNORE_STATES = {RETRY, IGNORED, REJECTED}</code> — <a href="https://github.com/celery/celery/blob/main/celery/app/trace.py">celery/app/trace.py (build_tracer / trace_task)</a>.<br>
+<span id="s2">2.</span> Handlers are synchronous, same process + thread as the task — <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#handlers">Celery docs: Tasks › Handlers</a>.<br>
+<span id="s3">3.</span> <code>before_start</code> (added 5.2) runs before and blocks <code>run()</code>; handler signatures — <a href="https://docs.celeryq.dev/en/stable/reference/celery.app.task.html">celery.app.task — Task reference</a>.<br>
+<span id="s4">4.</span> States and <code>task_track_started</code> (STARTED only when enabled; PENDING is implicit) — <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#states">Celery docs: Tasks › States</a>; <a href="https://docs.celeryq.dev/en/stable/reference/celery.states.html">celery.states</a>.
+</p>

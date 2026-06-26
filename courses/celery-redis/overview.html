@@ -1,0 +1,72 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>Celery + Redis broker — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>Celery &amp; the Redis Broker</h1>
+<p class="lede">Explaining Celery cold, from the metal up — and specifically how Redis, which isn't a queue at all, gets turned into one. Built bottom-up: a message in a list, then the emulation layered on top.</p>
+
+<div class="home-group">
+  <p class="label">Part 1 · The metal</p>
+  <p class="blurb">What physically lands in Redis, and how a worker gets it back.</p>
+
+  <a class="lesson-card" href="lessons/0001-a-task-is-a-message-in-a-list.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>A task is a message in a Redis list</strong><span><code>.delay()</code> → JSON envelope → <code>LPUSH</code> → list <code>celery</code> → <code>BRPOP</code> → worker. The broker is dumb storage.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-how-the-worker-pulls-work.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>How the worker gets the task, and where it goes next</strong><span>Consumer → Request → Timer/Pool → child process over a pipe. Prefetch, concurrency, and the separate result backend.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 2 · The execution lifecycle</p>
+  <p class="blurb">Inside the child process: which method runs when, and which signal fires when.</p>
+
+  <a class="lesson-card" href="lessons/0003-the-task-lifecycle.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>The task lifecycle: which method runs when</strong><span><code>before_start</code> → <code>run</code> → state → <code>on_success</code>/<code>on_retry</code>/<code>on_failure</code> → <code>after_return</code>, plus the state machine and why retry skips <code>after_return</code>.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0004-celery-signals-timeline.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Signals: exactly when each one fires</strong><span>Every signal laid on the journey — and which <em>process</em> fires it. Publish vs receipt vs execution vs worker-lifecycle.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 3 · The reliability machinery</p>
+  <p class="blurb">How kombu fakes reliable delivery on a store with no native acks — and the one switch that picks your guarantee.</p>
+
+  <a class="lesson-card" href="lessons/0005-acks-are-emulated.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>Acks are emulated: the in-flight ledger</strong><span>No native ack → the <code>unacked</code> hash + <code>unacked_index</code> sorted set. <code>BRPOP</code> deletes the message, so the ledger is its only home — the basis of crash recovery.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0006-visibility-timeout.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>The visibility timeout: how lost work comes back</strong><span>The 10s restore loop, the 1-hour default, clean-shutdown vs hard-kill, and the ETA duplicate-execution trap.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0007-acks-late-and-idempotency.html">
+    <span class="num">L7</span>
+    <span class="body"><strong><code>acks_late</code>, at-least-once &amp; idempotency</strong><span>The one boolean that picks your delivery guarantee. Why there's no exactly-once, and why at-least-once forces idempotency.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 4 · Review &amp; reference</p>
+  <p class="blurb">Where it turns from "I followed it" into "I can explain it cold."</p>
+
+  <a class="quiz-cta" href="lessons/0008-interleaved-review.html">
+    <span class="icon">🧠</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>19 questions across all 7 lessons, shuffled, with near-miss distractors. Run it cold, then again days later.</span></span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/glossary.html">📖 Glossary — canonical vocabulary</a>
+  </div>
+</div>

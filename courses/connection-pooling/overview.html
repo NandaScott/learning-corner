@@ -5,15 +5,6 @@
 <h1>Database Connection Pooling</h1>
 <p class="lede">Explaining pooling cold, from the metal up — grounded in Django + PostgreSQL on sync Gunicorn. Five lessons, a review quiz, and two references you'll keep coming back to.</p>
 
-<a class="quiz-cta" href="lessons/0006-interleaved-review.html">
-  <span class="icon">↻</span>
-  <span class="body">
-    <strong>Test yourself — interleaved review</strong>
-    <span>17 shuffled questions across every lesson. Run it cold; space it out. This is the page to revisit.</span>
-  </span>
-</a>
-<p class="src" style="margin:-0.2rem 0 1.5rem">Quick link: <a href="lessons/0006-interleaved-review.html">lessons/0006-interleaved-review.html</a></p>
-
 <div class="home-group">
   <p class="label">Part 1 · The problem (the metal)</p>
   <p class="blurb">Why connections are expensive and why you can't just open more.</p>
@@ -42,7 +33,7 @@
 </div>
 
 <div class="home-group">
-  <p class="label">Part 3 · Your stack (Django + Postgres)</p>
+  <p class="label">Part 3 · The stack (Django + Postgres)</p>
   <p class="blurb">Where the theory meets sync Gunicorn — and the traps that bite in production.</p>
 
   <a class="lesson-card" href="lessons/0004-django-conn-max-age.html">
@@ -70,13 +61,4 @@
     <a href="reference/glossary.html">📖 Glossary — canonical vocabulary</a>
     <a href="reference/decision-cheat-sheet.html">🗺️ Decision cheat-sheet — pre-interview glance sheet</a>
   </div>
-</div>
-
-<div class="callout interview">
-  <span class="tag">The whole arc in one breath</span>
-  A Postgres connection is a forked backend process (L1) → so connections are RAM/CPU-bound with a hard ceiling and a downward throughput curve (L2) → a pool reuses a small fixed set instead of forking per request (L3) → but Django's <code>CONN_MAX_AGE</code> is per-worker persistence, not a shared pool, so it pins a backend per worker (L4) → PgBouncer is the shared pool below the whole fleet, trading session features for multiplexing (L5).
-</div>
-
-<div class="ask-teacher">
-  <strong>Your teacher's still here.</strong> Want to go deeper on any lesson, size pooling to your real deploy, or pressure-test your explanations with a practitioner community? Just ask.
 </div>

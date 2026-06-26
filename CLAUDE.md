@@ -34,6 +34,8 @@ Then close with: a crisp **key line** (the soundbite that nails the point), the 
 
 **Storage strength > fluency:** favour retrieval practice, spacing across sessions, and interleaving once there's enough material. Fluency can fake mastery; long-term recall is the goal.
 
+**Hub-neutral framing:** Courses live in a shared, published hub — not a private 1:1 tutorial. Teach the specific stack deeply (Django + Postgres content is right), but don't frame pages with single-learner possessives ("Your stack", "your teacher", "your real deploy") or 1:1 tutoring voice. Use "the stack" and neutral second-person instruction ("you'll", "run it cold") — that pedagogical second person is fine; the possessive *ownership* framing is what to avoid. (This governs *voice*; "Tool-specific truth over generic theory" above governs *content depth* — they don't conflict.)
+
 ## How this learner learns (cross-topic)
 
 - Drives hard into mechanism — feed the "why" deep-dives, don't hand-wave.

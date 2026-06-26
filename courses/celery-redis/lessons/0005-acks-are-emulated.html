@@ -1,0 +1,120 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5 — Acks are emulated: the unacked ledger</title>
+
+<p class="eyebrow">Celery + Redis · Lesson 5</p>
+<h1>Acks are emulated: the in-flight ledger</h1>
+<p class="lede">Back to the broker. A real message broker remembers which messages are in-flight and lets a worker "acknowledge" one when it's done. Redis has no such thing. This lesson is how kombu fakes it with two extra keys — and why that fake is the whole basis of surviving a crash.</p>
+
+<h2>The concept</h2>
+
+<p>Recall Lesson 1: the worker does <code>BRPOP</code> to get a message. <code>BRPOP</code> is <strong>destructive</strong> — it atomically pops the element <em>off</em> the list and hands it over. The instant a worker takes a message, that message is <strong>gone from the queue</strong>.<sup><a href="#s1">1</a></sup></p>
+
+<p>That's a problem. On a real broker (RabbitMQ/AMQP), a delivered message sits in an "unacknowledged" holding area until the consumer sends an <strong>ack</strong>; if the consumer dies first, the broker re-queues it. Redis has no ack, no holding area, no <code>ACK</code> command. So:</p>
+
+<p><strong>kombu emulates acknowledgement with a second data structure — an "unacked" ledger.</strong> The moment a message is popped, kombu writes a copy into two keys (a hash + a sorted set). "Acking" means deleting that copy. While the copy exists, the message is recoverable; once it's deleted, it's gone for good.<sup><a href="#s2">2</a></sup></p>
+
+<h2>The steps</h2>
+
+<p>Follow one message through the ledger. A message is only ever in <em>one</em> of three places: the queue list, the unacked ledger, or gone.</p>
+
+<div class="figure">
+<pre><code>  1. BRPOP "celery"            ── pops the message OFF the list (destructive)
+                                  the queue list no longer has it
+  2. QoS.append(tag, msg)      ── record it as in-flight, in TWO keys:
+        HSET unacked  tag → dumps([raw_message, exchange, routing_key])
+        ZADD unacked_index  tag → time()         (delivery timestamp)
+  ───────────────────────────────────────────────────────────────────
+        ( task runs — Lesson 3 )
+  ───────────────────────────────────────────────────────────────────
+  3a. ack(tag)                 ── done: delete the copy, atomically
+        pipeline:  ZREM unacked_index tag   +   HDEL unacked tag
+        → message no longer exists ANYWHERE
+
+  3b. reject(tag, requeue=True) ── put it back:
+        restore_by_tag(tag, leftmost=True)  →  LPUSH back onto "celery"</code></pre>
+<p class="cap">Default keys are literally <code>unacked</code> (a HASH) and <code>unacked_index</code> (a ZSET). The hash holds the message body; the sorted set holds <em>when</em> it was handed out.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Step 1 — <code>BRPOP</code> deletes the message from the queue</h3>
+<p>This is the fact everything hangs on. There's no "peek." The pop and the removal are the same atomic operation, so the queue list is <em>not</em> a record of in-flight work — the moment a worker takes a message, the list has forgotten it. Something else has to remember, or a crash mid-task loses the work silently.</p>
+
+<h3>Step 2 — <code>append</code>: write the in-flight copy</h3>
+<p>kombu's <code>QoS.append</code> records the just-popped message under a unique <strong>delivery tag</strong>, in two keys at once:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>  unacked        (HASH)    delivery_tag → [ the raw message, exchange, routing_key ]
+                            └─ enough to fully reconstruct & re-route the message
+
+  unacked_index  (ZSET)    delivery_tag → delivery timestamp (score)
+                            └─ ordered by time, so "what's been out too long?" is one query</code></pre>
+<p class="cap">Two keys because they answer two questions: the hash answers "what was the message?"; the sorted set answers "how long has it been in-flight?" — the question Lesson 6's visibility timeout asks.</p>
+</div>
+
+<h3>Step 3a — <code>ack</code>: delete the copy for good</h3>
+<p>Acknowledging is just removing the ledger entry — from <em>both</em> keys, in one pipelined round trip so they can't drift apart:<sup><a href="#s2">2</a></sup></p>
+<div class="figure">
+<pre><code>  pipeline:  ZREM unacked_index <tag>   .   HDEL unacked <tag>   . execute()</code></pre>
+<p class="cap">After this, the message exists nowhere. There is no undo — an acked message that was never actually completed is simply lost.</p>
+</div>
+
+<h3>Step 3b — <code>reject</code> / restore: push it back</h3>
+<p>If a message must go back (explicit reject-with-requeue, or the recovery paths in Lesson 6), <code>restore_by_tag</code> reads the body out of the <code>unacked</code> hash and <code>LPUSH</code>es it back onto its original queue (<code>leftmost=True</code> — to the head, so it's retried promptly), then clears the ledger entry. The message rejoins the list from Lesson 1 and flows through the whole pipeline again.<sup><a href="#s2">2</a></sup></p>
+
+<h3>When does the ack actually fire?</h3>
+<p>That's the lever everything else turns on, and it's configurable. <strong>By default (<code>acks_late=False</code>), the message is acked <em>before</em> the task runs</strong> — kombu deletes the ledger entry almost immediately after delivery.<sup><a href="#s3">3</a></sup> With <code>acks_late=True</code>, the ack is held until <em>after</em> the task returns. Same machinery, very different crash behaviour — which is exactly Lesson 7. For now, just hold the mechanism: ack = delete the in-flight copy.</p>
+
+<h2>Why this matters</h2>
+
+<p><strong>1. The unacked ledger is the only memory that a popped message ever existed.</strong> The queue list dropped it at <code>BRPOP</code>. So whether a crash loses work comes down to one question: <em>was the ledger entry still there when the worker died?</em> If yes, it can be restored; if it was already acked, the work is gone with no trace.</p>
+
+<p><strong>2. That's why the default is "at-most-once-ish."</strong> Default early-ack deletes the ledger entry before your task body even starts. Crash mid-task and there's nothing to recover — the message was acked, the list forgot it, the ledger forgot it. Late-ack (Lesson 7) keeps the entry alive for the whole run so the crash is recoverable — at the cost of possible double execution.</p>
+
+<p><strong>3. Redis "queue reliability" is a client-side fiction — a good one.</strong> The server is still just storing a list, a hash, and a sorted set. All the delivery-tracking logic lives in kombu, running inside your worker. Nothing on the Redis side knows what an ack is. This is the through-line of the whole course: the broker is dumb; the cleverness is emulated next to it.</p>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "Redis has no ack. <code>BRPOP</code> destructively removes the message, so kombu immediately copies it into an <em>unacked</em> hash plus an <em>unacked_index</em> sorted set keyed by a delivery tag. Acking just deletes that copy from both; rejecting <code>LPUSH</code>es it back. The ledger is the only record an in-flight message exists — which is the entire basis for recovering one after a crash."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Shallow: "the worker acks the message when the task finishes." That's <em>late</em> ack — not the default. By default Celery acks <em>before</em> the task runs, so a mid-task crash loses the message (the ledger entry is already gone). The deep tell is connecting three facts: <code>BRPOP</code> already deleted it from the list, so the unacked ledger is its only home, so default early-ack means there's nothing left to restore.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① After a worker <code>BRPOP</code>s a message, where does it live?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Not in the queue list — <code>BRPOP</code> removed it. It lives only in the unacked ledger: the <code>unacked</code> hash (tag → message body) and the <code>unacked_index</code> sorted set (tag → delivery time).</p></details>
+  <p>② What does "acking" physically do on Redis?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Deletes the ledger entry from both keys, pipelined: <code>ZREM unacked_index &lt;tag&gt;</code> + <code>HDEL unacked &lt;tag&gt;</code>. The message then exists nowhere.</p></details>
+  <p>③ Why are there two keys instead of one?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The hash stores <em>what</em> the message is (body + routing, to reconstruct it); the sorted set stores <em>when</em> it was delivered (scored by time) so kombu can find messages that have been out too long — the basis of the visibility timeout.</p></details>
+  <p>④ With the default ack setting, does a worker crash mid-task lose the message? Why?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Yes. Default <code>acks_late=False</code> acks (deletes the ledger entry) before the task runs, so after the crash there's no copy to restore. Late-ack would keep it recoverable.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu — <code>kombu/transport/redis.py</code></a>, the <code>QoS</code> class. Read <code>append</code>, <code>ack</code>, <code>reject</code>, and note the <code>unacked_key</code> / <code>unacked_index_key</code> defaults. It's short and concrete — seeing the literal <code>hset</code>/<code>zadd</code>/<code>zrem</code>/<code>hdel</code> calls is what turns "emulated acks" from a phrase into a mechanism. Pair with <a href="https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-acks-late">Config › task_acks_late</a> for the default timing.
+</div>
+
+<div class="ask-teacher">
+  <strong>Watch the ledger move.</strong> With a worker running and <code>task_acks_late=True</code>, fire a slow task and watch <code>redis-cli HLEN unacked</code> go to 1 during the run and back to 0 after — the in-flight copy appearing and being acked. Curious how the delivery tag is generated, or what happens to the ledger when the worker shuts down cleanly vs is <code>kill -9</code>'d? That clean-vs-hard-kill split is exactly what <strong>Lesson 6 (visibility timeout)</strong> resolves — ask if you want it next.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0004-celery-signals-timeline.html">← Lesson 4</a></span>
+  <span><a href="0006-visibility-timeout.html"><em>Next: Lesson 6 — the visibility timeout →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> <code>BRPOP</code> destructively pops the message; it leaves the list on delivery — <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu Redis transport (<code>_brpop_read</code> / <code>_deliver</code>)</a>; <a href="https://redis.io/docs/latest/commands/brpop/">Redis BRPOP command</a>.<br>
+<span id="s2">2.</span> <code>QoS.append</code> (HSET <code>unacked</code> + ZADD <code>unacked_index</code>), <code>ack</code> (pipelined ZREM+HDEL), <code>reject</code>/<code>restore_by_tag</code> (LPUSH to head); default key names <code>unacked</code> / <code>unacked_index</code> — <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu/transport/redis.py, <code>QoS</code> class</a>.<br>
+<span id="s3">3.</span> Default <code>task_acks_late=False</code> acknowledges before execution; late-ack acknowledges after completion — <a href="https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-acks-late">Celery docs: Configuration › task_acks_late</a>; <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.acks_late">Tasks › Task.acks_late</a>.
+</p>
