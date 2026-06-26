@@ -1,0 +1,121 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4 — Django's CONN_MAX_AGE and the per-worker trap</title>
+
+<p class="eyebrow">Connection Pooling · Lesson 4</p>
+<h1>Django's <code>CONN_MAX_AGE</code> and the per-worker trap</h1>
+<p class="lede">Here's the twist that trips people up: Django's built-in connection feature <em>isn't</em> a pool. Knowing exactly what it is — and what it can't do — is the heart of any Django pooling answer.</p>
+
+<h2>The concept</h2>
+
+<p>By default, Django opens a fresh database connection at the start of every request and closes it at the end — paying the full Lesson 1 handshake every single time. Its built-in remedy is <strong>persistent connections</strong>, controlled by one setting:</p>
+
+<div class="figure">
+<pre><code>DATABASES["default"]["CONN_MAX_AGE"] = ...
+
+  0      → close the connection at the end of each request   (default)
+  N      → keep it open and reuse it for N seconds, then close
+  None   → keep it open forever (unlimited)</code></pre>
+<p class="cap">A positive value (or <code>None</code>) tells a worker: don't close this connection — hold it and reuse it on the next request.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "<code>CONN_MAX_AGE</code> is <em>persistent connections</em>, not pooling. It lets one worker reuse one long-lived connection across requests — so it removes the per-request handshake cost, but it does <strong>nothing</strong> to reduce the <em>number</em> of connections. There's no shared pool, no queue, no multiplexing."
+</div>
+
+<p>That distinction is everything. A pool (Lesson 3) hands a small set of connections around among many requests. <code>CONN_MAX_AGE</code> just stops a worker from throwing its own connection away. To see why that matters, you have to look at how Gunicorn runs.</p>
+
+<h2>The steps</h2>
+
+<p>Follow one connection through a sync Gunicorn deployment.</p>
+
+<div class="figure">
+<pre><code>1. Gunicorn forks W worker processes — each is a separate OS process
+2. A request hits worker #3 → Django opens a connection (pays the handshake once)
+3. Request ends → CONN_MAX_AGE > 0, not expired → worker KEEPS the connection open
+4. Next request on worker #3 → reuse it (optional health check first)
+5. Connection older than CONN_MAX_AGE → closed at request end, reopened next time
+6. Meanwhile workers #1, #2, #4 … each hold their OWN connection, independently</code></pre>
+</div>
+
+<h3>Step 1 — Each worker is its own process</h3>
+<p>Gunicorn scales by forking <em>W</em> independent worker processes (this is the same <code>fork</code> from Lesson 1, one level up). Processes don't share memory — and therefore <strong>they don't share database connections</strong>. Whatever Django does with connections, it does separately inside each worker.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 2 — First request opens a connection</h3>
+<p>Connections are lazy: a worker opens one only when it first needs the database, paying the Lesson 1 setup cost. A sync worker handles one request at a time, so it needs exactly one connection per database alias.</p>
+
+<h3>Step 3 — Request ends, connection stays</h3>
+<p>This is the whole point of <code>CONN_MAX_AGE</code>. With the default <code>0</code>, Django closes here. With a positive value, it <em>keeps the connection open</em> and parks it on the worker for reuse.</p>
+
+<h3>Step 4 — Next request reuses it</h3>
+<p>The next request on that worker skips steps 1–7 of Lesson 1 entirely — the handshake is already done. If <code>CONN_HEALTH_CHECKS = True</code>, Django first pings the connection to confirm it's still alive (the same liveness idea as psycopg's <code>check</code> from Lesson 3); without it, a connection gone stale after a DB restart will raise on first use.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 5 — Expiry</h3>
+<p>Once the connection's age passes <code>CONN_MAX_AGE</code>, Django closes it at the end of that request and opens a fresh one next time. <code>None</code> means this never happens — the connection lives as long as the worker does.</p>
+
+<h3>Step 6 — Every other worker does the same, independently</h3>
+<p>And here's the catch the whole lesson builds to: with <em>W</em> workers, you have <em>W</em> independent connections — and with <code>CONN_MAX_AGE = None</code>, <em>W</em> connections held open <strong>permanently</strong>, whether or not any work is happening.</p>
+
+<h2>Why this is a trap</h2>
+
+<p>Persistent connections trade away setup cost — but they do not reduce connection count, and they can quietly <em>increase</em> the pressure on Lesson 2's <code>max_connections</code> ceiling.</p>
+
+<div class="figure">
+<pre><code>          ┌── worker 1 ──▶ conn ──┐
+gunicorn ─┼── worker 2 ──▶ conn ──┼──▶ Postgres   total backends held
+          ┼── worker 3 ──▶ conn ──┤                = W   (× threads, × app
+          └── worker W ──▶ conn ──┘                  instances behind an LB)</code></pre>
+<p class="cap">No shared pool. Each worker pins its own backend. An idle worker with <code>CONN_MAX_AGE=None</code> still occupies a connection slot + ~5–10 MB on the server (Lesson 2) doing nothing.</p>
+</div>
+
+<p>Do the arithmetic that bites people:</p>
+<ul>
+  <li><strong>Sync workers:</strong> total connections ≈ <code>W workers</code>.</li>
+  <li><strong>Threaded workers</strong> (gthread): ≈ <code>W × threads_per_worker</code> — each thread runs a request, so each needs its own connection.</li>
+  <li><strong>Multiple app instances</strong> behind a load balancer: multiply again by instance count.</li>
+</ul>
+
+<p>So "I set <code>CONN_MAX_AGE=None</code> for performance" plus "we autoscaled to 12 instances × 8 workers" silently demands ~96 permanently-open backends — and Postgres defaults to <code>max_connections = 100</code>. That's the <code>FATAL: sorry, too many clients already</code> from Lesson 2, arriving in production.</p>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  <code>CONN_MAX_AGE</code> removes handshake latency but <em>pins</em> a backend per worker. It is the right tool for cutting per-request overhead, and the <strong>wrong</strong> tool for surviving a high connection count. When you have lots of workers/instances, the fix isn't a bigger <code>CONN_MAX_AGE</code> — it's a real pool <em>below</em> all the workers. That's Lesson 5.
+</div>
+
+<h3>What about Django 5.1's <code>"pool": True</code>?</h3>
+<p>Django 5.1+ can use psycopg3's real pool inside each worker via <code>OPTIONS={"pool": True}</code> (requires <code>psycopg[pool]</code>).<sup><a href="#s1">1</a></sup> That gives you genuine pooling — but it's still <em>per worker process</em>, so your total is <code>W × pool_size</code>: the exact footgun from Lesson 3. It helps a threaded worker share connections across its threads; it does not unify connections across workers or instances. (Also: with ASGI/async, disable <code>CONN_MAX_AGE</code> and rely on a pool instead.<sup><a href="#s1">1</a></sup>)</p>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Is <code>CONN_MAX_AGE</code> connection pooling? Explain in one sentence.</p>
+  <details><summary>show answer</summary>
+  <p class="a">No — it's persistent connections: one worker reusing one long-lived connection across requests. It cuts handshake cost but doesn't share, queue, or reduce the number of connections.</p></details>
+  <p>② You run 10 Gunicorn sync workers with <code>CONN_MAX_AGE=None</code>. Roughly how many Postgres backends are held, and when?</p>
+  <details><summary>show answer</summary>
+  <p class="a">About 10 — one per worker — held open permanently, even while idle, because workers don't share connections and <code>None</code> never expires them.</p></details>
+  <p>③ Why can a larger <code>CONN_MAX_AGE</code> make a <code>max_connections</code> problem <em>worse</em>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It pins each worker's backend open longer (or forever), so idle workers keep occupying connection slots + RAM — pushing total held connections toward the ceiling instead of releasing them.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.djangoproject.com/en/stable/ref/databases/#persistent-connections">Django docs — Persistent connections</a> (and the <a href="https://docs.djangoproject.com/en/stable/ref/databases/#connection-pool">Connection pool</a> section just below it). Short, authoritative, and it states plainly that for ASGI you should disable persistent connections and use a pool. Pair it with <a href="https://devcenter.heroku.com/articles/python-concurrency-and-database-connections">Heroku's Concurrency and Database Connections in Django</a> for the worker arithmetic.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask your teacher.</strong> Want the exact formula for <em>your</em> deploy (workers × threads × instances vs. your <code>max_connections</code>)? Curious how <code>CONN_HEALTH_CHECKS</code> behaves after a failover, or why ASGI breaks persistent connections? Ask — these are the follow-ups that separate "I've read about it" from "I've run it."
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0003-what-a-connection-pool-is.html">← Lesson 3</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-pgbouncer-and-pooling-modes.html"><em>Next: Lesson 5 — PgBouncer & pooling modes →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> <code>CONN_MAX_AGE</code> semantics, <code>CONN_HEALTH_CHECKS</code>, <code>OPTIONS={"pool": True}</code>, ASGI guidance — <a href="https://docs.djangoproject.com/en/stable/ref/databases/#persistent-connections">Django docs: Databases — Persistent connections & Connection pool</a>; <a href="https://docs.djangoproject.com/en/stable/ref/settings/#conn-max-age">Django settings: <code>CONN_MAX_AGE</code></a>.<br>
+<span id="s2">2.</span> Per-worker connection isolation and the worker × thread arithmetic — <a href="https://devcenter.heroku.com/articles/python-concurrency-and-database-connections">Heroku Dev Center: Concurrency and Database Connections in Django</a>; <a href="https://dev.to/sbshobhit/understanding-django-gunicorn-and-database-connections-5g50">Understanding Django, Gunicorn, and Database Connections</a>.
+</p>

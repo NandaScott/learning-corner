@@ -1,0 +1,90 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2 — What a connection costs at scale</title>
+
+<p class="eyebrow">Connection Pooling · Lesson 2</p>
+<h1>What a connection costs at scale</h1>
+<p class="lede">Lesson 1 showed the <em>mechanism</em> — the fork, the auth, the per-process cost. Now the consequence: add those costs up across thousands of requests and hundreds of backends, and you hit a wall pooling exists to keep you off.</p>
+
+<h2>The three costs, totalled up</h2>
+
+<p>From Lesson 1 we know each connection is a forked backend process that must handshake and authenticate. Tally what that means in aggregate — you should be able to rattle these off:</p>
+
+<table>
+  <tr><th>Cost</th><th>Roughly</th><th>Why it exists</th></tr>
+  <tr><td>Setup latency</td><td>~20–100&nbsp;ms</td><td>the Lesson 1 sequence: TCP round trip, fork, multi-message auth, session setup<sup><a href="#s2">2</a></sup></td></tr>
+  <tr><td>Idle memory</td><td>~5–10&nbsp;MB each</td><td>each backend holds its own work memory + caches, <em>even when doing nothing</em><sup><a href="#s2">2</a></sup></td></tr>
+  <tr><td>Concurrency drag</td><td>grows with count</td><td>the context-switching + <code>ProcArrayLock</code> contention from Lesson 1<sup><a href="#s3">3</a></sup></td></tr>
+</table>
+
+<div class="figure">
+  <strong>The math that makes it click</strong>
+  <pre><code>max_connections = 500
+idle cost       ≈ 7 MB × 500
+              ≈ 3.5 GB of RAM gone
+              before a single useful query runs</code></pre>
+  <p class="cap">Idle connections are not free seats. They are paid-for, empty chairs.</p>
+</div>
+
+<h2>The ceiling: <code>max_connections</code></h2>
+
+<p>Postgres refuses to fork backends past <code>max_connections</code> (default <code>100</code>). Hit the ceiling and the next client gets:</p>
+
+<pre><code>FATAL: sorry, too many clients already</code></pre>
+
+<p>The instinct is "just raise it." But each slot costs RAM and adds the concurrency drag from Lesson 1, so you can't raise it to infinity — and past a few hundred active backends, <strong>throughput goes <em>down</em>, not up</strong>. The CPU spends its time context-switching (cold caches, TLB flushes) and fighting over internal locks instead of running your queries.<sup><a href="#s3">3</a></sup></p>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "A Postgres connection isn't free because it's a forked backend process with private memory. So connections are bounded by RAM and CPU, not sockets — and there's a hard <code>max_connections</code> ceiling you can't just raise away, because past the sweet spot more backends make the database <em>slower</em>."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  More connections ≠ more throughput. There's a sweet spot — often only a few times your core count of <em>active</em> connections; beyond it you're paying to make the database slower. This is exactly the curve pooling lets you stay on.
+</div>
+
+<h2>Why this is the setup for pooling</h2>
+
+<p>Put Lessons 1 and 2 together:</p>
+<ul>
+  <li>Opening a connection is <strong>expensive</strong> (Lesson 1: ~20–100&nbsp;ms of fork + auth).</li>
+  <li>Keeping many open is <strong>expensive</strong> (RAM + context-switch drag).</li>
+  <li>And there's a <strong>hard ceiling</strong> you can't just raise away.</li>
+</ul>
+
+<p>A naïve web app opens a fresh connection per request — paying the setup cost every time — and under load tries to open thousands at once, slamming into the ceiling. <strong>Pooling exists to break both: reuse a small set of already-open connections instead of forking a new backend per request.</strong> That's Lesson 3.</p>
+
+<div class="recall">
+  <p class="q">Recall — close your eyes and answer out loud before peeking:</p>
+  <p>① Name the three costs of a connection at scale.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Setup latency (~20–100 ms), idle memory (~5–10 MB each), and concurrency drag (context switches + lock contention) that grows with the number of backends.</p></details>
+  <p>② Why can't you fix "too many clients" by setting <code>max_connections = 10000</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Each slot costs RAM and adds context-switch + lock contention. Past a few hundred active backends throughput drops — you'd be paying to make the DB slower, not faster.</p></details>
+  <p>③ In one sentence, what problem does pooling solve?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It reuses a small set of already-open backends instead of forking a new one per request — avoiding both the per-request setup cost and the connection-count ceiling.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://techcommunity.microsoft.com/blog/adforpostgresql/analyzing-the-limits-of-connection-scalability-in-postgres/1757266">Analyzing the Limits of Connection Scalability in Postgres</a> — Andres Freund (a core Postgres committer) measures exactly where and why connections stop scaling. The single highest-trust source on this topic. Skim the graphs; they <em>are</em> the argument.
+</div>
+
+<div class="ask-teacher">
+  <strong>I'm your teacher — ask me anything.</strong> Want the real per-connection memory number on your own machine? Curious where the throughput sweet spot actually lands for a given core count? Ask. The lesson is the floor, not the ceiling.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0001-the-connection-handshake.html">← Lesson 1</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-what-a-connection-pool-is.html"><em>Next: Lesson 3 — what a connection pool actually is →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s2">2.</span> Setup latency & per-connection memory — <a href="https://goldlapel.com/how-to/connection-pooling">A Gentleman's Guide to PostgreSQL Connection Pooling</a>.<br>
+<span id="s3">3.</span> Context switching, <code>ProcArrayLock</code> contention, throughput curve — <a href="https://techcommunity.microsoft.com/blog/adforpostgresql/analyzing-the-limits-of-connection-scalability-in-postgres/1757266">Freund, Analyzing the Limits of Connection Scalability in Postgres</a> / <a href="https://www.citusdata.com/blog/2020/10/08/analyzing-connection-scalability/">Citus mirror</a>.
+</p>

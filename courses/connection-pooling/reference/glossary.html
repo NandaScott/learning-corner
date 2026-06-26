@@ -1,0 +1,52 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Connection Pooling Glossary</title>
+
+<p class="eyebrow">Connection Pooling · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">The shared vocabulary for this course. Every lesson uses these terms exactly as defined here. Print it; keep it next to you.</p>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Backend process</strong></td><td>The dedicated OS process Postgres forks to serve one client connection. Holds ~5–10 MB of private memory. Lives until the connection closes. (Lesson 1)</td></tr>
+  <tr><td><strong>postmaster</strong></td><td>The supervisor Postgres process that listens for new connections and forks a backend process for each one. (Lesson 1)</td></tr>
+  <tr><td><strong>fork</strong></td><td>The OS system call that clones a process. The postmaster forks a new backend per connection — new PID, page tables, file descriptors, private memory. The single most expensive step of connection setup. (Lesson 1)</td></tr>
+  <tr><td><strong>Startup packet</strong></td><td>The first message a client sends after the TCP handshake, declaring protocol version, user, and database. Triggers the backend fork + auth. (Lesson 1)</td></tr>
+  <tr><td><strong>SCRAM-SHA-256</strong></td><td>Postgres's modern default auth method. A 4-message challenge/response (password never sent) using PBKDF2 hashing. Costs several network round trips + CPU. (Lesson 1)</td></tr>
+  <tr><td><strong><code>pg_hba.conf</code></strong></td><td>Host-based authentication config. Rules mapping (user, database, client IP) → auth method. The backend consults it during setup. (Lesson 1)</td></tr>
+  <tr><td><strong>Context switch</strong></td><td>When a CPU core swaps which process it runs. Cheap itself, but trashes hot CPU caches + the TLB, causing memory stalls. Why hundreds of backends drag throughput down. (Lesson 1)</td></tr>
+  <tr><td><strong>TLB</strong></td><td>Translation Lookaside Buffer — the CPU's cache of virtual→physical address mappings. Flushed on a process switch, causing memory-access stalls afterward. (Lesson 1)</td></tr>
+  <tr><td><strong>Connection setup cost</strong></td><td>The ~20–100 ms to fork the backend, allocate memory, authenticate, and establish session state. Paid every time a connection is opened. (Lesson 2)</td></tr>
+  <tr><td><strong><code>max_connections</code></strong></td><td>Hard cap on simultaneous backend processes. Default 100. Exceeding it returns <code>FATAL: sorry, too many clients already</code>. (Lesson 2)</td></tr>
+  <tr><td><strong>Connection pool</strong></td><td>A managed set of pre-opened connections that are handed out, used, and returned — instead of opening a new one per request. (Lesson 3)</td></tr>
+  <tr><td><strong>Check out / check in</strong></td><td>Borrowing a connection from the pool (check out / acquire) and returning it still-open when done (check in / release). The core pool operations. (Lesson 3)</td></tr>
+  <tr><td><strong>Connection reset</strong></td><td>The cleanup a pool runs at check-in — roll back any open transaction, clear temporary session settings — so the next borrower gets a clean connection. (Lesson 3)</td></tr>
+  <tr><td><strong>Checkout timeout</strong></td><td>How long an acquiring request waits in the pool's FIFO queue for a free connection before giving up with an error. (Lesson 3)</td></tr>
+  <tr><td><strong>Pool exhaustion</strong></td><td>When every pooled connection is checked out and requests pile up in the queue (and may time out). The classic symptom of an undersized pool or leaked connections. (Lesson 3)</td></tr>
+  <tr><td><strong>Invalidate (vs reset)</strong></td><td>A pool's two return paths: <em>reset</em> cleans a healthy connection for reuse; <em>invalidate</em> discards a broken one and spawns a replacement. Failed query → reset; failed connection → invalidate. (Lesson 3)</td></tr>
+  <tr><td><strong><code>DISCARD ALL</code></strong></td><td>Postgres command that fully resets a session — drops temp tables, deallocates prepared statements, resets <code>SET</code> params, unlistens. <strong>Not</strong> run by psycopg3's default reset (which is ROLLBACK-only); add it via a reset callback for session isolation. (Lesson 3)</td></tr>
+  <tr><td><strong>Liveness check (<code>check</code> / pre-ping)</strong></td><td>Pessimistic test that a pooled connection is alive <em>before</em> serving it to a client (psycopg3: <code>check=ConnectionPool.check_connection</code>). Costs a round trip; off by default; worth it across DB failovers. (Lesson 3)</td></tr>
+  <tr><td><strong>Persistent connection</strong></td><td>A connection a process keeps open and reuses across requests rather than closing it each time. <strong>Not</strong> a pool — no sharing, queueing, or multiplexing. Django's mechanism is <code>CONN_MAX_AGE</code>. (Lesson 4)</td></tr>
+  <tr><td><strong><code>CONN_MAX_AGE</code></strong></td><td>Django setting controlling how long a worker reuses a DB connection. <code>0</code> = new connection per request (default); <code>N</code> = reuse for N seconds; <code>None</code> = reuse forever. Cuts handshake cost but does not reduce connection count. (Lesson 4)</td></tr>
+  <tr><td><strong><code>CONN_HEALTH_CHECKS</code></strong></td><td>Django setting (default <code>False</code>). When <code>True</code>, Django pings a reused persistent connection at the start of a request and reconnects if it's dead — guarding against stale connections after a DB restart/failover. (Lesson 4)</td></tr>
+  <tr><td><strong><code>OPTIONS={"pool": True}</code></strong></td><td>Django 5.1+ option enabling a real psycopg3 pool inside each worker (needs <code>psycopg[pool]</code>). Genuine pooling, but still per-worker → total = workers × pool_size. (Lesson 4)</td></tr>
+  <tr><td><strong>WSGI worker</strong></td><td>One process of a sync app server (Gunicorn/uWSGI). Each worker is a separate process holding its own Django connections — they are not shared between workers. (Lesson 4)</td></tr>
+  <tr><td><strong>PgBouncer</strong></td><td>A lightweight, single-process external pooler between app and Postgres. Accepts thousands of cheap client connections, multiplexes them onto a small fixed set of real backends. Lives below the whole fleet, so backend count is decoupled from worker/instance count. (Lesson 5)</td></tr>
+  <tr><td><strong>Multiplexing</strong></td><td>Mapping many client connections onto few server connections by lending each backend to whichever client needs it right now. The core of what an external pooler does. (Lesson 5)</td></tr>
+  <tr><td><strong>Pooling mode</strong></td><td>When a pooler returns a borrowed backend, set by <code>pool_mode</code>. More aggressive return = more multiplexing but breaks more session-scoped features. (Lesson 5)</td></tr>
+  <tr><td><strong>Session pooling</strong></td><td>Backend returned when the client <em>disconnects</em>. Full Postgres compatibility, least multiplexing. (Lesson 5)</td></tr>
+  <tr><td><strong>Transaction pooling</strong></td><td>Backend returned at each <code>COMMIT</code>/<code>ROLLBACK</code>. Default for web apps — best multiplexing — but breaks session-scoped state (prepared statements, <code>SET</code>, <code>LISTEN</code>, advisory locks, server-side cursors) because consecutive transactions may land on different backends. (Lesson 5)</td></tr>
+  <tr><td><strong>Statement pooling</strong></td><td>Backend returned after every statement; multi-statement transactions forbidden. Autocommit-only setups. (Lesson 5)</td></tr>
+  <tr><td><strong><code>DISABLE_SERVER_SIDE_CURSORS</code></strong></td><td>Django setting required to run in transaction pooling — <code>QuerySet.iterator()</code> uses server-side cursors that can't survive across transactions on a shared pooler. Set <code>True</code>. (Lesson 5)</td></tr>
+  <tr><td><strong>Thundering herd</strong></td><td>When many app processes all try to reconnect at once (e.g. after a DB restart), flooding the postmaster with fork requests and slowing recovery.</td></tr>
+</table>
+
+<div class="ask-teacher">
+  Missing a term? Tell your teacher and it gets added here — the glossary grows with the course.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../lessons/0001-the-connection-handshake.html">← Lesson 1</a></span>
+  <span>Reference · Glossary</span>
+  <span><a href="decision-cheat-sheet.html">Decision cheat-sheet ↗</a></span>
+</div>

@@ -1,0 +1,95 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Pooling Decision Cheat-Sheet</title>
+
+<p class="eyebrow">Connection Pooling · Reference</p>
+<h1>Decision cheat-sheet</h1>
+<p class="lede">The whole course compressed to what you'd glance at before an interview or a config change: which layer, which mode, which settings. One page. Print it.</p>
+
+<h2>1 · Which pooling layer?</h2>
+
+<div class="figure">
+<pre><code>Are you on sync WSGI (Gunicorn/uWSGI)?
+│
+├─ Few workers, few instances, connection count comfortably under max_connections?
+│     → CONN_MAX_AGE = N (e.g. 60).  Cuts handshake cost. Done.
+│
+├─ Many workers/threads in ONE process group, want a real pool but no extra infra?
+│     → Django 5.1+  OPTIONS={"pool": True}.  Real pool, but still PER WORKER.
+│
+└─ Many workers AND/OR many instances → connection count approaching the ceiling?
+      → PgBouncer (transaction mode) below the whole fleet.  The structural fix.
+
+On ASGI/async? → disable CONN_MAX_AGE; use a pool (native or PgBouncer).</code></pre>
+<p class="cap">Rule of thumb: <code>CONN_MAX_AGE</code> fixes <em>latency</em>; PgBouncer fixes <em>count</em>. Reach for PgBouncer when <code>workers × threads × instances</code> threatens <code>max_connections</code>.</p>
+</div>
+
+<h2>2 · The three options compared</h2>
+
+<table>
+  <tr><th>&nbsp;</th><th><code>CONN_MAX_AGE</code></th><th>Django native pool (5.1+)</th><th>PgBouncer</th></tr>
+  <tr><td><strong>What it is</strong></td><td>Persistent connection per worker</td><td>psycopg3 pool per worker</td><td>External pooler below the fleet</td></tr>
+  <tr><td><strong>Scope</strong></td><td>One per worker process</td><td>One pool per worker process</td><td>One pool for all workers + instances</td></tr>
+  <tr><td><strong>Cuts handshake cost?</strong></td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td><strong>Reduces backend count?</strong></td><td><strong>No</strong></td><td>Within a worker only</td><td><strong>Yes — globally</strong></td></tr>
+  <tr><td><strong>Total backends</strong></td><td>≈ workers (×&nbsp;threads&nbsp;×&nbsp;instances)</td><td>workers × pool_size</td><td><code>default_pool_size</code> (fixed)</td></tr>
+  <tr><td><strong>Extra infra?</strong></td><td>None</td><td>None (just <code>psycopg[pool]</code>)</td><td>Yes — run/operate PgBouncer</td></tr>
+  <tr><td><strong>Best when</strong></td><td>Small/stable deploy</td><td>Threaded workers, no infra appetite</td><td>Large/spiky/autoscaled fleet</td></tr>
+</table>
+
+<h2>3 · PgBouncer mode picker</h2>
+
+<table>
+  <tr><th>Mode</th><th>Backend returned…</th><th>Breaks</th><th>Pick when</th></tr>
+  <tr><td><strong>session</strong></td><td>on client disconnect</td><td>nothing (full compat)</td><td>you need session features; least multiplexing</td></tr>
+  <tr><td><strong>transaction</strong></td><td>at <code>COMMIT</code>/<code>ROLLBACK</code></td><td>session-scoped state ↓</td><td><strong>default for web apps</strong></td></tr>
+  <tr><td><strong>statement</strong></td><td>after each statement</td><td>multi-statement txns</td><td>autocommit-only / sharding</td></tr>
+</table>
+
+<p class="src"><strong>Transaction mode breaks</strong> (all because consecutive txns may land on different backends): session-level prepared statements · <code>SET</code>/<code>RESET</code> · <code>LISTEN</code>/<code>NOTIFY</code> · session-scoped advisory locks · server-side cursors (<code>WITH HOLD</code>).</p>
+
+<h2>4 · Django config recipes</h2>
+
+<h3>Persistent connections, no pooler</h3>
+<pre><code>DATABASES["default"]["CONN_MAX_AGE"] = 60        # seconds; None = forever
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True # ping on reuse (survive failovers)</code></pre>
+
+<h3>Django 5.1+ native pool (per worker)</h3>
+<pre><code>DATABASES["default"]["OPTIONS"] = {"pool": True}  # needs psycopg[pool]
+DATABASES["default"]["CONN_MAX_AGE"] = 0          # don't double-pool</code></pre>
+
+<h3>Behind PgBouncer in transaction mode</h3>
+<pre><code>DATABASES["default"].update({
+    "CONN_MAX_AGE": 0,                    # PgBouncer owns persistence
+    "DISABLE_SERVER_SIDE_CURSORS": True,  # .iterator() can't survive txn pooling
+    "OPTIONS": {"prepare_threshold": None}, # psycopg3: no server-side prepared stmts
+})</code></pre>
+
+<div class="callout gotcha">
+  <span class="tag">Footguns</span>
+  Don't double-pool (PgBouncer + a big <code>CONN_MAX_AGE</code> or native pool fighting). · <code>CONN_MAX_AGE=None</code> + autoscaling = pinned idle backends → ceiling. · Transaction-mode pooler + <code>LISTEN/NOTIFY</code> or session advisory locks = silent breakage. · Oversized pool recreates the Lesson 2 throughput problem.
+</div>
+
+<h2>5 · Numbers worth memorizing</h2>
+
+<table>
+  <tr><th>Quantity</th><th>Ballpark</th><th>From</th></tr>
+  <tr><td>Connection setup latency</td><td>~20–100 ms</td><td>Lesson 1</td></tr>
+  <tr><td>Idle memory per backend</td><td>~5–10 MB</td><td>Lesson 2</td></tr>
+  <tr><td><code>max_connections</code> default</td><td>100</td><td>Lesson 2</td></tr>
+  <tr><td>Pool size starting point</td><td>(cores × 2) + spindles</td><td>Lesson 3</td></tr>
+  <tr><td>psycopg3 <code>max_lifetime</code> default</td><td>3600 s</td><td>Lesson 3</td></tr>
+</table>
+
+<h2>6 · The arc in one line</h2>
+<p>Forked backend process (<a href="../lessons/0001-the-connection-handshake.html">L1</a>) → RAM/CPU ceiling &amp; downward throughput curve (<a href="../lessons/0002-what-a-connection-costs.html">L2</a>) → reuse a small fixed set (<a href="../lessons/0003-what-a-connection-pool-is.html">L3</a>) → <code>CONN_MAX_AGE</code> is per-worker, not shared (<a href="../lessons/0004-django-conn-max-age.html">L4</a>) → PgBouncer is the shared pool below the fleet; transaction mode trades session features for multiplexing (<a href="../lessons/0005-pgbouncer-and-pooling-modes.html">L5</a>).</p>
+
+<div class="ask-teacher">
+  Want this sized to <em>your</em> deploy? Tell your teacher your worker/thread/instance counts and <code>max_connections</code> — I'll compute whether you need PgBouncer and what <code>default_pool_size</code> to set.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="glossary.html">← Glossary</a></span>
+  <span>Reference · Decision cheat-sheet</span>
+  <span><a href="../lessons/0005-pgbouncer-and-pooling-modes.html">Lesson 5 ↗</a></span>
+</div>

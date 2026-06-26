@@ -1,0 +1,205 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 6 — Interleaved review</title>
+
+<p class="eyebrow">Connection Pooling · Lesson 6 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading feels like learning but mostly builds <em>fluency</em> — the illusion of mastery. Retrieving from memory, cold, with topics shuffled, is what builds <em>storage strength</em>. That's the whole point of this page.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all five lessons and <strong>shuffled</strong> every run — by design. Interleaving (mixing topics rather than blocking them) is harder than reviewing one lesson at a time, and that difficulty is exactly what makes it stick.<sup><a href="#s1">1</a></sup> Answer from memory before reading the feedback. Miss one? The feedback names the lesson to revisit. Then hit <em>Shuffle &amp; retry</em> and run it again in a few days — that spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Ask your teacher.</strong> Missed the same lesson twice? Tell me which — I'll re-explain it a different way, or drill just that concept. And when you can clear this cold two sessions apart, you're interview-ready on the fundamentals.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0005-pgbouncer-and-pooling-modes.html">← Lesson 5</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="../reference/decision-cheat-sheet.html">Cheat-sheet ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST is correct; the SECOND is a deliberate
+// "near-miss" (right idea, subtly wrong) to force precise discrimination.
+// The engine shuffles option order on render, so position is never a clue.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "What is a PostgreSQL connection, physically?",
+    options: [
+      "A dedicated forked OS process with private memory",
+      "A dedicated OS thread with its own private memory",
+      "A lightweight thread sharing the server's memory",
+      "A reusable socket handle managed by the kernel"
+    ], answer: 0,
+    explain: "A <em>process</em>, not a thread — the postmaster forks a whole backend per connection, so connections are bounded by RAM and CPU. (<a href='0001-the-connection-handshake.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Which step of opening a connection is the most expensive?",
+    options: [
+      "Forking the new backend process",
+      "Authenticating the user with SCRAM-SHA-256",
+      "Sending the protocol startup packet",
+      "Tearing down the previous socket"
+    ], answer: 0,
+    explain: "Auth is costly too, but the fork is the heavyweight: it clones an entire process — page tables, descriptors, memory. (<a href='0001-the-connection-handshake.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Context switching's biggest hidden cost is…",
+    options: [
+      "cold CPU caches and TLB flushes afterward",
+      "saving and restoring the CPU registers each switch",
+      "the kernel recomputing each process's priority",
+      "the branch predictor being permanently disabled"
+    ], answer: 0,
+    explain: "The register save/restore is the cheap, obvious part. The real cost is the cache/TLB misses afterward — stalling on slow RAM. (<a href='0001-the-connection-handshake.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "SCRAM-SHA-256 authentication is slow mainly because…",
+    options: [
+      "it does several round trips plus PBKDF2 hashing",
+      "it does several round trips plus bcrypt hashing",
+      "it encrypts the whole session using RSA keys",
+      "it rewrites pg_hba.conf on every new login"
+    ], answer: 0,
+    explain: "Right shape, wrong algorithm in the near-miss: SCRAM uses PBKDF2 (deliberately slow iterations), not bcrypt. (<a href='0001-the-connection-handshake.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Why can't you fix 'too many clients' by setting max_connections = 10000?",
+    options: [
+      "Each backend costs RAM and adds context-switch drag",
+      "Each backend costs RAM, though throughput keeps rising",
+      "Postgres caps the setting at exactly one thousand",
+      "The startup packet can't address that many ports"
+    ], answer: 0,
+    explain: "The near-miss gets the RAM right but the curve wrong: past a few hundred active backends throughput <em>drops</em>, it doesn't keep rising. (<a href='0002-what-a-connection-costs.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Roughly what does one idle backend cost in memory?",
+    options: [
+      "About 5–10 MB, held even while idle",
+      "About 5–10 MB, but only while running a query",
+      "About 50–100 KB per connection",
+      "About 100–200 MB per connection"
+    ], answer: 0,
+    explain: "The 'only while running' near-miss is the trap: it's held even idle — 500 connections ≈ 3.5 GB gone before any query runs. (<a href='0002-what-a-connection-costs.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A connection pool's core benefit is that it…",
+    options: [
+      "reuses a fixed set instead of forking per request",
+      "reuses a fixed set and raises the connection ceiling",
+      "raises the database's max_connections ceiling",
+      "compresses each query before it reaches Postgres"
+    ], answer: 0,
+    explain: "Reuse is right, but a pool does NOT raise the ceiling — it keeps you under it by capping connections. (<a href='0003-what-a-connection-pool-is.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A pool 'decouples' which two things?",
+    options: [
+      "Request concurrency from connection concurrency",
+      "Request latency from connection concurrency",
+      "Read traffic from write traffic on the primary",
+      "Query latency from network round-trip latency"
+    ], answer: 0,
+    explain: "It's concurrency vs concurrency: many in-flight requests ride a small fixed set of backends; excess load queues. (<a href='0003-what-a-connection-pool-is.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "What does psycopg3's DEFAULT reset run when a connection is returned?",
+    options: [
+      "A ROLLBACK only — not DISCARD ALL",
+      "A ROLLBACK plus DISCARD ALL on each return",
+      "Nothing at all until the next checkout",
+      "It closes and reopens the connection"
+    ], answer: 0,
+    explain: "Rollback yes, DISCARD ALL no — session state (SET, prepared statements, temp tables) survives unless you add a DISCARD ALL reset callback. (<a href='0003-what-a-connection-pool-is.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A connection comes back dead (DB restarted). The pool…",
+    options: [
+      "invalidates it — discards and replaces it",
+      "invalidates it, then retries the rollback once",
+      "resets it with a rollback and reuses it",
+      "queues it to retry on the next request"
+    ], answer: 0,
+    explain: "No rollback-retry on a corpse — a dead connection is simply discarded and replaced. Failed query → reset; failed connection → invalidate. (<a href='0003-what-a-connection-pool-is.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Django's CONN_MAX_AGE is best described as…",
+    options: [
+      "per-worker persistent connections, not a pool",
+      "a per-worker connection pool, one pool per process",
+      "a shared pool across all Gunicorn workers",
+      "an external proxy that multiplexes connections"
+    ], answer: 0,
+    explain: "Per-worker is right, but it's NOT a pool — one worker reuses one long-lived connection. No sharing, queue, or multiplexing. (<a href='0004-django-conn-max-age.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "10 sync Gunicorn workers, CONN_MAX_AGE=None — how many backends are held?",
+    options: [
+      "About 10, held open permanently",
+      "About 10, but released between requests",
+      "Exactly 1, shared by all workers",
+      "Zero until the tenth request arrives"
+    ], answer: 0,
+    explain: "The count is right; 'released between requests' is the trap — None never expires them, so ~10 idle backends stay pinned. (<a href='0004-django-conn-max-age.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Django 5.1's OPTIONS={'pool': True} gives a pool that is…",
+    options: [
+      "real, but still per worker process",
+      "real, and shared across workers on one host",
+      "shared across every app instance",
+      "only active on async ASGI servers"
+    ], answer: 0,
+    explain: "Genuine pooling, but each worker process has its own — nothing is shared across workers → total = workers × pool_size. (<a href='0004-django-conn-max-age.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "PgBouncer fixes the per-worker trap because it…",
+    options: [
+      "is one shared pool below the whole fleet",
+      "is one shared pool per app instance",
+      "raises each worker's own connection limit",
+      "caches query results outside of Postgres"
+    ], answer: 0,
+    explain: "Per-instance would still scale with instance count; the point is ONE pool below every worker and instance, so backend count is fully decoupled. (<a href='0005-pgbouncer-and-pooling-modes.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Transaction-mode pooling breaks session features because…",
+    options: [
+      "consecutive transactions may hit different backends",
+      "consecutive statements may hit different backends",
+      "it forbids issuing COMMIT inside a transaction",
+      "it re-encrypts the connection state per request"
+    ], answer: 0,
+    explain: "It's across transactions, not statements — a single transaction stays on one backend, but the next one may not, so session-scoped state is lost. (<a href='0005-pgbouncer-and-pooling-modes.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Which Django setting is required to run safely in transaction pooling?",
+    options: [
+      "DISABLE_SERVER_SIDE_CURSORS = True",
+      "DISABLE_SERVER_SIDE_CURSORS = False",
+      "ATOMIC_REQUESTS = True",
+      "CONN_HEALTH_CHECKS = True"
+    ], answer: 0,
+    explain: "Right setting, wrong value in the near-miss: it must be True — .iterator()'s server-side cursors can't survive across transactions on a shared pooler. (<a href='0005-pgbouncer-and-pooling-modes.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "In SESSION pooling mode, the backend returns to the pool when…",
+    options: [
+      "the client disconnects",
+      "the client connection goes idle",
+      "each transaction commits",
+      "each statement finishes"
+    ], answer: 0,
+    explain: "Disconnect, not idle — session mode holds the backend for the entire client connection. Full compatibility, least multiplexing. (<a href='0005-pgbouncer-and-pooling-modes.html'>L5</a>)" }
+]);
+</script>

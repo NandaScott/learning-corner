@@ -1,0 +1,82 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>Connection Pooling — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>Database Connection Pooling</h1>
+<p class="lede">Explaining pooling cold, from the metal up — grounded in Django + PostgreSQL on sync Gunicorn. Five lessons, a review quiz, and two references you'll keep coming back to.</p>
+
+<a class="quiz-cta" href="lessons/0006-interleaved-review.html">
+  <span class="icon">↻</span>
+  <span class="body">
+    <strong>Test yourself — interleaved review</strong>
+    <span>17 shuffled questions across every lesson. Run it cold; space it out. This is the page to revisit.</span>
+  </span>
+</a>
+<p class="src" style="margin:-0.2rem 0 1.5rem">Quick link: <a href="lessons/0006-interleaved-review.html">lessons/0006-interleaved-review.html</a></p>
+
+<div class="home-group">
+  <p class="label">Part 1 · The problem (the metal)</p>
+  <p class="blurb">Why connections are expensive and why you can't just open more.</p>
+
+  <a class="lesson-card" href="lessons/0001-the-connection-handshake.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>The connection handshake</strong><span>What physically happens on connect: fork, SCRAM auth, context-switching.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-what-a-connection-costs.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>What a connection costs at scale</strong><span>Three costs, the <code>max_connections</code> ceiling, the throughput curve that bends down.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 2 · The solution (general)</p>
+  <p class="blurb">The one idea that fixes both halves of the problem.</p>
+
+  <a class="lesson-card" href="lessons/0003-what-a-connection-pool-is.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>What a connection pool actually is</strong><span>Borrow/return, lifecycle, reset vs invalidate, pool sizing.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 3 · Your stack (Django + Postgres)</p>
+  <p class="blurb">Where the theory meets sync Gunicorn — and the traps that bite in production.</p>
+
+  <a class="lesson-card" href="lessons/0004-django-conn-max-age.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Django <code>CONN_MAX_AGE</code> &amp; the per-worker trap</strong><span>Persistent connections aren't pooling — and W workers pin W backends.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0005-pgbouncer-and-pooling-modes.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>PgBouncer &amp; pooling modes</strong><span>The pool below the whole fleet; session/transaction/statement and what each breaks.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 4 · Review &amp; reference</p>
+  <p class="blurb">Keep these two open during interview prep.</p>
+
+  <a class="lesson-card" href="lessons/0006-interleaved-review.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>Auto-graded, shuffled, 4 options with near-miss distractors.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/glossary.html">📖 Glossary — canonical vocabulary</a>
+    <a href="reference/decision-cheat-sheet.html">🗺️ Decision cheat-sheet — pre-interview glance sheet</a>
+  </div>
+</div>
+
+<div class="callout interview">
+  <span class="tag">The whole arc in one breath</span>
+  A Postgres connection is a forked backend process (L1) → so connections are RAM/CPU-bound with a hard ceiling and a downward throughput curve (L2) → a pool reuses a small fixed set instead of forking per request (L3) → but Django's <code>CONN_MAX_AGE</code> is per-worker persistence, not a shared pool, so it pins a backend per worker (L4) → PgBouncer is the shared pool below the whole fleet, trading session features for multiplexing (L5).
+</div>
+
+<div class="ask-teacher">
+  <strong>Your teacher's still here.</strong> Want to go deeper on any lesson, size pooling to your real deploy, or pressure-test your explanations with a practitioner community? Just ask.
+</div>

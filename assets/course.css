@@ -1,0 +1,245 @@
+/* ============================================================
+   Connection Pooling course — shared stylesheet
+   Linked by every lesson + reference doc so the course reads
+   as one consistent, print-friendly document. Tufte-inspired.
+   ============================================================ */
+
+:root {
+  --ink:       #1a1a1a;
+  --paper:     #fdfcf9;
+  --rule:      #d8d4c8;
+  --accent:    #8a3324;   /* postgres-ish brick red */
+  --accent-bg: #f6ece9;
+  --muted:     #6b6256;
+  --link:      #1d4e6f;
+  --code-bg:   #f2efe6;
+  --good:      #2f6b3f;
+  --warn:      #9a6a00;
+  --maxw:      40rem;
+}
+
+html { font-size: 18px; }
+
+body {
+  margin: 0 auto;
+  max-width: var(--maxw);
+  padding: 3rem 1.4rem 6rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- masthead ---- */
+.eyebrow {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.4rem;
+}
+h1 {
+  font-size: 1.9rem;
+  line-height: 1.15;
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+}
+.lede {
+  font-size: 1.06rem;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0 0 2rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 2.4rem 0 0.6rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+h3 { font-size: 1.05rem; margin: 1.6rem 0 0.4rem; }
+
+p, li { font-size: 1rem; }
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+code {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+pre {
+  background: var(--code-bg);
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* ---- callouts ---- */
+.callout {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  padding: 0.8rem 1.1rem;
+  border-radius: 0 5px 5px 0;
+  margin: 1.4rem 0;
+  font-size: 0.95rem;
+}
+.callout .tag {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 0.3rem;
+}
+.callout.interview { border-left-color: var(--link); }
+.callout.interview .tag { color: var(--link); }
+.callout.gotcha { border-left-color: var(--warn); background: #fbf4e3; }
+.callout.gotcha .tag { color: var(--warn); }
+
+/* ---- "the math" boxes & figures ---- */
+.figure {
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 1rem 1.2rem;
+  margin: 1.4rem 0;
+  background: #fff;
+}
+.figure .cap {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.6rem;
+}
+
+table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: 0.92rem; }
+th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--rule); }
+th { font-family: -apple-system, system-ui, sans-serif; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+
+/* ---- recall / quiz widget ---- */
+.recall {
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  padding: 1rem 1.2rem;
+  margin: 1.3rem 0;
+  background: #fff;
+}
+.recall .q { font-weight: 600; margin: 0 0 0.5rem; }
+.recall details { margin-top: 0.5rem; }
+.recall summary {
+  cursor: pointer;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.82rem;
+  color: var(--link);
+}
+.recall .a { margin-top: 0.5rem; color: var(--good); }
+
+/* ---- footer nav ---- */
+.course-nav {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.4rem;
+  justify-content: space-between;
+}
+.ask-teacher {
+  margin-top: 2rem;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--accent-bg);
+  border-radius: 5px;
+  padding: 0.7rem 1rem;
+}
+
+.src { font-size: 0.85rem; color: var(--muted); }
+mark { background: #fbe6a2; padding: 0 0.15em; }
+
+/* ---- home / index page ---- */
+.home-group { margin: 2rem 0; }
+.home-group > .label {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.2rem;
+}
+.home-group > .blurb { color: var(--muted); font-size: 0.92rem; font-style: italic; margin: 0 0 0.9rem; }
+
+.lesson-card {
+  display: flex;
+  gap: 0.9rem;
+  align-items: baseline;
+  text-decoration: none;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 0.8rem 1rem;
+  margin: 0.55rem 0;
+  background: #fff;
+  transition: border-color 0.12s, transform 0.12s;
+}
+.lesson-card:hover { border-color: var(--accent); transform: translateX(2px); }
+.lesson-card .num {
+  font-family: -apple-system, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 5px;
+  padding: 0.25rem 0.55rem;
+  white-space: nowrap;
+}
+.lesson-card .body { flex: 1; }
+.lesson-card .body strong { display: block; font-size: 1.02rem; }
+.lesson-card .body span { font-size: 0.88rem; color: var(--muted); }
+.lesson-card .arrow { color: var(--accent); font-size: 1.1rem; }
+
+.quiz-cta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  text-decoration: none;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 8px;
+  padding: 1rem 1.3rem;
+  margin: 0.55rem 0;
+  transition: filter 0.12s;
+}
+.quiz-cta:hover { filter: brightness(1.08); }
+.quiz-cta .body strong { display: block; font-size: 1.05rem; color: #fff; }
+.quiz-cta .body span { font-size: 0.88rem; color: #f6e3de; }
+.quiz-cta .icon { font-size: 1.5rem; }
+
+.ref-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.4rem;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.9rem;
+  margin: 0.6rem 0;
+}
+
+@media print {
+  body { background: #fff; color: #000; max-width: 100%; }
+  .recall details { display: block; }
+  .recall details[open] summary { display: none; }
+  a { color: #000; text-decoration: none; }
+}

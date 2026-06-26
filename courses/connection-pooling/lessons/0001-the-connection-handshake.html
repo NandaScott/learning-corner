@@ -1,0 +1,145 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — The connection handshake, step by step</title>
+
+<p class="eyebrow">Connection Pooling · Lesson 1</p>
+<h1>The connection handshake, step by step</h1>
+<p class="lede">Before you can talk about pooling, you have to know what physically happens when an app connects to PostgreSQL. So we open the box first — every later lesson builds on this sequence.</p>
+
+<h2>The concept</h2>
+
+<p>"Connecting to the database" sounds like one instant action. It isn't. It's a multi-step negotiation between your app and Postgres — and the key fact underneath all of it:</p>
+
+<p><strong>PostgreSQL serves every client connection with its own dedicated operating-system process.</strong> Not a thread, not a lightweight handle: a full backend <em>process</em> with its own private memory, forked by a supervisor process called the <code>postmaster</code> when the connection opens, and living until it closes.<sup><a href="#s1">1</a></sup></p>
+
+<p>That single design choice is the root cause of every connection problem you'll ever debug. The steps below are the play-by-play of how that process is born — and each one has a cost.</p>
+
+<h2>The steps</h2>
+
+<p>With no pool, a naïve app runs this <em>entire</em> sequence for every request, then throws the backend away and starts over on the next one. Here's the map; we'll walk each step underneath.</p>
+
+<div class="figure">
+<pre><code>1. TCP handshake       client ↔ postmaster   SYN / SYN-ACK / ACK  (1 round trip)
+2. (TLS handshake)     if sslmode on         encryption negotiated
+3. Startup packet      client → postmaster   "proto v3, user=X, db=Y"
+4. postmaster FORKS    →  new backend process   ← the expensive bit
+5. Authentication      backend ↔ client      challenge/response
+6. Backend setup       load role, session GUCs, warm catalog caches
+7. ReadyForQuery       backend → client      ...only now can you run SQL
+8. ── run the query ──
+9. Close               backend process dies, its ~5–10 MB freed</code></pre>
+<p class="cap">Steps 1–7 are pure overhead — paid before a single byte of your query is processed.</p>
+</div>
+
+<h3>Step 1 — TCP handshake</h3>
+<p>Your app first opens a plain network socket to Postgres (default port 5432) using TCP's three-way handshake: <code>SYN → SYN-ACK → ACK</code>. That's one full network round trip before Postgres has even heard what you want. On a LAN it's sub-millisecond; across cloud availability zones it can be several milliseconds.</p>
+
+<h3>Step 2 — TLS handshake (only if encrypted)</h3>
+<p>If your connection requires SSL/TLS (<code>sslmode=require</code> and friends), client and server now negotiate encryption: agree on a cipher, exchange keys, verify certificates. This adds <em>more</em> round trips plus asymmetric cryptography (CPU-heavy public-key math). Skipped entirely on unencrypted connections — but most production setups encrypt.</p>
+
+<h3>Step 3 — Startup packet</h3>
+<p>The client sends its first Postgres-protocol message: the <strong>startup packet</strong>, declaring the protocol version, the target <code>user</code>, and the <code>database</code>. This is how the postmaster learns <em>who</em> is connecting and to <em>what</em> — everything before this was just plumbing.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 4 — The fork (the expensive bit)</h3>
+<p>Now the postmaster <strong>forks</strong> a brand-new backend process to handle this one connection. This is the costliest step by far — and the part people miss when they imagine a connection is "just a socket."</p>
+
+<div class="figure">
+<pre><code>          ┌───────────────┐
+client ──▶ │  postmaster   │  (listens on 5432, accepts the socket)
+          └───────┬───────┘
+                  │ fork()           ← clones a whole process
+                  ▼
+          ┌───────────────┐
+          │ backend proc  │  new PID · own page tables · own file
+          │  (~5–10 MB)   │  descriptors · private memory segment
+          └───────────────┘  serves ONLY this connection, until it closes</code></pre>
+<p class="cap"><code>fork()</code> doesn't open a handle — it clones an entire OS process. That's a heavy system call, and it's why a Postgres connection costs orders of magnitude more than a Redis one.</p>
+</div>
+
+<h3>Step 5 — Authentication</h3>
+<p>The freshly-forked backend consults <code>pg_hba.conf</code> (host-based auth rules) to pick a method for this user + database + client IP, then runs it. The modern default is <strong>SCRAM-SHA-256</strong>: a challenge/response exchange where the password never crosses the wire.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>backend → client   AuthenticationSASL          "I support SCRAM-SHA-256"
+client  → backend  SASLInitialResponse         client-first-message (client nonce)
+backend → client   AuthenticationSASLContinue  server-first-message (salt + nonce)
+client  → backend  SASLResponse                client-final-message (hashed proof)
+backend → client   AuthenticationSASLFinal     verifies, sends OK</code></pre>
+<p class="cap">Four messages = several more network round trips. And SCRAM runs <strong>PBKDF2</strong> — thousands of hash iterations, made <em>deliberately</em> slow to resist brute-force — burning real CPU on both ends.</p>
+</div>
+
+<p>Older methods trade security for speed: <code>md5</code> (fewer trips, weaker), <code>trust</code> (no auth — never in production), certificate-based (crypto cost). The point: auth is not a flag-check; it's a repeated CPU + network cost.</p>
+
+<h3>Step 6 — Backend setup</h3>
+<p>With identity confirmed, the backend initializes its session: loads the role and its permissions, applies session settings (the per-connection configuration knobs Postgres calls <strong>GUCs</strong>), and warms its private catalog caches (the metadata about tables, columns, types it'll need to plan queries). This is also where the ~5–10 MB of per-connection memory gets committed.</p>
+
+<h3>Step 7 — ReadyForQuery</h3>
+<p>The backend sends a <code>ReadyForQuery</code> message — "I'm idle and waiting." <strong>Only now</strong>, after steps 1–6, can your app actually run SQL. Every one of those steps was latency you paid before any useful work began.</p>
+
+<h3>Steps 8–9 — Query, then close</h3>
+<p>You run your query. Then, in the no-pool world, the connection closes: the backend process exits and its memory is freed. The next request starts again at step 1 — paying the whole bill a second time.</p>
+
+<h2>Why this is costly</h2>
+
+<p>Two distinct costs fall out of the sequence above.</p>
+
+<p><strong>1. Per request, the setup is expensive.</strong> Steps 1–7 — a TCP round trip, possibly TLS, a process fork, a multi-message PBKDF2 auth, and session warm-up — add up to roughly <strong>20–100&nbsp;ms</strong> before your query runs.<sup><a href="#s1">1</a></sup> A no-pool app pays that on <em>every</em> request, then discards the warmed-up backend it just built.</p>
+
+<p><strong>2. At scale, many backends fight each other.</strong> One connection is one process, so a thousand connections is a thousand processes — and a CPU core runs only one at a time. The OS must rapidly swap which backend is on a core, a <strong>context switch</strong>, and each swap does real work for zero useful output:</p>
+
+<table>
+  <tr><th>What the switch does</th><th>Why it hurts</th></tr>
+  <tr><td>Save + restore CPU state</td><td>Registers, stack pointer, program counter dumped to RAM and reloaded — overhead, no query progress</td></tr>
+  <tr><td>CPU caches go cold</td><td>The new backend's data isn't in L1/L2/L3, so it stalls waiting on slow main memory ("cache pollution")</td></tr>
+  <tr><td>TLB flush</td><td>The virtual→physical address cache is invalidated on a process switch → more memory stalls</td></tr>
+  <tr><td>Branch predictor reset</td><td>The CPU's "guess the next instruction" history is useless for the new process</td></tr>
+</table>
+
+<p>Add one more effect — every transaction start/end grabs the shared <code>ProcArrayLock</code>, so more backends means more contention on a single lock<sup><a href="#s3">3</a></sup> — and you have the makings of a hard ceiling. <strong>Lesson 2 turns this into the actual numbers and the throughput curve that bends downward.</strong></p>
+
+<div class="callout interview">
+  <span class="tag">Interview line</span>
+  "Without pooling you pay a TCP round trip, a process fork, and a multi-message auth handshake on <em>every single request</em> — then discard the warmed backend. A pool keeps backends past step 7 and just hands them out, so that whole 20–100&nbsp;ms disappears."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  "Context switching is slow" is the shallow answer. The deep answer names <em>what</em> gets thrown away: hot CPU caches and the TLB. The switch itself is cheap; the <strong>cache misses it causes</strong> are what actually cost you. That distinction is the tell of someone who understands the hardware.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What is a Postgres connection, physically — and why does that make it expensive?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A dedicated OS backend <em>process</em>, forked by the postmaster, with ~5–10 MB of private memory. So connections are bounded by RAM and CPU, not by how many sockets you can open.</p></details>
+  <p>② In the no-pool sequence, which single step is the most expensive, and why?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The fork (step 4). The OS clones a whole process — new page tables, file descriptors, private memory — not just a socket. It's a heavy syscall.</p></details>
+  <p>③ Why does SCRAM-SHA-256 auth take real time, not just a flag check?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It's a multi-message challenge/response (several network round trips) and runs PBKDF2 — thousands of deliberately-slow hash iterations — costing CPU on both ends.</p></details>
+  <p>④ Context switching is slow — but what specifically does the switch destroy that costs you the most?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The hot CPU caches (L1/L2/L3) and the TLB. The reload itself is cheap; the cache/TLB misses afterward — stalling on slow RAM — are the real cost.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://www.postgresql.org/docs/current/protocol.html">PostgreSQL docs — Frontend/Backend Protocol</a> (and the <a href="https://www.postgresql.org/docs/current/sasl-authentication.html">SASL Authentication</a> section). The authoritative, message-by-message spec for everything in this lesson. You don't need to memorize it — read it once so the diagram above stops being a black box.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask your teacher.</strong> Want to actually watch this handshake on the wire (<code>tcpdump</code> / Postgres <code>log_connections</code>)? Curious how TLS changes the round-trip count, or what PBKDF2 iteration count Postgres uses? Ask — these are exactly the threads an interviewer pulls on.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-what-a-connection-costs.html"><em>Next: Lesson 2 — what a connection costs at scale →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Process fork per connection / setup cost — <a href="https://www.postgresql.org/docs/current/connect-estab.html">PostgreSQL docs: connection establishment</a>; <a href="https://goldlapel.com/how-to/connection-pooling">A Gentleman's Guide to PostgreSQL Connection Pooling</a>.<br>
+<span id="s2">2.</span> Startup packet & SCRAM-SHA-256 message flow — <a href="https://www.postgresql.org/docs/current/sasl-authentication.html">PostgreSQL docs: SASL Authentication</a>; <a href="https://www.postgresql.org/docs/current/protocol.html">Frontend/Backend Protocol</a>.<br>
+<span id="s3">3.</span> Context-switch and lock-contention costs — <a href="https://techcommunity.microsoft.com/blog/adforpostgresql/analyzing-the-limits-of-connection-scalability-in-postgres/1757266">Freund, Analyzing the Limits of Connection Scalability in Postgres</a>.
+</p>
