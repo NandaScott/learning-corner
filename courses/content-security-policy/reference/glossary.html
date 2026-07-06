@@ -1,0 +1,94 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Content Security Policy — glossary</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">↑ Content Security Policy</a> · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">Canonical vocabulary for this course. Every lesson uses these words to mean exactly this. Verified against the W3C CSP specs (Level&nbsp;1 / 2 / 3) and MDN — not folklore.</p>
+
+<h2>The delivery</h2>
+
+<dl>
+<dt><strong>Content Security Policy (CSP)</strong></dt>
+<dd>A set of rules, delivered by a server to a browser, that constrains which resources a page may load and which behaviours it may perform — enforced <em>by the browser</em>, on the client. Its primary job is to blunt cross-site scripting (XSS): even if an attacker injects markup, the policy can stop the injected script from executing or exfiltrating.</dd>
+
+<dt><strong>Policy</strong></dt>
+<dd>The value of one <code>Content-Security-Policy</code> header: a semicolon-separated list of directives. A response may carry <em>several</em> policies (multiple headers or a header plus a <code>&lt;meta&gt;</code>); all of them are enforced, and each can only <em>further restrict</em> — policies never loosen one another.</dd>
+
+<dt><strong>Directive</strong></dt>
+<dd>One rule inside a policy: a name plus a value, e.g. <code>script-src 'self' https://cdn.example.com</code>. The name selects <em>what</em> is governed (scripts, images, framing…); the value is usually a <strong>source list</strong>.</dd>
+
+<dt><strong>Header vs <code>&lt;meta&gt;</code></strong></dt>
+<dd>CSP is normally the <code>Content-Security-Policy</code> HTTP response header. It can also ship in a <code>&lt;meta http-equiv="Content-Security-Policy"&gt;</code> tag, but the meta form can't express some directives (e.g. <code>frame-ancestors</code>, <code>report-uri</code>/<code>report-to</code>, <code>sandbox</code>) and only applies to content after the tag — the header is authoritative.</dd>
+</dl>
+
+<h2>The evaluation model</h2>
+
+<dl>
+<dt><strong>Governing directive</strong></dt>
+<dd>For a given resource fetch or behaviour, the single directive the browser consults. Found by resource type (a <code>&lt;script&gt;</code> → <code>script-src-elem</code> → <code>script-src</code> → <code>default-src</code>). If no matching directive exists <em>and</em> there's no <code>default-src</code>, the fetch is <strong>allowed</strong> — CSP only restricts what a directive actually covers.</dd>
+
+<dt><strong>Fallback chain</strong></dt>
+<dd>The ordered lookup a directive follows when absent. Most fetch directives fall back to <code>default-src</code>. Some have longer chains, e.g. <code>script-src-elem</code> → <code>script-src</code> → <code>default-src</code>, and <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code>. <code>default-src</code> is the fallback of last resort, not a global rule.</dd>
+
+<dt><strong>Source list</strong></dt>
+<dd>A directive's value: a space-separated set of <strong>source expressions</strong>. A fetch is allowed if it matches <em>any</em> expression in the list. An empty list (or the token <code>'none'</code>) matches nothing → blocks everything of that type.</dd>
+
+<dt><strong>Source expression</strong></dt>
+<dd>One entry in a source list. Kinds: keyword-source (<code>'self'</code>, <code>'none'</code>, <code>'unsafe-inline'</code>, <code>'unsafe-eval'</code>, <code>'strict-dynamic'</code>, <code>'unsafe-hashes'</code>), scheme-source (<code>https:</code>, <code>data:</code>), host-source (<code>cdn.example.com</code>, <code>*.example.com</code>, with optional scheme/port/path), nonce-source (<code>'nonce-…'</code>), and hash-source (<code>'sha256-…'</code>).</dd>
+</dl>
+
+<h2>The trust tokens</h2>
+
+<dl>
+<dt><strong><code>'self'</code></strong></dt>
+<dd>Matches the page's own origin (scheme + host + port). <em>Not</em> a wildcard for subdomains and <em>not</em> "inline" — it's the current origin only.</dd>
+
+<dt><strong><code>'unsafe-inline'</code></strong></dt>
+<dd>Allows inline scripts/styles (inline <code>&lt;script&gt;</code>, <code>on*=</code> handlers, <code>style=</code>). The dangerous one: it re-opens the exact hole CSP exists to close. Present in a <code>script-src</code>, it is <em>ignored</em> if a nonce or hash is also present (CSP2+ back-compat rule).</dd>
+
+<dt><strong><code>'unsafe-eval'</code></strong></dt>
+<dd>Allows string-to-code APIs (<code>eval</code>, <code>Function</code>, <code>setTimeout("…")</code>). Independent of <code>'unsafe-inline'</code>.</dd>
+
+<dt><strong>Nonce</strong></dt>
+<dd>A per-response random token (≥128 bits, base64) placed both in the policy (<code>'nonce-r4nd0m'</code>) and on the element (<code>&lt;script nonce="r4nd0m"&gt;</code>). The element runs iff the values match. Introduced in <strong>CSP2</strong>. Must be unguessable and fresh every response.</dd>
+
+<dt><strong>Hash</strong></dt>
+<dd>A base64 digest (<code>'sha256-…'</code>/<code>'sha384-…'</code>/<code>'sha512-…'</code>) of an inline block's exact contents. The block runs iff its computed digest is in the list. Introduced in <strong>CSP2</strong>; <strong>CSP3</strong> lets a hash also match an <em>external</em> script that carries matching <code>integrity</code> metadata.</dd>
+
+<dt><strong><code>'strict-dynamic'</code></strong></dt>
+<dd>(CSP3) In a script directive, propagates trust: a script already trusted (via nonce/hash) may create further scripts programmatically, and those run too — while host/scheme allowlist entries in the same directive are <em>ignored</em>. The core of a modern strict CSP; makes the policy independent of a domain allowlist.</dd>
+
+<dt><strong><code>'unsafe-hashes'</code></strong></dt>
+<dd>(CSP3) Lets a hash match inline <em>event handlers</em> and <code>style</code> attributes (and <code>javascript:</code> targets), which plain hashes don't cover. Narrower and safer than <code>'unsafe-inline'</code>, but still a loosening.</dd>
+</dl>
+
+<h2>Enforcement &amp; reporting</h2>
+
+<dl>
+<dt><strong>Enforce vs Report-Only</strong></dt>
+<dd>The <code>Content-Security-Policy</code> header <em>blocks</em> violations. <code>Content-Security-Policy-Report-Only</code> blocks nothing — it only reports what <em>would</em> have been blocked. The standard rollout is to run Report-Only first, watch the reports, then flip to enforce.</dd>
+
+<dt><strong>Violation report</strong></dt>
+<dd>A JSON document the browser sends when a directive is violated (and also a <code>SecurityPolicyViolationEvent</code> fired in-page). Names the <code>effective-directive</code>, the <code>blocked-uri</code>, the document, and (CSP2+) source file / line / column.</dd>
+
+<dt><strong><code>report-uri</code> vs <code>report-to</code></strong></dt>
+<dd><code>report-uri &lt;url&gt;</code> (CSP1) posts reports to a URL — now <strong>deprecated</strong>. <code>report-to &lt;group&gt;</code> (CSP3) names a group defined via the Reporting API (<code>Reporting-Endpoints</code> header). Because browser support lagged, real deployments often send <em>both</em>.</dd>
+</dl>
+
+<h2>The levels</h2>
+
+<dl>
+<dt><strong>CSP1 (1.0, 2012)</strong></dt>
+<dd>The first W3C standardized level. Core fetch directives + <code>sandbox</code> + <code>report-uri</code>, and the <code>'unsafe-inline'</code>/<code>'unsafe-eval'</code> keywords. No nonces, no hashes, no <code>frame-ancestors</code>.</dd>
+
+<dt><strong>CSP2 (2016, W3C Recommendation)</strong></dt>
+<dd>Added <strong>nonces</strong> and <strong>hashes</strong>, <code>child-src</code>, <code>frame-ancestors</code>, <code>form-action</code>, <code>base-uri</code>, <code>plugin-types</code>, and richer violation reports.</dd>
+
+<dt><strong>CSP3 (Working Draft)</strong></dt>
+<dd>Rebased the spec on the Fetch standard. Added <code>'strict-dynamic'</code>, <code>'unsafe-hashes'</code>, <code>report-to</code>, <code>worker-src</code>, <code>manifest-src</code>, the <code>script-src-elem</code>/<code>script-src-attr</code> and <code>style-src-elem</code>/<code>style-src-attr</code> split; hashes for external scripts; deprecated <code>plugin-types</code>/<code>block-all-mixed-content</code>.</dd>
+</dl>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../lessons/0001-how-the-browser-evaluates-a-policy.html">Lesson 1 ↗</a></span>
+</div>

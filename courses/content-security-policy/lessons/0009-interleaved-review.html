@@ -1,0 +1,254 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Review — Content Security Policy interleaved quiz</title>
+
+<p class="eyebrow">Content Security Policy · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading feels like learning but mostly builds <em>fluency</em> — the illusion of mastery. Retrieving from memory, cold, with topics shuffled, is what builds <em>storage strength</em>. That's the whole point of this page.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all eight lessons and <strong>shuffled</strong> every run — by design. Interleaving (mixing topics rather than blocking them) is harder than reviewing one lesson at a time, and that difficulty is exactly what makes it stick.<sup><a href="#s1">1</a></sup> Many questions pit the right answer against a <em>near-miss</em> — the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em> and run it again in a few days — that spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag which one — it's worth re-explaining a different way, or drilling just that concept. When you can clear this cold two sessions apart, you can explain CSP from the per-fetch algorithm to a deployable strict policy without notes.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0008-reporting-and-rollout.html">← Lesson 8</a></span>
+  <span><a href="../reference/fallback-cheat-sheet.html">Cheat sheet ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST (index 0) is correct; the SECOND is a
+// deliberate "near-miss" (right idea, subtly wrong) to force precise discrimination.
+// The engine shuffles option order on render, so position is never a clue.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "A page loads a font. There is no <code>font-src</code> and no <code>default-src</code> in the policy. What happens?",
+    options: [
+      "It is allowed — no directive governs it",
+      "It is blocked — default-deny still applies",
+      "It is blocked and a violation is reported",
+      "It falls back to the <code>connect-src</code> rule"
+    ],
+    answer: 0,
+    explain: "CSP restricts only what a directive covers. With no governing directive and no <code>default-src</code> fallback, the fetch is allowed — which is exactly why <code>default-src</code> matters. (<a href='0001-how-the-browser-evaluates-a-policy.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "How must a request satisfy a directive's source list?",
+    options: [
+      "It matches any one expression in the list",
+      "It matches every expression in the list",
+      "It matches the first expression only",
+      "It matches the most specific expression"
+    ],
+    answer: 0,
+    explain: "It's OR within a directive — one matching expression allows it. (Across <em>multiple policies</em>, though, it must satisfy each — policies only ever restrict.) (<a href='0001-how-the-browser-evaluates-a-policy.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Does <code>img-src *.example.com</code> allow an image from <code>example.com</code> (no subdomain)?",
+    options: [
+      "No — the wildcard matches subdomains only",
+      "Yes — the wildcard includes the apex too",
+      "Yes — but only over HTTPS",
+      "No — wildcards are rejected as invalid"
+    ],
+    answer: 0,
+    explain: "The <code>*.</code> prefix requires at least one extra label, so the apex isn't covered. You'd list <code>example.com</code> separately. (<a href='0002-the-source-list-grammar.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "The directive is <code>script-src 'unsafe-inline' 'nonce-abc'</code>. Does an un-nonced inline script run?",
+    options: [
+      "No — a nonce makes <code>'unsafe-inline'</code> ignored",
+      "Yes — <code>'unsafe-inline'</code> still permits it",
+      "No — mixing the two is a parse error",
+      "Yes — but only for first-party scripts"
+    ],
+    answer: 0,
+    explain: "Any nonce or hash in a directive disables <code>'unsafe-inline'</code> in CSP2+ browsers. Only the element carrying the nonce runs; the combo is a graceful-degradation ramp. (<a href='0002-the-source-list-grammar.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Does a bare <code>*</code> in <code>script-src</code> allow a <code>data:</code> URL script?",
+    options: [
+      "No — <code>*</code> excludes data/blob/filesystem",
+      "Yes — <code>*</code> matches every scheme",
+      "Yes — data URLs count as same-origin",
+      "No — data URLs need <code>'unsafe-eval'</code>"
+    ],
+    answer: 0,
+    explain: "Bare <code>*</code> matches network-scheme hosts but not <code>data:</code>/<code>blob:</code>/<code>filesystem:</code> — those need an explicit scheme-source. (<a href='0002-the-source-list-grammar.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A worker is created; there is no <code>worker-src</code> and no <code>child-src</code>. Which directive decides?",
+    options: [
+      "<code>script-src</code>, then <code>default-src</code>",
+      "<code>default-src</code> directly, with no other hop",
+      "<code>connect-src</code>, then <code>default-src</code>",
+      "<code>child-src</code> is required, so it is blocked"
+    ],
+    answer: 0,
+    explain: "The chain is <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code>. The extra <code>script-src</code> hop is the worker-specific quirk (a worker is executable script). (<a href='0003-fetch-directives-and-the-fallback-cascade.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "You set only <code>script-src 'self'</code>. Is an inline <code>onclick=</code> handler governed?",
+    options: [
+      "Yes — <code>script-src-attr</code> falls back to it",
+      "No — inline handlers are always ungoverned",
+      "Yes — but only if <code>'unsafe-inline'</code> is set",
+      "No — handlers need <code>default-src</code> to apply"
+    ],
+    answer: 0,
+    explain: "<code>script-src-attr</code> is absent, so it falls back to <code>script-src 'self'</code>; an inline attribute isn't same-origin script, so it's blocked. (<a href='0003-fetch-directives-and-the-fallback-cascade.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Does <code>default-src 'none'</code> stop <code>evil.com</code> from framing your page?",
+    options: [
+      "No — <code>frame-ancestors</code> doesn't inherit it",
+      "Yes — <code>default-src 'none'</code> blocks everything",
+      "Yes — framing counts as a fetch it covers",
+      "No — you must also send <code>frame-src 'none'</code>"
+    ],
+    answer: 0,
+    explain: "Framing is governed by <code>frame-ancestors</code>, which never falls back to <code>default-src</code>. Without it, anyone can frame the page. (<a href='0004-document-navigation-and-riders.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Both <code>frame-ancestors 'self'</code> and <code>X-Frame-Options: DENY</code> are sent. What does a modern browser do?",
+    options: [
+      "Enforces <code>frame-ancestors</code>, ignores <code>X-Frame-Options</code>",
+      "Enforces whichever of the two is stricter",
+      "Enforces <code>X-Frame-Options</code> as the older standard",
+      "Rejects the response for sending conflicting rules"
+    ],
+    answer: 0,
+    explain: "CSP2 is explicit: <code>frame-ancestors</code> obsoletes <code>X-Frame-Options</code> — where both exist, XFO SHOULD be ignored. Keep XFO only for pre-CSP browsers. (<a href='0004-document-navigation-and-riders.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "What does <code>upgrade-insecure-requests</code> do to an <code>http://</code> image reference?",
+    options: [
+      "Rewrites it to <code>https://</code> before the fetch",
+      "Blocks the insecure request outright",
+      "Allows it but logs a mixed-content warning",
+      "Downgrades the whole page to enforce HTTP"
+    ],
+    answer: 0,
+    explain: "It rewrites the scheme before the request hits the network — it doesn't block. If the resource isn't on HTTPS, the request just fails (blocking was the deprecated <code>block-all-mixed-content</code>'s job). (<a href='0004-document-navigation-and-riders.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Which CSP level introduced nonces and hashes?",
+    options: [
+      "CSP Level 2",
+      "CSP Level 3",
+      "CSP 1.0",
+      "The Trusted Types spec"
+    ],
+    answer: 0,
+    explain: "CSP2 added nonces and hashes to trust specific inline blocks — solving CSP1's all-or-nothing <code>'unsafe-inline'</code>. (<a href='0005-csp1-vs-csp2-vs-csp3.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Which was the first CSP level to reach full W3C Recommendation?",
+    options: [
+      "CSP Level 2, in 2016",
+      "CSP 1.0, in 2012",
+      "CSP Level 3, still ongoing",
+      "The original prefixed-header draft"
+    ],
+    answer: 0,
+    explain: "CSP 1.0 stalled at Candidate Recommendation (2012) and was superseded; CSP Level 2 was the first full Recommendation (15 Dec 2016). CSP3 remains a Working Draft. (<a href='0005-csp1-vs-csp2-vs-csp3.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What is <code>'strict-dynamic'</code> (CSP3) fundamentally a response to?",
+    options: [
+      "Host allowlists being empirically bypassable",
+      "Nonces being too hard to generate safely",
+      "Reports overwhelming server-side endpoints",
+      "Inline styles evading the <code>style-src</code> rule"
+    ],
+    answer: 0,
+    explain: "Research showed most real host allowlists were bypassable; <code>'strict-dynamic'</code> lets a policy propagate trust from a nonced script and ignore the host allowlist entirely. (<a href='0005-csp1-vs-csp2-vs-csp3.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Policy is <code>script-src https://cdn.com</code> and the CDN has a JSONP endpoint. How is CSP bypassed?",
+    options: [
+      "The <code>callback</code> param reflects attacker JS as script",
+      "The JSONP call disables the browser's nonce check",
+      "JSONP responses are exempt from CSP entirely",
+      "The endpoint rewrites <code>script-src</code> at runtime"
+    ],
+    answer: 0,
+    explain: "Point <code>&lt;script src&gt;</code> at <code>…?callback=ATTACKER_JS</code>; the endpoint echoes it into an executable response from the allowlisted origin, so CSP allows it. (<a href='0006-why-host-allowlists-fail.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "You pinned <code>script-src https://cdn.com/safe/</code>. Why doesn't the path save you against an open redirect?",
+    options: [
+      "CSP drops the path component after a redirect",
+      "Open redirects are always implicitly allowlisted",
+      "The path only applies to same-origin requests",
+      "Redirects switch the check to <code>connect-src</code>"
+    ],
+    answer: 0,
+    explain: "After a redirect, matching uses the original request's scheme/host/port and skips the path — so the pinned path is never checked against the redirect target. (<a href='0006-why-host-allowlists-fail.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Under <code>script-src 'nonce-abc' 'strict-dynamic'</code>, a nonced script calls <code>createElement('script')</code> to a random CDN. Does it run?",
+    options: [
+      "Yes — trust propagates to programmatically-created script",
+      "No — the CDN origin isn't on the allowlist",
+      "No — dynamically-added scripts need their own nonce",
+      "Yes — but only if the CDN uses HTTPS"
+    ],
+    answer: 0,
+    explain: "<code>'strict-dynamic'</code> propagates trust from a nonced script to scripts it programmatically creates, regardless of origin (the host allowlist is ignored anyway). (<a href='0007-strict-csp-nonces-and-strict-dynamic.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "What does <code>'strict-dynamic'</code> do to host-source and scheme-source entries in the same directive?",
+    options: [
+      "Ignores them entirely",
+      "Adds them to the set of trusted sources",
+      "Requires them to also carry a nonce",
+      "Applies them only to inline scripts"
+    ],
+    answer: 0,
+    explain: "It ignores host/scheme sources, <code>'self'</code>, and <code>'unsafe-inline'</code> — which is precisely why the L6 allowlist bypasses stop working. (<a href='0007-strict-csp-nonces-and-strict-dynamic.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Why do <code>object-src 'none'</code> and <code>base-uri 'none'</code> appear in a strict policy alongside a tight <code>script-src</code>?",
+    options: [
+      "Neither is covered by a script directive or <code>default-src</code>",
+      "They strengthen the nonce on inline scripts",
+      "They are required syntax for <code>'strict-dynamic'</code>",
+      "They redirect violation reports to the endpoint"
+    ],
+    answer: 0,
+    explain: "<code>object-src</code> (plugins) and <code>base-uri</code> (<code>&lt;base&gt;</code> hijack) are separate holes that don't inherit from script directives, so a strict policy pins them explicitly. (<a href='0007-strict-csp-nonces-and-strict-dynamic.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "What does the <code>Content-Security-Policy-Report-Only</code> header do?",
+    options: [
+      "Reports would-be violations but blocks nothing",
+      "Blocks violations silently and logs them",
+      "Enforces only the reporting directives",
+      "Applies the policy to first-party resources only"
+    ],
+    answer: 0,
+    explain: "Same policy, zero blocking — it only emits violation reports. It's the dry-run you deploy before promoting a policy to the enforcing header. (<a href='0008-reporting-and-rollout.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Both <code>report-uri</code> and <code>report-to</code> are set. Where does a modern browser send reports?",
+    options: [
+      "To <code>report-to</code>; it ignores <code>report-uri</code>",
+      "To both endpoints, once each",
+      "To <code>report-uri</code>, the more stable one",
+      "To neither, since they conflict"
+    ],
+    answer: 0,
+    explain: "Browsers that support <code>report-to</code> ignore <code>report-uri</code>; older ones fall back to <code>report-uri</code>. That's why you send both during the transition. (<a href='0008-reporting-and-rollout.html'>L8</a>)" }
+]);
+</script>

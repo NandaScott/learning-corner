@@ -1,0 +1,126 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — How the browser evaluates a policy</title>
+
+<p class="eyebrow">Content Security Policy · Lesson 1</p>
+<h1>How the browser evaluates a policy</h1>
+<p class="lede">Before any directive catalogue or the CSP1/2/3 history means anything, you have to see what the browser <em>does</em> with a policy. It isn't a firewall rule checked once. It's a small algorithm the browser re-runs on every single resource the page tries to load — and once you can run that algorithm in your head, the rest of CSP is just filling in a table.</p>
+
+<h2>The concept</h2>
+
+<p>A Content Security Policy is a set of rules a server ships to a browser, and the browser enforces them <strong>on the client, per fetch</strong>. That last part is the whole mental model. When a page tries to load a script, an image, a font, a frame — or to run inline code, or submit a form — the browser pauses, finds the one directive that governs <em>that kind</em> of request, checks the request against that directive's allowlist, and then either lets it through or blocks it and files a report.<sup><a href="#s1">1</a></sup></p>
+
+<p>The rules live in a response header:</p>
+
+<div class="figure">
+<pre><code>Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com; img-src *</code></pre>
+<p class="cap">One header, semicolon-separated <strong>directives</strong>. Each directive is a name (<code>script-src</code>) plus a value — usually a <strong>source list</strong> (<code>'self' https://cdn.example.com</code>). The browser parses this once, then consults it on every fetch.</p>
+</div>
+
+<p>Two consequences of "the browser enforces it" are worth saying out loud now, because they frame everything. First, CSP is <strong>defense-in-depth, not a server guarantee</strong> — a client that ignores the header (an old browser, a non-browser HTTP client, a hostile user) is unaffected; CSP shrinks what a compromised page can do to a normal victim's browser, it doesn't protect the server. Second, because it's enforced per fetch, the interesting question is never "does the page have a CSP" but <strong>"for <em>this</em> request, which directive wins, and does the request match it?"</strong></p>
+
+<h2>The steps</h2>
+
+<p>Here's the algorithm the browser runs for one request — say the page contains <code>&lt;script src="https://cdn.example.com/app.js"&gt;</code>. We'll walk each step underneath.</p>
+
+<div class="figure">
+<pre><code>1. parse            header → list of directives                once, when the response arrives
+2. a request happens  &lt;script src=…&gt;  →  request type "script"    the browser is about to fetch
+3. find governing     type "script" → look for script-src-elem   the ONE directive that applies
+   directive          → script-src → default-src
+4. fallback chain     if that directive is absent, walk the       absence ≠ "blocked"
+                      chain; if nothing matches AND no
+                      default-src → ALLOW (unrestricted)
+5. match source list  compare the request against each source     allowed if it matches ANY
+                      expression in the winning directive          expression
+6. allow / block      match → load it.  no match → block the       + fire a violation report
+                      fetch, and report the violation               and a SecurityPolicyViolationEvent</code></pre>
+<p class="cap">Steps 3–4 pick <em>which</em> rule applies. Step 5 applies it. Every subresource, every inline block, every form submission runs this same loop.</p>
+</div>
+
+<h3>Step 1 — Parse the header into directives</h3>
+<p>When the response arrives, the browser splits the header value on <code>;</code> into directives, and each directive into a name and a token list. Unknown directive names are ignored (forward-compatibility — a CSP3 directive does no harm in a browser that only knows CSP2). A response may carry <em>more than one</em> policy — several <code>Content-Security-Policy</code> headers, or a header plus a <code>&lt;meta&gt;</code> tag. Hold that thought; it matters at the synthesis.</p>
+
+<h3>Step 2 — A request (or behaviour) is about to happen</h3>
+<p>CSP doesn't only gate network fetches. It gates a <em>category</em> of things: loading a subresource (script, style, image, font, frame, connection…), <em>and</em> executing certain behaviours that don't hit the network at all — running an inline <code>&lt;script&gt;</code>, an <code>onclick=</code> handler, a <code>javascript:</code> URL, or a call to <code>eval()</code>. Each of these maps to a request "type" that the next step keys off. CSP3 defines this by hooking into the browser's Fetch machinery, which is why the modern spec is written "in terms of Fetch."<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 3 — Find the one governing directive</h3>
+<p>This is the step people skip, and it's where the precision lives. The browser does <strong>not</strong> check the request against the whole policy. It resolves the <em>single</em> directive that governs this request type. A <code>&lt;script&gt;</code> element looks for <code>script-src-elem</code> first; a stylesheet looks for <code>style-src-elem</code>; an image looks for <code>img-src</code>; a framed page's parent is checked against <code>frame-ancestors</code>; and so on. Exactly one directive wins per request.</p>
+
+<div class="callout gotcha">
+  <span class="tag">Flag — one directive, not the whole policy</span>
+  A request that's allowed by <code>img-src *</code> is <em>not</em> also re-checked against <code>script-src</code>. Each request type has its own governing directive; the others are irrelevant to it. "Is this blocked?" always reduces to a single directive's source list.
+</div>
+
+<h3>Step 4 — The fallback chain (and why absence can mean <em>allow</em>)</h3>
+<p>If the specific directive isn't present in the policy, the browser walks a <strong>fallback chain</strong>. For a <code>&lt;script&gt;</code> element that's <code>script-src-elem</code> → <code>script-src</code> → <code>default-src</code>. Whichever it finds first governs; <code>default-src</code> is the fallback of last resort.</p>
+
+<div class="figure">
+<pre><code>  &lt;script src&gt;      →  script-src-elem  ?  →  script-src  ?  →  default-src  ?  →  (nothing)
+                                                                                    │
+  found any of these?  ── yes ──▶  use it as the governing directive                 ▼
+                       ── no  ──────────────────────────────────────────────▶  ALLOW (no rule covers this)</code></pre>
+<p class="cap">The sharp edge: if none of the chain is present, the request is <strong>allowed</strong>, not blocked. CSP restricts only what a directive actually covers. A policy of just <code>script-src 'self'</code> says nothing about images — images load from anywhere. <code>default-src</code> is how you make the policy default-<em>deny</em> across types you didn't name explicitly.</p>
+</div>
+
+<h3>Step 5 — Match the request against the source list</h3>
+<p>Now the browser has one directive and its source list — say <code>script-src 'self' https://cdn.example.com</code>. It compares the request against <em>each</em> source expression, and the request is allowed if it matches <strong>any</strong> of them (logical OR within a directive). Our <code>https://cdn.example.com/app.js</code> matches the host expression <code>https://cdn.example.com</code> → allowed. The exact grammar of those expressions — <code>'self'</code>, schemes, hosts, wildcards, nonces, hashes — is Lesson 2. For now: <em>OR across the list, and an empty list (or <code>'none'</code>) matches nothing</em>, so it blocks everything of that type.</p>
+
+<h3>Step 6 — Allow, or block and report</h3>
+<p>Match → the fetch proceeds or the code runs. No match → the browser <strong>blocks</strong> it (the script never executes, the image never loads) and, in the same breath, generates a <strong>violation report</strong>: it fires a <code>SecurityPolicyViolationEvent</code> in the page, and if the policy named a reporting endpoint (<code>report-uri</code> or <code>report-to</code>), it POSTs a JSON report there.<sup><a href="#s2">2</a></sup> Reporting is not a side feature — it's how you operate CSP without breaking your own site (Lesson 8).</p>
+
+<h2>Why this matters</h2>
+
+<p>Three things fall straight out of "the browser runs this loop per fetch," and they set up the rest of the course.</p>
+
+<p><strong>1. A CSP is only as complete as its directives.</strong> Because a missing governing directive with no <code>default-src</code> means <em>allow</em>, the dangerous policy isn't the strict one — it's the <em>partial</em> one that looks protective but silently permits whole categories. "Does it have a <code>default-src</code>, and which types override it?" is the first question to ask of any policy.</p>
+
+<p><strong>2. Multiple policies intersect — they never loosen.</strong> If a response carries two policies, the browser enforces <em>all</em> of them, and a request must satisfy <em>each</em>. One policy saying <code>script-src 'self'</code> and another saying <code>script-src https://cdn.example.com</code> means <em>no</em> script loads — neither origin satisfies both. Adding a policy can only ever restrict further. That's why you can safely layer a tight Report-Only policy over a loose enforced one.</p>
+
+<p><strong>3. It's client-side, so it's a mitigation, not a wall.</strong> CSP reduces the blast radius of an injection that already got through — it stops injected script from running or phoning home. It is the second line, behind output encoding and input handling, not a replacement for them. Framing CSP as "XSS protection" without "defense-in-depth" is the shallow tell.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "CSP is a browser-enforced, per-fetch allowlist. For each request the browser finds the one governing directive — walking the fallback chain to <code>default-src</code> — and allows the request if it matches any expression in that directive's source list, otherwise blocks it and reports. Crucially, if no directive covers a request and there's no <code>default-src</code>, it's <em>allowed</em>."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow answer is "CSP whitelists which domains a page can load from." That misses two things a deep answer nails: (a) it's resolved <em>per request type</em> via a fallback chain, so absence of a rule can mean <em>allow</em>, not deny; and (b) it governs <em>behaviours</em> too (inline script, <code>eval</code>), not just network origins. Someone who says "just set <code>script-src</code> and you're safe" hasn't met the partial-policy hole.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① A page loads a font and there is no <code>font-src</code> and no <code>default-src</code> in the policy. Blocked or allowed?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><strong>Allowed.</strong> With no governing directive and no <code>default-src</code> fallback, nothing restricts the request. CSP only restricts what a directive actually covers — this is why <code>default-src</code> matters.</p></details>
+  <p>② For a <code>&lt;script src&gt;</code>, what's the fallback chain the browser walks?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>script-src-elem</code> → <code>script-src</code> → <code>default-src</code>. First one present wins; if none are present, the fetch is allowed.</p></details>
+  <p>③ A request must satisfy a source list how — all expressions, or any one?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><strong>Any one</strong> (OR within a directive). But across <em>multiple policies</em> it must satisfy each policy — policies intersect and only ever restrict further.</p></details>
+  <p>④ Why is CSP called defense-in-depth rather than an XSS fix?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It's enforced by the browser on the client. It shrinks what an already-injected page can do (run inline script, exfiltrate) for a compliant browser; it doesn't stop the injection or protect non-compliant clients. Encoding/validation is still the first line.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://www.w3.org/TR/CSP3/">W3C — Content Security Policy Level 3</a>. Skim §2 (Framework) and §6 (Content Security Policy Sources) to see the model this lesson describes stated formally — how a policy is a list of directives and how "match a request against a source list" is defined. It's the ground truth for every later lesson. Pair with <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP">MDN's CSP guide</a> for a readable on-ramp.
+</div>
+
+<div class="ask-teacher">
+  <strong>See it fire.</strong> Want to watch the loop? Open any site's devtools, add a <code>&lt;meta http-equiv="Content-Security-Policy" content="img-src 'none'"&gt;</code>, and watch images blocked with a console violation. Curious how a request "type" is actually decided, what changes with a <code>&lt;meta&gt;</code>-delivered policy vs a header, or how Report-Only differs? Those are exactly the threads the next lessons pull. <strong>Lesson 2 breaks down the source-list grammar those rules match against.</strong>
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-the-source-list-grammar.html"><em>Next: Lesson 2 — the source-list grammar →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Per-fetch enforcement model, policy = list of directives, source-list matching, spec rebased on Fetch — <a href="https://www.w3.org/TR/CSP3/">W3C CSP Level 3</a>; readable overview — <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy">MDN: Content-Security-Policy</a> (directive categories &amp; fallback behaviour).<br>
+<span id="s2">2.</span> Violation reporting — <code>SecurityPolicyViolationEvent</code>, <code>report-uri</code>/<code>report-to</code> endpoints — <a href="https://www.w3.org/TR/CSP3/#reporting">W3C CSP Level 3 §Reporting</a>; <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP">MDN CSP guide</a>.
+</p>

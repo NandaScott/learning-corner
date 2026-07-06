@@ -1,0 +1,114 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8 — Reporting &amp; rollout</title>
+
+<p class="eyebrow">Content Security Policy · Lesson 8</p>
+<h1>Reporting &amp; rollout</h1>
+<p class="lede">You can write a perfect strict policy (L7) and still take the site down by shipping it — because you don't actually know every inline script, handler, and third-party loader your app depends on. This final lesson is how CSP is <em>operated</em>: a report-only mode that breaks nothing, violation reports that tell you what would break, and the rollout that turns the two into a safe path to enforcement.</p>
+
+<h2>The concept</h2>
+
+<p>CSP has a built-in dry-run. Alongside the enforcing <code>Content-Security-Policy</code> header there's a <strong><code>Content-Security-Policy-Report-Only</code></strong> header that evaluates the exact same policy but <em>blocks nothing</em> — it only emits a violation report for anything that <em>would</em> have been blocked. That single mechanism is what lets you deploy a tight policy to production traffic and learn what it breaks before it breaks anything.<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>Content-Security-Policy:             enforce — blocks + reports
+Content-Security-Policy-Report-Only: observe — reports only, blocks NOTHING
+
+both can be sent at once:  enforce a loose policy today,
+                           report-only a stricter one you're testing</code></pre>
+<p class="cap">The report-only header is the safety valve. Serve it with your candidate strict policy, watch the reports roll in from real users, fix what's legitimate, then promote it to the enforcing header.</p>
+</div>
+
+<h2>The steps</h2>
+
+<h3>Step 1 — Report-Only: observe without blocking</h3>
+<p>Send your candidate policy in <code>Content-Security-Policy-Report-Only</code>. Every resource or inline block that violates it is allowed to proceed as normal, but the browser records a violation. Nothing your users do breaks; you simply accumulate evidence. This is step zero of any CSP deployment — never flip a new policy straight to enforce.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 2 — The violation report: what the browser tells you</h3>
+<p>Each violation produces a JSON report and an in-page <code>securitypolicyviolation</code> DOM event. The report names precisely what happened:<sup><a href="#s1">1</a></sup></p>
+<div class="figure">
+<pre><code>effectiveDirective  "script-src-elem"      which directive did the blocking
+blockedURL          "inline" / an origin   what got blocked
+disposition         "enforce" | "report-only"   WHICH header fired ← key field
+documentURL         the page                originalPolicy  the full policy string
+sourceFile / lineNumber / columnNumber      where in the page
+sample              first chars of the offending inline code (if 'report-sample' set)</code></pre>
+<p class="cap">The <code>disposition</code> field is the one people miss: it tells you whether a report came from the enforcing policy or a report-only one — essential when you run both at once. <code>sample</code> only appears if the directive included <code>'report-sample'</code> (L5).</p>
+</div>
+
+<h3>Step 3 — <code>report-uri</code> vs <code>report-to</code>: two eras of the endpoint</h3>
+<p>Where reports go has two mechanisms, and they don't look alike:<sup><a href="#s2">2</a></sup></p>
+<ul>
+<li><strong><code>report-uri &lt;url&gt;</code></strong> (CSP1, deprecated) — POSTs directly to the URL as <code>Content-Type: application/csp-report</code>, wrapped as <code>{"csp-report": { "document-uri":…, "violated-directive":…, "blocked-uri":… }}</code> (hyphenated keys).</li>
+<li><strong><code>report-to &lt;group&gt;</code></strong> (CSP3) — names a group defined by a separate <code>Reporting-Endpoints</code> header, delivered through the generic Reporting API as <code>application/reports+json</code> with the camelCase fields above.</li>
+</ul>
+<div class="callout gotcha">
+  <span class="tag">Edge — send both, and know which wins</span>
+  <code>report-to</code> is preferred but only reached broad browser support recently, so real deployments send <em>both</em>. The rule: <strong>browsers that support <code>report-to</code> ignore <code>report-uri</code></strong> — so you won't get duplicate reports; older browsers fall back to <code>report-uri</code>. And <code>report-to</code> is inert without a matching <code>Reporting-Endpoints: name="https://…"</code> header defining the group.<sup><a href="#s2">2</a></sup>
+</div>
+
+<h3>Step 4 — The rollout playbook</h3>
+<div class="figure">
+<pre><code>1. Report-Only the candidate policy      breaks nothing; collect real-traffic violations
+2. Triage the reports                     separate YOUR gaps from noise (browser
+                                          extensions inject junk you can't control)
+3. Fix legitimately-blocked things        add a nonce, refactor an inline handler,
+                                          hash a static block — don't just widen the policy
+4. Flip to enforcing                      move the cleaned policy to Content-Security-Policy
+5. Keep a Report-Only for the NEXT tightening   enforce today's, observe tomorrow's</code></pre>
+<p class="cap">Step 2 is where deployments stall: report-only endpoints get flooded with violations from browser extensions and injected content you don't own. Triage by <code>sourceFile</code>/<code>blockedURL</code>; don't loosen your policy to silence noise you can't fix.</p>
+</div>
+
+<h2>Why this matters</h2>
+
+<p><strong>1. Reporting is what makes CSP deployable at all.</strong> Without report-only, a strict policy is a guess you can only test in production by breaking it. With it, CSP becomes an evidence-driven rollout: observe, fix, enforce. The strict policy of L7 is only realistic <em>because</em> this mechanism exists.</p>
+
+<p><strong>2. <code>disposition</code> and "which header" are the operator's tells.</strong> Running enforce + report-only together is standard practice — a loose enforced policy protecting today while a strict report-only one is validated for tomorrow. Reading <code>disposition</code> to know which fired, and knowing <code>report-to</code> supersedes <code>report-uri</code> where supported, is the difference between drowning in reports and driving a rollout.</p>
+
+<p><strong>3. The trap is loosening to silence noise.</strong> The instinct when reports flood in is to widen the policy until they stop. That quietly rebuilds the permissive allowlist L6 warned about. The discipline is to fix <em>your</em> violations (nonce it, refactor it, hash it) and filter the rest — keep the policy tight, keep the noise out of scope.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "You roll CSP out with <code>Content-Security-Policy-Report-Only</code> — same policy, blocks nothing, just emits violation reports — then fix what's legitimately blocked and promote it to the enforcing header. Reports carry <code>effectiveDirective</code>, <code>blockedURL</code>, and a <code>disposition</code> of enforce vs report-only. Endpoints come in two forms: deprecated <code>report-uri</code> (direct POST) and <code>report-to</code> (via the Reporting API and a <code>Reporting-Endpoints</code> header); browsers that support <code>report-to</code> ignore <code>report-uri</code>, so you send both."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Shallow: "set <code>report-uri</code> and read the logs." Deeper: <code>report-uri</code> is deprecated and ignored by browsers that understand <code>report-to</code>; you send both during the transition; and the real work is <em>triage</em> — separating your fixable gaps from un-ownable extension noise — done via report-only <em>before</em> you ever enforce. Reciting the headers without the rollout discipline is the giveaway.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What does <code>Content-Security-Policy-Report-Only</code> do differently from the enforcing header?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It evaluates the same policy but <strong>blocks nothing</strong> — it only emits violation reports for what <em>would</em> have been blocked. It's the dry-run you deploy before enforcing.</p></details>
+  <p>② Both <code>report-uri</code> and <code>report-to</code> are set. A modern browser sends reports where?</p>
+  <details><summary>show answer</summary>
+  <p class="a">To <strong><code>report-to</code></strong> (via the Reporting API) — browsers that support <code>report-to</code> <strong>ignore</strong> <code>report-uri</code>. Older browsers use <code>report-uri</code>. That's why you serve both.</p></details>
+  <p>③ Which report field tells you whether a violation came from the enforcing or the report-only policy?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>disposition</code> — either <code>"enforce"</code> or <code>"report-only"</code>. Essential when both headers are live at once.</p></details>
+  <p>④ Reports flood in from a browser extension injecting script. Correct response?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><strong>Filter/triage it out</strong> — it's un-ownable noise. Do <em>not</em> loosen the policy to silence it; that rebuilds the permissive allowlist. Only fix violations from your own code (nonce, hash, refactor).</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/report-to">MDN — <code>report-to</code></a> (the Reporting API config, the report body, and the <code>report-uri</code>/<code>report-to</code> transition) and <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy-Report-Only">MDN — <code>Content-Security-Policy-Report-Only</code></a>. Pair with <a href="https://web.dev/articles/strict-csp">web.dev's strict-CSP guide</a> for the report-only → enforce workflow in context.
+</div>
+
+<div class="ask-teacher">
+  <strong>That's the course.</strong> L1–L8 run from the per-fetch evaluation algorithm to a deployable strict policy and the rollout that ships it safely. The retrieval-practice payoff is next: an <a href="0009-interleaved-review.html">interleaved review quiz</a> spanning all eight lessons, shuffled, with near-miss distractors — run it cold now, then again in a few days (spacing beats cramming). Deeper dives worth taking later: Trusted Types as its own topic, hash-based strict CSP for static sites, or an end-to-end deploy walkthrough for a specific stack.
+</div>
+
+<div class="course-nav">
+  <span><a href="0007-strict-csp-nonces-and-strict-dynamic.html">← Lesson 7</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0009-interleaved-review.html"><em>Next: interleaved review quiz →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Report-Only header, violation report fields (<code>effectiveDirective</code>, <code>blockedURL</code>, <code>disposition</code>, <code>sourceFile</code>/line/column, <code>sample</code>), <code>securitypolicyviolation</code> event — <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy-Report-Only">MDN: CSP-Report-Only</a>; <a href="https://developer.mozilla.org/en-US/docs/Web/API/CSPViolationReport">MDN: CSPViolationReport</a>.<br>
+<span id="s2">2.</span> <code>report-to</code> via <code>Reporting-Endpoints</code> + Reporting API (<code>application/reports+json</code>), <code>report-uri</code> deprecated (<code>application/csp-report</code>, <code>{"csp-report":…}</code>), "browsers that support <code>report-to</code> ignore <code>report-uri</code>," send both in transition — <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/report-to">MDN: report-to</a>.
+</p>

@@ -1,0 +1,85 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>Content Security Policy — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>Content Security Policy</h1>
+<p class="lede">CSP explained cold, at interview depth — from the algorithm the browser runs on every fetch, through the full directive map and the CSP1 → CSP2 → CSP3 evolution, to why most real policies don't actually stop XSS and what a strict one looks like.</p>
+
+<div class="home-group">
+  <p class="label">Part 1 · The evaluation model</p>
+  <p class="blurb">What the browser actually does with a policy — before any directive catalogue makes sense.</p>
+
+  <a class="lesson-card" href="lessons/0001-how-the-browser-evaluates-a-policy.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>How the browser evaluates a policy</strong><span>Per-fetch: resource type → governing directive → <code>default-src</code> fallback chain → source-list match → allow or block+report. Why absence can mean <em>allow</em>.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-the-source-list-grammar.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>The source-list grammar</strong><span>Keywords, scheme &amp; host sources, wildcards, path matching + the redirect path-ignore rule, <code>'nonce-…'</code>, <code>'sha256-…'</code>. How one directive value is matched.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 2 · The directive map</p>
+  <p class="blurb">Each directive — grouped by family, with the fallback cascades made explicit.</p>
+
+  <a class="lesson-card" href="lessons/0003-fetch-directives-and-the-fallback-cascade.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Fetch directives &amp; the fallback cascade</strong><span><code>script-src-elem</code>/<code>-attr</code>, <code>style-src-*</code>, and the <code>default-src</code> → <code>child-src</code> → <code>frame-src</code>/<code>worker-src</code> chains.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0004-document-navigation-and-riders.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Beyond fetch: document, navigation &amp; riders</strong><span><code>base-uri</code>, <code>sandbox</code>, <code>form-action</code>, <code>frame-ancestors</code> vs <code>X-Frame-Options</code>, <code>upgrade-insecure-requests</code>, Trusted Types.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 3 · The three levels</p>
+  <p class="blurb">The explicit ask — the history is the explanation for why modern CSP looks the way it does.</p>
+
+  <a class="lesson-card" href="lessons/0005-csp1-vs-csp2-vs-csp3.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>CSP1 vs CSP2 vs CSP3</strong><span>Origin (prefixed headers → 1.0/2012), what each level added and why, and what got deprecated or removed.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 4 · Making CSP actually stop XSS</p>
+  <p class="blurb">Where a policy that looks locked-down turns out to be theatre — and the fix.</p>
+
+  <a class="lesson-card" href="lessons/0006-why-host-allowlists-fail.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>Why host allowlists fail</strong><span>JSONP endpoints, open redirects, path relaxation, framework gadgets — the Google CCS 2016 research behind the strict-CSP push.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0007-strict-csp-nonces-and-strict-dynamic.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Strict CSP: nonces + <code>'strict-dynamic'</code></strong><span>How trust propagates and neuters the host allowlist, plus <code>object-src 'none'</code> and <code>base-uri 'none'</code>. The recommended modern policy.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 5 · Operating it &amp; review</p>
+  <p class="blurb">Rolling a policy out without breaking the site — then proving you can explain it cold.</p>
+
+  <a class="lesson-card" href="lessons/0008-reporting-and-rollout.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>Reporting &amp; rollout</strong><span>Report-Only, <code>report-uri</code> (deprecated) vs <code>report-to</code> + the Reporting API, the violation report shape, report-only → enforce.</span></span>
+    <span class="arrow">→</span>
+  </a>
+
+  <a class="quiz-cta" href="lessons/0009-interleaved-review.html">
+    <span class="icon">🧠</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>20 questions across all 8 lessons, shuffled, with near-miss distractors. Run it cold, then again days later.</span></span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/glossary.html">📖 Glossary — canonical vocabulary</a>
+    <a href="reference/fallback-cheat-sheet.html">📑 Fallback-chain cheat sheet</a>
+  </div>
+</div>
