@@ -1,0 +1,265 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Review — Wargaming Fundamentals interleaved quiz</title>
+
+<p class="eyebrow">Wargaming Fundamentals · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading the lessons feels like learning but mostly builds <em>fluency</em>, the illusion of mastery. Retrieving from memory, cold, with the principles shuffled, is what builds <em>storage strength</em>. That's what this page is for.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all seven lessons and <strong>shuffled</strong> every run, on purpose. Interleaving the principles rather than reviewing one at a time is harder than blocked practice, and that difficulty is exactly what makes it stick.<sup><a href="#s1">1</a></sup> Many questions pit the right answer against a <em>near-miss</em>: the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em>, and run it again in a few days — that spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same principle twice? Flag it — it's worth re-explaining a different way, or running a live board state through the chain to drill just that step. When you can clear this cold two sessions apart, you can run value → cost → space → concentration → timing on any position without notes.
+</div>
+
+<div class="course-nav">
+  <span><a href="0007-modelling-and-self-deception.html">← Lesson 7</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST (index 0) is correct; the SECOND is a
+// deliberate "near-miss" (right idea, subtly wrong) to force precise discrimination.
+// The engine shuffles option order on render, so position is never a clue.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "Your army is nearly tabled, but you hold 3 terrain objectives to their 1 at the final scoring. Winning or losing?",
+    options: [
+      "Winning — the win condition is the mission score, not models",
+      "Losing — too few models left to hold objectives to the end",
+      "A draw — model losses cancel the objective lead",
+      "Impossible to say without the kill counts"
+    ],
+    answer: 0,
+    explain: "Body count has no intrinsic value; VP is scored from controlling objectives. A decimated army on the objectives is a winning board. (<a href='0001-value-flows-from-the-win-condition.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Why is denying the opponent a point worth exactly as much as scoring one yourself?",
+    options: [
+      "Only the difference of the two VP totals decides the game",
+      "Denying frees your own units to go score elsewhere",
+      "The mission always caps how many points each side can hold",
+      "Killing scorers is the only reliable way to win"
+    ],
+    answer: 0,
+    explain: "The game is decided by your VP minus theirs, so +1 to you and -1 to them move that difference identically. Same currency; pick whichever is cheaper. (<a href='0001-value-flows-from-the-win-condition.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "You're 10 VP ahead at the start of your turn. Is \"play safe and do nothing\" a sound plan?",
+    options: [
+      "No — control is re-contested each round and they're proactive",
+      "Yes — protect the lead by avoiding all risk",
+      "Yes — a lead is banked once it's on the scoreboard",
+      "Only if you also killed more than they did"
+    ],
+    answer: 0,
+    explain: "A lead is a snapshot of a race that never pauses, not a stored balance. Coasting hands back the initiative; holding a lead is active work. (<a href='0001-value-flows-from-the-win-condition.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A cheap screen dies without killing anything, but it cost the enemy hammer a full turn and kept it off your scorers. Good trade or bad?",
+    options: [
+      "Good — its death bought delay and protected the score",
+      "Bad — it died without trading for any enemy models",
+      "Neutral — a unit for a turn is an even exchange",
+      "Bad — you should never trade a unit you don't replace"
+    ],
+    answer: 0,
+    explain: "Its death is the price, not the outcome. It bought a turn and protected scoring, which moves the score-difference more than the models cost. A dying unit can win its trade. (<a href='0002-the-economy-of-exchanges.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Your best unit wipes a weak enemy screen with zero losses. Why might this still be a bad trade?",
+    options: [
+      "Opportunity cost — that unit was needed for a job only it could do",
+      "It isn't — a no-loss kill is always a good trade",
+      "Because killing a screen never scores any VP",
+      "Because you should have charged instead of shooting"
+    ],
+    answer: 0,
+    explain: "True cost includes the best alternative use. A cheap unit could have handled the screen; your premium unit is now out of position. Won the fight, lost the trade. (<a href='0002-the-economy-of-exchanges.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Which resource does the lesson single out as the one you can never refund?",
+    options: [
+      "Time — a fixed number of battle rounds, spent regardless",
+      "Command Points — once spent they're gone for good",
+      "Models — casualties can't be brought back",
+      "Board space — ground given up is rarely retaken"
+    ],
+    answer: 0,
+    explain: "CP and models are spent too, but time has no reserve: each round passes whether used well or not, and a wasted turn is spent as surely as a dead unit. (<a href='0002-the-economy-of-exchanges.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "What two quantities add together to make a unit's threat range?",
+    options: [
+      "Movement plus reach (gun range or charge distance)",
+      "Gun range or charge distance on its own",
+      "Movement plus its remaining wounds",
+      "Objective Control plus movement"
+    ],
+    answer: 0,
+    explain: "A 6\" move with a 24\" gun threatens 30\", measured from where it could end its move. Forgetting movement is half of it badly under-reads the footprint. (<a href='0003-threat-range-and-the-control-of-space.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A spot is out of range of every enemy unit's current position. Is it safe to place a unit there?",
+    options: [
+      "Not necessarily — read one turn forward, after they move",
+      "Yes — if nothing reaches it now, it's safe this turn",
+      "Yes — current positions are what the rules check",
+      "Only if the spot is on an objective"
+    ],
+    answer: 0,
+    explain: "Enemy threat ranges aren't fixed where they sit; on their turn they move first. Project each unit its full movement. Safe-now, open-after-they-advance is a trap. (<a href='0003-threat-range-and-the-control-of-space.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Does a unit have to fire to control the space inside its threat range?",
+    options: [
+      "No — a rational opponent must respect the footprint anyway",
+      "No — but only if it has line of sight to the whole area",
+      "Yes — control requires actually punishing entry with a shot",
+      "Yes — an un-fired unit exerts no control at all"
+    ],
+    answer: 0,
+    explain: "Walking into the range is punished, so the opponent routes around, delays, or commits to clear it. The threat does the work; the shot is almost incidental. (<a href='0003-threat-range-and-the-control-of-space.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Same total damage: remove one unit, or bloody three. Why is removing one better?",
+    options: [
+      "Output is nonlinear — a unit does ~100% until dead, then 0",
+      "A dead unit denies the enemy their kill-based secondaries",
+      "Three wounded units are harder to target next turn",
+      "Removing one is faster to resolve at the table"
+    ],
+    answer: 0,
+    explain: "Three bloodied units still shoot at near full effect; one dead unit is a permanent subtraction. Only removal crosses the cliff. (<a href='0004-concentration-of-force.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "You size a shooting attack to the target's average expected wounds. What's the flaw?",
+    options: [
+      "Average falls short half the time, leaving it at full output",
+      "Nothing — average is the right expectation to plan to",
+      "It always wastes shots the target didn't need",
+      "Average only works for melee, not shooting"
+    ],
+    answer: 0,
+    explain: "Half your rolls come in below average, and a target left alive keeps its full output. Commit to comfortably exceed its wounds, margin scaled to the stakes. (<a href='0004-concentration-of-force.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Concentrating at the decisive point leaves you thin elsewhere. Mistake or mechanism?",
+    options: [
+      "Mechanism — you can't be strong everywhere, so massing means thinning",
+      "Mistake — every sector should stay adequately defended",
+      "Mistake — unless you're already winning on points",
+      "Mechanism — but only when you outnumber them overall"
+    ],
+    answer: 0,
+    explain: "Going thin is the correct trade, not a flaw. The real error is being adequate everywhere, which makes you strong nowhere and cedes them local superiority. (<a href='0004-concentration-of-force.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What makes an uncommitted unit worth more than a committed one?",
+    options: [
+      "It's a superposition of threats — several places at once",
+      "It hasn't taken any damage yet, so it's at full strength",
+      "It scores more Objective Control while stationary",
+      "It can always fall back and shoot without penalty"
+    ],
+    answer: 0,
+    explain: "Until it acts it threatens several places and the opponent must cover all of them. Committing collapses it to one result and frees the rest. Optionality is what you spend. (<a href='0005-commitment-under-uncertainty.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "You're comfortably ahead. Should you take the swingy high-ceiling play or the low-floor safe one?",
+    options: [
+      "Low-floor — protect the lead even at the cost of upside",
+      "High-ceiling — extend the lead as far as you can",
+      "Whichever has the better average outcome",
+      "Always the swingy one; safe play is passive"
+    ],
+    answer: 0,
+    explain: "Ahead, a swingy play only adds risk you don't need. Behind, it flips — the safe line just loses slowly. Variance appetite tracks the score-difference. (<a href='0005-commitment-under-uncertainty.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Deferring decisions is powerful, so why not always wait as long as possible?",
+    options: [
+      "Deferral costs tempo — windows close and options expire",
+      "You should always wait; more information is always better",
+      "Waiting is free as long as the unit isn't in combat",
+      "Because the opponent can't act between your turns"
+    ],
+    answer: 0,
+    explain: "Land on the last moment a commitment is still fully effective. Too late and the option expired in your hand — and check whether they can remove it before your next turn. (<a href='0005-commitment-under-uncertainty.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "What is the order of the five-step chain?",
+    options: [
+      "Value, cost, space, concentration, timing",
+      "Value, space, cost, concentration, timing",
+      "Cost, value, concentration, space, timing",
+      "Value, concentration, cost, space, timing"
+    ],
+    answer: 0,
+    explain: "Value gates, cost prices, space places, concentration sizes, timing fires. Each step consumes the previous one's output. (<a href='0006-the-five-step-chain.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Why must value come before cost in the chain?",
+    options: [
+      "You can't price an effect until you know it's worth buying",
+      "Scoring is simply more urgent than saving resources",
+      "Cost only matters once your models start dying",
+      "They're interchangeable — order is just a convenience"
+    ],
+    answer: 0,
+    explain: "Cost is an exchange rate for a given effect; value defines the effect. Pricing a move you haven't confirmed is worth doing is incoherent. The order is a dependency graph. (<a href='0006-the-five-step-chain.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "You're tangled mid-turn and don't know what to do. What's the recovery procedure?",
+    options: [
+      "Drop to the top of the chain and walk down",
+      "Jump to the timing step and commit to something",
+      "Restart the turn from your most aggressive unit",
+      "Default to whatever scores the most this turn"
+    ],
+    answer: 0,
+    explain: "The first question you can't answer cleanly is the one that's actually stuck; everything below it was noise. (<a href='0006-the-five-step-chain.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "How should you model what the opponent will do?",
+    options: [
+      "By capability — what they can do, from visible threat ranges",
+      "By their most likely play, read from their habits",
+      "By their most aggressive possible attack",
+      "By whatever counters your own current plan"
+    ],
+    answer: 0,
+    explain: "Capabilities are visible; intentions aren't. Modelling capability turns an unknowable psychology problem into the spatial read you already do. (<a href='0007-modelling-and-self-deception.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "When you assume the opponent's \"best available move,\" best means what?",
+    options: [
+      "Best toward the mission — most helpful on the scoreboard",
+      "Best at destroying your army — their hardest hit",
+      "The move they'd most enjoy making",
+      "The move that's hardest for them to execute"
+    ],
+    answer: 0,
+    explain: "Model the mission-optimal move, often an objective play, not the flashiest attack. Safe against their best is safe against every worse. (<a href='0007-modelling-and-self-deception.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Why does the course rely on blunt heuristics rather than subtle ones?",
+    options: [
+      "Reasoning lawyers for what you wanted; blunt rules can't be argued around",
+      "Simple rules are just easier to memorise under time pressure",
+      "Subtle heuristics are too slow to use during a game",
+      "Blunt rules are more accurate in every situation"
+    ],
+    answer: 0,
+    explain: "Your reasoning builds a case for the exciting play you already wanted. A blunt question you can't lawyer fires anyway — that's the enforcement mechanism for the chain. (<a href='0007-modelling-and-self-deception.html'>L7</a>)" }
+]);
+</script>
