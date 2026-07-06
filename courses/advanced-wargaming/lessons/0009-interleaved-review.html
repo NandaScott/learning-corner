@@ -1,0 +1,298 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Review — Advanced Wargaming Theory interleaved quiz</title>
+
+<p class="eyebrow">Advanced Wargaming Theory · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading the lessons builds <em>fluency</em> — the feeling of knowing. Retrieving from memory, cold, with the eight advanced principles shuffled, builds <em>storage strength</em>. That's what this page is for.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all eight lessons and <strong>shuffled</strong> every run. Interleaving the principles rather than reviewing one at a time is harder than blocked practice, and that difficulty is what makes it stick.<sup><a href="#s1">1</a></sup> Many questions pit the right answer against a <em>near-miss</em>: the shallow version that sounds right. Answer from memory before reading the feedback, then hit <em>Shuffle &amp; retry</em>, and run it again in a few days — that spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same principle twice? Flag it — it's worth re-explaining a different way, or running a live board state through it. When you can clear this cold two sessions apart, the advanced layer is yours to reason from, not just recall.
+</div>
+
+<div class="course-nav">
+  <span><a href="0008-phase-by-phase-mastery.html">← Lesson 8</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST (index 0) is correct; the SECOND is a
+// deliberate "near-miss" (right idea, subtly wrong) to force precise discrimination.
+// The engine shuffles option order on render, so position is never a clue.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "What is the difference between initiative and tempo?",
+    options: [
+      "Initiative is who sets the problem; tempo is holding it over time",
+      "Initiative is the first turn; tempo is how fast you play it",
+      "Initiative is your VP lead; tempo is the opponent's VP lead",
+      "Initiative is melee priority; tempo is shooting priority"
+    ],
+    answer: 0,
+    explain: "Initiative is the state of setting problems the opponent only answers; tempo is that state held turn after turn. (<a href='0001-tempo-and-initiative.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Why is removing an enemy unit before it activates a \"double swing\"?",
+    options: [
+      "You gain your output and delete an entire enemy activation",
+      "You deal damage twice because it dies before it can save",
+      "You score the objective and deny theirs in one move",
+      "You remove a unit and gain a command point for the kill"
+    ],
+    answer: 0,
+    explain: "You get your unit's output and cancel theirs — a whole activation deleted, not just damage denied. Sharpest form of the economy of exchanges. (<a href='0001-tempo-and-initiative.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "In which 40K phase is \"kill it before it acts\" most literally true?",
+    options: [
+      "The Fight phase — the one phase that alternates activations",
+      "The Shooting phase — because you shoot before they can",
+      "The Command phase — before any unit has activated at all",
+      "The Movement phase — because you reposition out of range first"
+    ],
+    answer: 0,
+    explain: "The Fight phase alternates unit selection, so a unit killed before it's picked never swings. Elsewhere it's I-go-you-go: kill on your turn and it does nothing next turn. (<a href='0001-tempo-and-initiative.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "What distinguishes a \"decisive\" target from a merely \"dangerous\" one?",
+    options: [
+      "Decisive is what its removal does to them; dangerous is what it does to you",
+      "Decisive is the highest-damage unit; dangerous is the fastest unit",
+      "Decisive is any character; dangerous is any vehicle or monster",
+      "Decisive is the closest threat; dangerous is the one still in reserve"
+    ],
+    answer: 0,
+    explain: "Value is leverage on their plan (decisive), not menace toward you (dangerous). The most violent and most valuable targets are usually different pieces. (<a href='0002-target-priority.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Why does removing a cheap buff-character often beat removing the biggest gun?",
+    options: [
+      "Its death subtracts a fraction of every unit it was enabling",
+      "Characters always score more victory points than heavy weapons",
+      "Cheap units are easier to kill so the trade is more efficient",
+      "The biggest gun usually misses, so it was never a real threat"
+    ],
+    answer: 0,
+    explain: "Leverage: the linchpin's removal cliffs a whole cluster, not just its own output. Same effort, far more of their plan collapses. (<a href='0002-target-priority.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "In 40K, why is a linchpin character often hard to remove?",
+    options: [
+      "Attached to a Bodyguard unit, it can't be picked out as a target",
+      "Characters have a rule that ignores the first wound each turn",
+      "Buff characters are always kept in Strategic Reserves off-table",
+      "Character models are too small to draw line of sight to"
+    ],
+    answer: 0,
+    explain: "A Leader attached to a Bodyguard unit is targeted only as part of the whole unit, so removing it means grinding through or catching it exposed — you create the shot. (<a href='0002-target-priority.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "What separates a real threat-overload from just spreading your army thin?",
+    options: [
+      "Every threat must be credible — one they cannot afford to ignore",
+      "You must have more total units than the opponent has units",
+      "The threats must all target the same objective at once",
+      "You must go first so all the threats land on turn one"
+    ],
+    answer: 0,
+    explain: "Overload is several concentrated, can't-ignore threats; spreading is many weak ones they can safely ignore, and it violates concentration. (<a href='0003-deception-and-threat-overload.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "How is a sacrificial chaff unit a winning trade even though it dies?",
+    options: [
+      "The tempo, space, or activation it buys is worth more than its points",
+      "It respawns from reserves the following turn at no cost",
+      "It always kills more points than it costs before dying",
+      "Its death grants victory points for a destroyed-unit secondary"
+    ],
+    answer: 0,
+    explain: "Principle 2 made proactive: you plan the loss. Dying is the job when the tempo/space/activation bought exceeds the chaff's cost. (<a href='0003-deception-and-threat-overload.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "How does threat overload relate to the capability-mapping skill?",
+    options: [
+      "It is the inverse — you stop them covering yours, instead of covering theirs",
+      "It replaces it — overload means you no longer map their capabilities",
+      "It is identical — both are just modelling the opponent's best move",
+      "It is unrelated — overload is offence, capability-mapping is list-building"
+    ],
+    answer: 0,
+    explain: "Capability-mapping (defence) covers their best move; overload (offence) presents so many answer-forcing threats no arrangement covers all of yours. Same map, opposite direction. (<a href='0003-deception-and-threat-overload.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "In the hammer and anvil, what is the anvil's job?",
+    options: [
+      "To fix the enemy — remove their freedom to reposition",
+      "To deal the decisive blow once the hammer has pinned them",
+      "To hold the backfield objective while the hammer scores",
+      "To absorb shooting so the hammer never takes a wound"
+    ],
+    answer: 0,
+    explain: "The anvil fixes (holds/pins, or a problem they can't leave); the hammer is the mobile striker that then lands the blow. (<a href='0004-the-hammer-and-anvil.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Why does a hammer without an anvil usually fail?",
+    options: [
+      "A mobile enemy just avoids it while the rest of their army scores",
+      "It runs out of command points before it can reach the enemy",
+      "It cannot capture objectives without a character attached",
+      "It always loses combat because hammers have poor saves"
+    ],
+    answer: 0,
+    explain: "Unpinned, the enemy dances away and your most expensive piece chases shadows. Nothing removes their option to dodge, so the blow never lands. (<a href='0004-the-hammer-and-anvil.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Against a shooting army that kites, what does the anvil become?",
+    options: [
+      "Objective pressure and space denial — a positional pin, not a melee one",
+      "A faster melee unit that can finally catch the gunline",
+      "A second hammer, so you strike from two directions at once",
+      "A screen of cheap models placed in your own deployment zone"
+    ],
+    answer: 0,
+    explain: "The job is unchanged (remove their freedom to avoid); the tool shifts: make staying back lose them the game (P1) and take away room to kite (P3). (<a href='0004-the-hammer-and-anvil.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Why is taking the first turn not always the right choice?",
+    options: [
+      "It's army-dependent — a reactive army would rather give it and punish",
+      "The second player always scores more on the final turn",
+      "Going first exposes your whole army to the opponent's alpha strike",
+      "The mission penalises whoever chooses to take the first turn"
+    ],
+    answer: 0,
+    explain: "First turn is a tempo decision: worth a lot to an alpha army, little or negative to a reactive one that wants to punish the opponent's overextension. (<a href='0005-deployment-and-the-first-turn.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "At deployment, what do you expose and what do you hold back?",
+    options: [
+      "Expose the anvil and chaff; hold the hammer out of first-turn range",
+      "Expose the hammer to threaten early; hold the anvil in reserve",
+      "Expose everything so no unit is wasted sitting off the board",
+      "Hold everything back and deploy entirely from reserves turn two"
+    ],
+    answer: 0,
+    explain: "Hide the hammer (L4) done physically: the expensive striker shouldn't sit where it's hit before it swings — that's P5's don't-commit-early, as threat-range management. (<a href='0005-deployment-and-the-first-turn.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What does holding a unit in reserve buy you?",
+    options: [
+      "Optionality — it can't be shot turn one and commits after you see their move",
+      "Extra victory points for each turn it stays off the table",
+      "A guaranteed charge on the turn it arrives from reserve",
+      "A free re-deployment of your whole army after the first turn"
+    ],
+    answer: 0,
+    explain: "Reserves are pre-committed optionality (P5): deferred commitment with more information, and they physically strip targets out of the enemy's first turn. (<a href='0005-deployment-and-the-first-turn.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "What is a list, correctly understood?",
+    options: [
+      "A thesis about how to win — a coherent plan to score",
+      "A pile of the strongest available datasheets, points-optimised",
+      "A fixed sequence of moves to run turn by turn",
+      "The set of secondary missions you intend to pick"
+    ],
+    answer: 0,
+    explain: "A list is pre-game commitment stating how the army scores. Units with no plan connecting them aren't a list — there's no thesis to test. (<a href='0006-list-construction.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A strong list that can't hurt vehicles hands the opponent what?",
+    options: [
+      "A free plan — they lean on the target type you can't answer",
+      "A minor disadvantage that good positioning fully offsets",
+      "Nothing, as long as your list can kill everything else",
+      "An automatic loss of the primary mission on turn one"
+    ],
+    answer: 0,
+    explain: "A gap in the threat spectrum is a hole a good opponent builds their whole game around — they score off the thing you can't touch. (<a href='0006-list-construction.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Reading the opponent's list is which skill, run when?",
+    options: [
+      "Capability-mapping, run before deployment even begins",
+      "Target priority, run only once combat starts",
+      "Justification-distrust, run after your first mistake",
+      "Threat overload, run during your own first turn"
+    ],
+    answer: 0,
+    explain: "Their list tells you what they can do — hammer, anvil, threat spectrum, linchpin — so you know what to deny and target before placing a model. (<a href='0006-list-construction.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "What does \"on average I kill it\" actually tell you?",
+    options: [
+      "You kill it roughly half the time — the average is a centre, not a floor",
+      "You kill it almost every time, since the average accounts for bad rolls",
+      "You kill it only if you roll above average on the dice",
+      "You kill it exactly, because expected value is what you get"
+    ],
+    answer: 0,
+    explain: "The average is the middle of a distribution; it says nothing about how often you fall short. Planning on it plans to fail about half the time. (<a href='0007-risk-and-probability.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Where do guaranteed-effect tools (re-rolls, auto-hits) give the most value?",
+    options: [
+      "On low-volume, high-stakes rolls where variance bites hardest",
+      "On high-volume rolls, to raise the average of many dice",
+      "On every roll equally, since certainty is always worth the same",
+      "On rolls you're already likely to pass, to make them certain"
+    ],
+    answer: 0,
+    explain: "Low-volume rolls carry the highest variance and the law of averages doesn't protect them. On a forty-shot volley the average already holds. (<a href='0007-risk-and-probability.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "What does it mean to make a plan \"robust\" rather than \"reliant\"?",
+    options: [
+      "It still works on a below-average roll, not only if the dice cooperate",
+      "It uses more units so losses matter less over the game",
+      "It avoids all dice by only making guaranteed-effect attacks",
+      "It maximises the best-case outcome if every roll goes well"
+    ],
+    answer: 0,
+    explain: "Robust wins across the likely range including below average; reliant wins only if luck cooperates. Robust-to-bad-luck is the winning posture. (<a href='0007-risk-and-probability.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Why is the movement phase the most important phase?",
+    options: [
+      "Most of threat range is executed there, with no dice, deciding which fights happen",
+      "It is where the most victory points are directly scored",
+      "It is the only phase where you can charge and fight units",
+      "It is where dice rolls have the biggest swing on the game"
+    ],
+    answer: 0,
+    explain: "Movement is pure positioning; it decides which fights happen and on what terms, and the dice phases mostly confirm what it set. (<a href='0008-phase-by-phase-mastery.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "What is the 40K unit coherency rule?",
+    options: [
+      "Every model within 2\" of one model and 9\" of every other model",
+      "Every model within 1\" of at least one other model in the unit",
+      "Every model within 6\" of the unit leader at all times",
+      "Every model touching the base of at least one other model"
+    ],
+    answer: 0,
+    explain: "Within 2\" horizontally of at least one other model, and within 9\" horizontally of every other. That 2\" of slack is the lever for spread vs bunch. (<a href='0008-phase-by-phase-mastery.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "How does a deep-strike-denial screen work, in geometry?",
+    options: [
+      "Every point of the zone is within 9\" of a screen model, so no legal arrival",
+      "The screen models physically touch to form an unbroken wall",
+      "Any enemy within 9\" of a screen model is destroyed on arrival",
+      "The screen must be more than 9\" from your own hammer unit"
+    ],
+    answer: 0,
+    explain: "Arriving units must set up more than 9\" from your models; cover the zone within 9\" of a screen model and there's no legal drop. Drawn model by model. (<a href='0008-phase-by-phase-mastery.html'>L8</a>)" }
+]);
+</script>
