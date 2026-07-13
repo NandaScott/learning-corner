@@ -3,19 +3,19 @@
 
 <p class="eyebrow">Celery + Redis · Lesson 7</p>
 <h1>acks_late, at-least-once &amp; idempotency</h1>
-<p class="lede">The whole arc converges on one boolean. Lesson 5 said acking means deleting the in-flight ledger entry. Lesson 6 said unacked entries get redelivered. So the question "<em>when</em> do we ack — before or after the task runs?" decides your delivery guarantee. This lesson answers it, and explains why that forces your tasks to be idempotent.</p>
+<p class="lede">The whole arc converges on one boolean. Lesson 5 said acking means deleting the in-flight ledger entry. Lesson 6 said unacked entries get redelivered. So the question "<em>when</em> do we ack: before or after the task runs?" decides your delivery guarantee. This lesson answers it, and explains why that forces your tasks to be idempotent.</p>
 
 <h2>The concept</h2>
 
-<p>Recall the ledger (Lesson 5): the ack deletes a message's only surviving copy. And the restore loop (Lesson 6): an unacked entry comes back. Put those together and the timing of the ack — relative to running your task — <em>is</em> the delivery guarantee.</p>
+<p>Recall the ledger (Lesson 5): the ack deletes a message's only surviving copy. And the restore loop (Lesson 6): an unacked entry comes back. Put those together and the timing of the ack, relative to running your task, <em>is</em> the delivery guarantee.</p>
 
 <p>The fact:</p>
 
-<p><strong><code>acks_late</code> is a single boolean that chooses between at-most-once and at-least-once delivery — and there is no third option.</strong> Default <code>False</code> acks <em>before</em> the task runs, so a crash loses the task (at-most-once). <code>True</code> acks <em>after</em>, so a crash redelivers it (at-least-once). Celery on Redis cannot give you exactly-once, so if you choose at-least-once you must make the task safe to run more than once.<sup><a href="#s1">1</a></sup></p>
+<p><strong><code>acks_late</code> is a single boolean that chooses between at-most-once and at-least-once delivery, and there is no third option.</strong> Default <code>False</code> acks <em>before</em> the task runs, so a crash loses the task (at-most-once). <code>True</code> acks <em>after</em>, so a crash redelivers it (at-least-once). Celery on Redis cannot give you exactly-once, so if you choose at-least-once you must make the task safe to run more than once.<sup><a href="#s1">1</a></sup></p>
 
 <h2>The fork</h2>
 
-<p>One timeline, two ack points. The window between "task starts" and "ack" is the danger zone — a crash <em>there</em> is what differs.</p>
+<p>One timeline, two ack points. The window between "task starts" and "ack" is the danger zone: a crash <em>there</em> is what differs.</p>
 
 <div class="figure">
 <pre><code>  acks_late = False   (DEFAULT)
@@ -34,19 +34,19 @@
 </div>
 
 <h3>Default (<code>acks_late=False</code>) — at-most-once</h3>
-<p>The message is acked essentially on receipt, before your code runs. Its ledger entry is gone, so a worker crash mid-task leaves nothing to restore — the task is silently dropped. The upside: a task <em>never</em> runs twice from a crash. Good when re-running is worse than skipping (e.g. "send this one-off email" where a duplicate is worse than a miss, and you have other monitoring).</p>
+<p>The message is acked essentially on receipt, before your code runs. Its ledger entry is gone, so a worker crash mid-task leaves nothing to restore: the task is silently dropped. The upside: a task <em>never</em> runs twice from a crash. Good when re-running is worse than skipping (e.g. "send this one-off email" where a duplicate is worse than a miss, and you have other monitoring).</p>
 
 <h3><code>acks_late=True</code> — at-least-once</h3>
 <p>The ack waits until the task returns. Crash before that and the entry lingers; Lesson 6's restore (immediately on clean shutdown, or after the visibility timeout on a hard kill) puts it back, and it runs again. The upside: lost work is recovered. The cost: the task may run more than once, so it has to tolerate that.</p>
 
-<h2>The edge cases (where "exactly when" earns its keep)</h2>
+<h2>The edge cases (where "exactly when" matters)</h2>
 
 <p>Three settings refine what "after" means, and they're the difference between a textbook answer and a correct one.<sup><a href="#s2">2</a></sup></p>
 
 <table>
   <tr><th>Setting (default)</th><th>What it governs</th></tr>
-  <tr><td><code>acks_on_failure_or_timeout</code><br>(<code>True</code>)</td><td>With <code>acks_late</code>, a task that <em>raises</em> or times out is <strong>still acked</strong> — so ordinary failures are <em>not</em> redelivered (they're recorded as FAILURE; use <code>retry</code> to re-run). Set <code>False</code> to redeliver failed/timed-out tasks instead.</td></tr>
-  <tr><td><code>reject_on_worker_lost</code><br>(<code>False</code>)</td><td>If a child is killed abruptly (OOM, <code>SIGKILL</code>) mid-task, by default the message is <strong>acked, not redelivered</strong> — poison-pill protection, so a task that kills workers doesn't loop forever. Set <code>True</code> to re-queue it instead.</td></tr>
+  <tr><td><code>acks_on_failure_or_timeout</code><br>(<code>True</code>)</td><td>With <code>acks_late</code>, a task that <em>raises</em> or times out is <strong>still acked</strong>, so ordinary failures are <em>not</em> redelivered (they're recorded as FAILURE; use <code>retry</code> to re-run). Set <code>False</code> to redeliver failed/timed-out tasks instead.</td></tr>
+  <tr><td><code>reject_on_worker_lost</code><br>(<code>False</code>)</td><td>If a child is killed abruptly (OOM, <code>SIGKILL</code>) mid-task, by default the message is <strong>acked, not redelivered</strong>: poison-pill protection, so a task that kills workers doesn't loop forever. Set <code>True</code> to re-queue it instead.</td></tr>
   <tr><td><code>Reject(requeue=…)</code><br>(explicit)</td><td>Raise <code>Reject</code> in the task for manual control: <code>requeue=True</code> puts it back (guard with the <code>request.delivery_info['redelivered']</code> flag to avoid infinite loops); <code>requeue=False</code> drops it (dead-letter on AMQP).</td></tr>
 </table>
 
@@ -54,36 +54,36 @@
 
 <h2>Why there's no exactly-once</h2>
 
-<p>Exactly-once would require acking the message and committing the task's side effects as one atomic step. They're separate systems — Redis and whatever your task writes to — so a crash can always land <em>between</em> "side effect committed" and "message acked." Either you ack first (risk losing the work) or you ack last (risk repeating it). There is no instant that's safe for both. Every distributed queue lives with this; Celery just exposes it as one switch.</p>
+<p>Exactly-once would require acking the message and committing the task's side effects as one atomic step. They're separate systems, Redis and whatever your task writes to, so a crash can always land <em>between</em> "side effect committed" and "message acked." Either you ack first (risk losing the work) or you ack last (risk repeating it). There is no instant that's safe for both. Every distributed queue lives with this; Celery just exposes it as one switch.</p>
 
 <div class="callout interview">
   <span class="tag">Interview line</span>
-  "<code>acks_late</code> picks your delivery guarantee. Off — the default — acks before the task runs, so a crash loses it: at-most-once. On, it acks after, so a crash redelivers via the visibility-timeout restore: at-least-once. There's no exactly-once — you can't atomically commit the side effect and the ack across two systems — so at-least-once only works if the task is idempotent."
+  "<code>acks_late</code> picks your delivery guarantee. Off, the default, acks before the task runs, so a crash loses it: at-most-once. On, it acks after, so a crash redelivers via the visibility-timeout restore: at-least-once. There's no exactly-once: you can't atomically commit the side effect and the ack across two systems, so at-least-once only works if the task is idempotent."
 </div>
 
 <h2>Idempotency: the contract at-least-once demands</h2>
 
-<p>If a task can run twice, running it twice must equal running it once. That's idempotency, and with <code>acks_late</code> it's not optional polish — it's the precondition that makes at-least-once safe.<sup><a href="#s3">3</a></sup> Common ways to get there:</p>
+<p>If a task can run twice, running it twice must equal running it once. That's idempotency, and with <code>acks_late</code> it's the precondition that makes at-least-once safe.<sup><a href="#s3">3</a></sup> Common ways to get there:</p>
 
 <table>
   <tr><th>Technique</th><th>How</th></tr>
   <tr><td>Natural idempotence</td><td>Write operations that don't care how often they run: <code>UPDATE … SET status='paid'</code>, an upsert, <code>S3 PUT</code>. Re-running converges to the same state.</td></tr>
   <tr><td>Idempotency key + dedup</td><td>Derive a stable key from the work (e.g. order id), record "done" in a store, and short-circuit if the key's already there. Check the <code>redelivered</code> flag as a hint.</td></tr>
   <tr><td>Database unique constraint</td><td>Let the DB reject the second insert (unique on a business key); catch the violation and treat it as success.</td></tr>
-  <tr><td>Make non-idempotent steps retryable, not duplicable</td><td>For "charge a card" — exactly the thing you can't run twice — push idempotency to the downstream API (most payment APIs take an idempotency key) rather than relying on the queue.</td></tr>
+  <tr><td>Make non-idempotent steps retryable, not duplicable</td><td>For "charge a card", exactly the thing you can't run twice, push idempotency to the downstream API (most payment APIs take an idempotency key) rather than relying on the queue.</td></tr>
 </table>
 
 <h2>Why this matters — the whole course in one decision</h2>
 
-<p><strong>1. The guarantee is a choice, not a default you inherit blindly.</strong> Out of the box you have at-most-once: a crashed worker drops its in-flight tasks. If that's unacceptable, you opt into <code>acks_late=True</code> — and you pay for it by making tasks idempotent. Knowing it's a deliberate trade keeps you from assuming Celery "just doesn't lose things" (it does, by default) or "runs everything once" (it can't).</p>
+<p><strong>1. The guarantee is a choice, not a default you inherit.</strong> Out of the box you have at-most-once: a crashed worker drops its in-flight tasks. If that's unacceptable, you opt into <code>acks_late=True</code>, and you pay for it by making tasks idempotent. Knowing it's a deliberate trade keeps you from assuming Celery "just doesn't lose things" (it does, by default) or "runs everything once" (it can't).</p>
 
 <p><strong>2. The settings interlock.</strong> <code>acks_late</code> + <code>worker_prefetch_multiplier=1</code> (Lesson 2) is the canonical reliable config: don't reserve work you might crash on, and don't ack it until it's done. Pair it with a visibility timeout (Lesson 6) longer than your slowest task so the restore loop doesn't redeliver work that's merely slow.</p>
 
-<p><strong>3. It all rests on the dumb broker.</strong> Step back across the seven lessons: a Redis list (L1), a worker that pops and dispatches to children (L2), a tracer running lifecycle hooks and signals (L3–L4), an emulated ack ledger (L5), a restore loop (L6), and one boolean that turns those into a delivery guarantee (L7). Redis stored a list, a hash, and a sorted set. Every guarantee above that was built by kombu and Celery in the client. That's the whole story.</p>
+<p><strong>3. It all rests on the dumb broker.</strong> Step back across the seven lessons: a Redis list (L1), a worker that pops and dispatches to children (L2), a tracer running lifecycle hooks and signals (L3–L4), an emulated ack ledger (L5), a restore loop (L6), and one boolean that turns those into a delivery guarantee (L7). Redis stored a list, a hash, and a sorted set. Every guarantee above that was built by kombu and Celery in the client.</p>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow: "turn on <code>acks_late</code> and Celery won't lose or double-run tasks." Wrong on both halves. It doesn't give exactly-once — it moves you from at-most-once to at-<em>least</em>-once, trading dropped work for possible duplicates. And it doesn't redeliver on ordinary failures (those still ack) or even, by default, when a child is OOM-killed (<code>reject_on_worker_lost=False</code>). Knowing late-ack protects against <em>worker death</em>, demands <em>idempotency</em>, and still isn't exactly-once is the complete answer.
+  Shallow: "turn on <code>acks_late</code> and Celery won't lose or double-run tasks." Wrong on both halves. It doesn't give exactly-once, it moves you from at-most-once to at-<em>least</em>-once, trading dropped work for possible duplicates. And it doesn't redeliver on ordinary failures (those still ack) or even, by default, when a child is OOM-killed (<code>reject_on_worker_lost=False</code>). Knowing late-ack protects against <em>worker death</em>, demands <em>idempotency</em>, and still isn't exactly-once is the complete answer.
 </div>
 
 <div class="recall">
@@ -93,10 +93,10 @@
   <p class="a"><code>False</code> (default): ack before run → a crash loses the task → at-most-once. <code>True</code>: ack after run → a crash leaves the ledger entry to be restored → at-least-once.</p></details>
   <p>② Why can't Celery on Redis offer exactly-once?</p>
   <details><summary>show answer</summary>
-  <p class="a">Acking and committing the task's side effects are separate systems; a crash can always fall between them. Ack-first risks loss, ack-last risks repeat — no instant is safe for both.</p></details>
+  <p class="a">Acking and committing the task's side effects are separate systems; a crash can always fall between them. Ack-first risks loss, ack-last risks repeat, no instant is safe for both.</p></details>
   <p>③ With <code>acks_late=True</code>, does a task that raises an exception get redelivered?</p>
   <details><summary>show answer</summary>
-  <p class="a">No — <code>acks_on_failure_or_timeout=True</code> (default) acks it anyway; it's recorded FAILURE. Redelivery happens on worker death, not ordinary exceptions. (Use <code>retry</code> to re-run on failure.)</p></details>
+  <p class="a">No, <code>acks_on_failure_or_timeout=True</code> (default) acks it anyway; it's recorded FAILURE. Redelivery happens on worker death, not ordinary exceptions. (Use <code>retry</code> to re-run on failure.)</p></details>
   <p>④ Why does at-least-once force idempotency, and name one way to achieve it?</p>
   <details><summary>show answer</summary>
   <p class="a">Because the task can run 2+ times, running twice must equal running once. E.g. upserts / natural idempotence, an idempotency key + dedup store, a DB unique constraint, or pushing an idempotency key to the downstream API.</p></details>
@@ -104,11 +104,11 @@
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.acks_late">Celery docs — Tasks › <code>acks_late</code></a> and the surrounding "should be idempotent" guidance, plus the <a href="https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_acks_late">configuration entries</a> for <code>task_acks_late</code>, <code>task_acks_on_failure_or_timeout</code>, and <code>task_reject_on_worker_lost</code>. Read the <code>Reject</code>/<code>redelivered</code> example in the same Tasks page to see manual redelivery control.
+  <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.acks_late">Celery docs, Tasks › <code>acks_late</code></a> and the surrounding "should be idempotent" guidance, plus the <a href="https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_acks_late">configuration entries</a> for <code>task_acks_late</code>, <code>task_acks_on_failure_or_timeout</code>, and <code>task_reject_on_worker_lost</code>. Read the <code>Reject</code>/<code>redelivered</code> example in the same Tasks page to see manual redelivery control.
 </div>
 
 <div class="ask-teacher">
-  <strong>You've finished the arc.</strong> Seven lessons: list → worker → lifecycle → signals → ledger → restore → guarantee. The strongest next move is a <strong>review quiz</strong> across all seven — interleaved and shuffled, the retrieval practice that turns this from "I followed it" into "I can explain it cold." Want me to build it? Or pull on a thread: dead-letter patterns on Redis, the reliable-config checklist, or RabbitMQ-vs-Redis where native acks change this whole story.</p>
+  <strong>You've finished the arc.</strong> Seven lessons: list → worker → lifecycle → signals → ledger → restore → guarantee. The strongest next move is a <strong>review quiz</strong> across all seven, interleaved and shuffled, the retrieval practice that turns this from "I followed it" into "I can explain it cold." Want me to build it? Or pull on a thread: dead-letter patterns on Redis, the reliable-config checklist, or RabbitMQ-vs-Redis where native acks change this whole story.</p>
 </div>
 
 <div class="course-nav">

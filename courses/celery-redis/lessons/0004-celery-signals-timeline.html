@@ -3,19 +3,19 @@
 
 <p class="eyebrow">Celery + Redis · Lesson 4</p>
 <h1>Signals: exactly when each one fires</h1>
-<p class="lede">Signals are Celery's hooks — connect a function and it runs at a fixed moment. The catch interviewers and bugs both exploit: different signals fire in different <em>processes</em>. This lesson lays every signal onto the journey from Lessons 1–3, and says which process it runs in.</p>
+<p class="lede">Signals are Celery's hooks: connect a function and it runs at a fixed moment. The catch interviewers and bugs both exploit: different signals fire in different <em>processes</em>. This lesson lays every signal onto the journey from Lessons 1–3, and says which process it runs in.</p>
 
 <h2>The concept</h2>
 
-<p>A Celery signal is a <a href="https://blinker.readthedocs.io/">blinker</a>-style dispatch point: <code>signal.connect(handler)</code> and the handler runs synchronously when Celery <code>send()</code>s it.<sup><a href="#s1">1</a></sup> They're not magic — they're <code>send()</code> calls placed at exact lines in the publish path, the consumer, and the tracer.</p>
+<p>A Celery signal is a <a href="https://blinker.readthedocs.io/">blinker</a>-style dispatch point: <code>signal.connect(handler)</code> and the handler runs synchronously when Celery <code>send()</code>s it.<sup><a href="#s1">1</a></sup> They're not magic: they're <code>send()</code> calls placed at exact lines in the publish path, the consumer, and the tracer.</p>
 
 <p>The fact that makes signals tricky:</p>
 
-<p><strong>Signals fire in whichever process reaches that line — and the three groups live in three different processes.</strong> Publish signals fire in the <em>producer</em> (your Django web process). <code>task_received</code> fires in the worker's <em>main</em> process (the Consumer, Lesson 2). The execution signals fire in the <em>child</em> process running the task (the tracer, Lesson 3). Connect a handler in the wrong place and it simply never fires.</p>
+<p><strong>Signals fire in whichever process reaches that line, and the three groups live in three different processes.</strong> Publish signals fire in the <em>producer</em> (your Django web process). <code>task_received</code> fires in the worker's <em>main</em> process (the Consumer, Lesson 2). The execution signals fire in the <em>child</em> process running the task (the tracer, Lesson 3). Connect a handler in the wrong place and it simply never fires.</p>
 
 <h2>The grand timeline</h2>
 
-<p>One task, end to end, with every signal in order and the process it fires in. The grey handler calls are from Lesson 3 — shown so you can see exactly where the signals sit relative to them.</p>
+<p>One task, end to end, with every signal in order and the process it fires in. The grey handler calls are from Lesson 3, shown so you can see exactly where the signals sit relative to them.</p>
 
 <div class="figure">
 <pre><code>  ── PRODUCER process (whoever called .delay) ───────────────────────────
@@ -44,14 +44,14 @@
   <tr><td><code>before_task_publish</code></td><td>after the message is built, <em>before</em> it's sent to the broker</td><td><code>body, exchange, routing_key, headers, properties</code></td></tr>
   <tr><td><code>after_task_publish</code></td><td>after the message has been sent to the broker</td><td><code>headers, body, exchange, routing_key</code></td></tr>
 </table>
-<p>Both run "in the process that sent the task"<sup><a href="#s2">2</a></sup> — i.e. your web request, not the worker. This is the trap below. (<code>task_sent</code> is the old, deprecated version — ignore it.)</p>
+<p>Both run "in the process that sent the task"<sup><a href="#s2">2</a></sup>, i.e. your web request, not the worker. This is the trap below. (<code>task_sent</code> is the old, deprecated version; ignore it.)</p>
 
 <h3>Group 2 — Receipt (in the worker's main process)</h3>
 <table>
   <tr><th>Signal</th><th>Fires exactly when</th><th>Process</th></tr>
   <tr><td><code>task_received</code></td><td>the Consumer pops a message and builds a Request (Lesson 2, step 3)</td><td>main worker process</td></tr>
 </table>
-<p>This is the one signal that fires in the supervisor, not a child. It's your hook for "a worker has claimed this message" — before any child touches it.</p>
+<p>This is the one signal that fires in the supervisor, not a child. It's your hook for "a worker has claimed this message", before any child touches it.</p>
 
 <h3>Group 3 — Execution signals (in the child process)</h3>
 <table>
@@ -67,16 +67,16 @@
 <h3>Group 4 — The error/edge signals</h3>
 <table>
   <tr><th>Signal</th><th>Fires when</th></tr>
-  <tr><td><code>task_revoked</code></td><td>a task is revoked (cancelled) — before it runs, or terminated mid-run</td></tr>
+  <tr><td><code>task_revoked</code></td><td>a task is revoked (cancelled): before it runs, or terminated mid-run</td></tr>
   <tr><td><code>task_rejected</code></td><td>the worker gets a message it can't decode or route to any known queue</td></tr>
   <tr><td><code>task_unknown</code></td><td>the message names a task this worker hasn't registered</td></tr>
-  <tr><td><code>task_internal_error</code></td><td>the tracer itself errors (not your code — Celery's machinery)</td></tr>
+  <tr><td><code>task_internal_error</code></td><td>the tracer itself errors (not your code, Celery's machinery)</td></tr>
 </table>
 <p><code>task_rejected</code> and <code>task_unknown</code> fire in the main process (the Consumer can't even build a Request); they're the failure modes of Lesson 1's "the worker must already define this task."</p>
 
 <h2>Worker lifecycle signals</h2>
 
-<p>Separate from any single task — these mark the worker process itself starting and stopping. The precise bit: some fire once in the main process, some fire <strong>once per child</strong>.</p>
+<p>Separate from any single task, these mark the worker process itself starting and stopping. The precise bit: some fire once in the main process, some fire <strong>once per child</strong>.</p>
 
 <div class="figure">
 <pre><code>  STARTUP
@@ -89,50 +89,50 @@
     worker_shutting_down    ← main process, shutdown begins
     worker_process_shutdown ← in EACH pool child just before it exits (not guaranteed)
     worker_shutdown         ← main process, final</code></pre>
-<p class="cap"><code>worker_process_init</code> / <code>worker_process_shutdown</code> fire in every child — the right place to open/close per-process resources like a DB connection that must not be shared across forked children.<sup><a href="#s4">4</a></sup></p>
+<p class="cap"><code>worker_process_init</code> / <code>worker_process_shutdown</code> fire in every child: the right place to open/close per-process resources like a DB connection that must not be shared across forked children.<sup><a href="#s4">4</a></sup></p>
 </div>
 
 <h2>Why this matters</h2>
 
-<p><strong>1. Process locality decides whether your handler ever runs.</strong> Register a <code>before_task_publish</code> handler only in your worker startup code and it will never fire — publishing happens in the web process. Conversely, a <code>worker_process_init</code> handler placed where only the web app imports it does nothing. Signals fire where the code path runs, full stop.</p>
+<p><strong>1. Process locality decides whether your handler ever runs.</strong> Register a <code>before_task_publish</code> handler only in your worker startup code and it will never fire: publishing happens in the web process. Conversely, a <code>worker_process_init</code> handler placed where only the web app imports it does nothing. Signals fire where the code path runs, full stop.</p>
 
-<p><strong>2. <code>task_postrun</code> is the "runs on every attempt" hook that <code>after_return</code> isn't.</strong> Lesson 3's <code>after_return</code> skips retries; <code>task_postrun</code> fires on every outcome including <code>RETRY</code>. So for metrics like "count every execution attempt," use <code>task_postrun</code> — using <code>after_return</code> would undercount every retried task.</p>
+<p><strong>2. <code>task_postrun</code> is the "runs on every attempt" hook that <code>after_return</code> isn't.</strong> Lesson 3's <code>after_return</code> skips retries; <code>task_postrun</code> fires on every outcome including <code>RETRY</code>. So for metrics like "count every execution attempt," use <code>task_postrun</code>. Using <code>after_return</code> would undercount every retried task.</p>
 
-<p><strong>3. Forked children need per-process setup.</strong> Because the prefork pool forks children (Lesson 2), resources opened in the main process — DB connections, sockets — are unsafe to share. <code>worker_process_init</code> is where you reopen them per child. This is the single most common Celery-signals bug in Django apps.</p>
+<p><strong>3. Forked children need per-process setup.</strong> Because the prefork pool forks children (Lesson 2), resources opened in the main process (DB connections, sockets) are unsafe to share. <code>worker_process_init</code> is where you reopen them per child. This is the single most common Celery-signals bug in Django apps.</p>
 
 <div class="callout interview">
   <span class="tag">Interview line</span>
-  "Signals fire in three places: <code>before/after_task_publish</code> in the producer, <code>task_received</code> in the worker's main process, and <code>task_prerun</code>…<code>task_postrun</code> in the child running the task. <code>task_prerun</code> is the first thing the tracer does and <code>task_postrun</code> the last — and <code>task_postrun</code> fires on every outcome, including retries, unlike <code>after_return</code>."
+  "Signals fire in three places: <code>before/after_task_publish</code> in the producer, <code>task_received</code> in the worker's main process, and <code>task_prerun</code>…<code>task_postrun</code> in the child running the task. <code>task_prerun</code> is the first thing the tracer does and <code>task_postrun</code> the last, and <code>task_postrun</code> fires on every outcome, including retries, unlike <code>after_return</code>."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow answer: "signals fire in the worker." Some don't — <code>before_task_publish</code> and <code>after_task_publish</code> fire in whatever process called <code>.delay()</code> (your web app). Getting process-locality right — and knowing <code>worker_process_init</code> fires once per <em>forked child</em>, which is why you reopen DB connections there — is what separates someone who's debugged Celery from someone who's only read about it.
+  Shallow answer: "signals fire in the worker." Some don't: <code>before_task_publish</code> and <code>after_task_publish</code> fire in whatever process called <code>.delay()</code> (your web app). Getting process-locality right, and knowing <code>worker_process_init</code> fires once per <em>forked child</em> (which is why you reopen DB connections there), is what separates someone who's debugged Celery from someone who's only read about it.
 </div>
 
 <div class="recall">
   <p class="q">Recall — answer out loud before peeking:</p>
   <p>① In which process does <code>before_task_publish</code> fire, and why does it matter?</p>
   <details><summary>show answer</summary>
-  <p class="a">The producer — whatever called <code>.delay()</code> (e.g. the Django web process), not the worker. A handler connected only in worker code never fires for it.</p></details>
+  <p class="a">The producer, whatever called <code>.delay()</code> (e.g. the Django web process), not the worker. A handler connected only in worker code never fires for it.</p></details>
   <p>② Order these around the task body: <code>task_prerun</code>, <code>before_start</code>, <code>task_postrun</code>, <code>after_return</code>.</p>
   <details><summary>show answer</summary>
   <p class="a"><code>task_prerun</code> → <code>before_start</code> → (run) → <code>after_return</code> → <code>task_postrun</code>. Prerun is first in the trace; postrun is last.</p></details>
-  <p>③ You want a counter that increments on every execution attempt, retries included. Signal or handler — which, and why?</p>
+  <p>③ You want a counter that increments on every execution attempt, retries included. Signal or handler: which, and why?</p>
   <details><summary>show answer</summary>
   <p class="a"><code>task_postrun</code> signal. It fires on all outcomes including <code>RETRY</code>; <code>after_return</code> skips retries and would undercount.</p></details>
   <p>④ Which signal fires once per pool child, and what's it for?</p>
   <details><summary>show answer</summary>
-  <p class="a"><code>worker_process_init</code> (and <code>worker_process_shutdown</code> on exit). For per-process resources — e.g. reopening a DB connection that mustn't be shared across forked children.</p></details>
+  <p class="a"><code>worker_process_init</code> (and <code>worker_process_shutdown</code> on exit). For per-process resources, e.g. reopening a DB connection that mustn't be shared across forked children.</p></details>
 </div>
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://docs.celeryq.dev/en/stable/userguide/signals.html">Celery docs — Signals</a>. The complete reference: every signal, its arguments, and the "executed in the process that sent the task" notes that pin down locality. Read the Task-signal and Worker-signal sections; pair with <a href="https://github.com/celery/celery/blob/main/celery/app/trace.py">trace.py</a> to see the <code>send_prerun</code>/<code>send_success</code>/<code>send_postrun</code> calls in the exact order from the timeline above.
+  <a href="https://docs.celeryq.dev/en/stable/userguide/signals.html">Celery docs, Signals</a>. The complete reference: every signal, its arguments, and the "executed in the process that sent the task" notes that pin down locality. Read the Task-signal and Worker-signal sections; pair with <a href="https://github.com/celery/celery/blob/main/celery/app/trace.py">trace.py</a> to see the <code>send_prerun</code>/<code>send_success</code>/<code>send_postrun</code> calls in the exact order from the timeline above.
 </div>
 
 <div class="ask-teacher">
-  <strong>Wire one up.</strong> Want to prove locality for yourself? Connect <code>before_task_publish</code> and <code>task_prerun</code> handlers that log <code>os.getpid()</code>, then fire a task — you'll see two different PIDs (web vs child). Curious how signals behave under the <code>solo</code> or <code>gevent</code> pools (no separate child process), or how <code>task_revoked</code> distinguishes "not yet started" from "terminated mid-run"? Both are worth asking about.
+  <strong>Wire one up.</strong> Want to prove locality for yourself? Connect <code>before_task_publish</code> and <code>task_prerun</code> handlers that log <code>os.getpid()</code>, then fire a task. You'll see two different PIDs (web vs child). Curious how signals behave under the <code>solo</code> or <code>gevent</code> pools (no separate child process), or how <code>task_revoked</code> distinguishes "not yet started" from "terminated mid-run"? Both are worth asking about.
 </div>
 
 <div class="course-nav">

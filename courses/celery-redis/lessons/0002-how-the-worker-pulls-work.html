@@ -7,11 +7,11 @@
 
 <h2>The concept</h2>
 
-<p>"The Celery worker runs my task" is true the way "the post office delivers my letter" is true — it hides every interesting part. The process you launch with <code>celery -A app worker</code> is a <strong>supervisor</strong>. It runs <em>no task code at all</em>. Its whole job is to pull messages off Redis, do bookkeeping, and hand the work to <em>other</em> processes.<sup><a href="#s1">1</a></sup></p>
+<p>"The Celery worker runs my task" is true the way "the post office delivers my letter" is true: it hides every interesting part. The process you launch with <code>celery -A app worker</code> is a <strong>supervisor</strong>. It runs <em>no task code at all</em>. Its whole job is to pull messages off Redis, do bookkeeping, and hand the work to <em>other</em> processes.<sup><a href="#s1">1</a></sup></p>
 
 <p>The fact underneath this lesson:</p>
 
-<p><strong>Inside one worker there are two layers: a single main process that talks to the broker (the <em>Consumer</em>), and a pool of child processes that execute tasks (the <em>execution pool</em>).</strong> The broker→worker hop is one <code>BRPOP</code>. The interesting handoff is the second one — main process to child — and it happens over an OS <strong>pipe</strong>, not over Redis.<sup><a href="#s2">2</a></sup></p>
+<p><strong>Inside one worker there are two layers: a single main process that talks to the broker (the <em>Consumer</em>), and a pool of child processes that execute tasks (the <em>execution pool</em>).</strong> The broker→worker hop is one <code>BRPOP</code>. The interesting handoff is the second one (main process to child), and it happens over an OS <strong>pipe</strong>, not over Redis.<sup><a href="#s2">2</a></sup></p>
 
 <h2>The steps</h2>
 
@@ -37,10 +37,10 @@
 </div>
 
 <h3>Step 1 — The Consumer pulls from the broker</h3>
-<p>The main process runs a component called the <strong>Consumer</strong>. It owns the broker connection and, through kombu, issues the <code>BRPOP</code> from Lesson 1. It doesn't busy-poll — for the Redis transport the worker drives kombu from an async event loop (the <strong>Hub</strong>), so an idle worker sleeps on the socket and wakes the instant a message lands.<sup><a href="#s1">1</a></sup></p>
+<p>The main process runs a component called the <strong>Consumer</strong>. It owns the broker connection and, through kombu, issues the <code>BRPOP</code> from Lesson 1. It doesn't busy-poll: for the Redis transport the worker drives kombu from an async event loop (the <strong>Hub</strong>), so an idle worker sleeps on the socket and wakes the instant a message lands.<sup><a href="#s1">1</a></sup></p>
 
 <h3>Step 2 — Prefetch: it grabs more than it can run</h3>
-<p>The Consumer doesn't pull one message per free slot. It pulls ahead — <code>worker_prefetch_multiplier × concurrency</code> messages — and parks the surplus in an <strong>in-memory buffer</strong>, reserved. Default multiplier is <strong>4</strong>, so a worker with concurrency 8 reserves up to 32 messages before any of them finish.<sup><a href="#s3">3</a></sup></p>
+<p>The Consumer doesn't pull one message per free slot. It pulls ahead (<code>worker_prefetch_multiplier × concurrency</code> messages) and parks the surplus in an <strong>in-memory buffer</strong>, reserved. Default multiplier is <strong>4</strong>, so a worker with concurrency 8 reserves up to 32 messages before any of them finish.<sup><a href="#s3">3</a></sup></p>
 
 <div class="figure">
 <pre><code>  concurrency = 8 child slots,  prefetch_multiplier = 4
@@ -50,12 +50,12 @@
 </div>
 
 <h3>Step 3 — The message becomes a Request</h3>
-<p>For each message, the Consumer applies the task's <strong>strategy</strong> — a small handler built per registered task — which decodes the envelope and wraps it in a <code>celery.worker.request.Request</code> object: the in-memory representation of "this specific call, with these args, this id, this delivery tag."<sup><a href="#s2">2</a></sup> From here on the worker reasons about a Request, not raw JSON.</p>
+<p>For each message, the Consumer applies the task's <strong>strategy</strong>, a small handler built per registered task, which decodes the envelope and wraps it in a <code>celery.worker.request.Request</code> object: the in-memory representation of "this specific call, with these args, this id, this delivery tag."<sup><a href="#s2">2</a></sup> From here on the worker reasons about a Request, not raw JSON.</p>
 
 <h3>Step 4 — The fork in the road: Timer or Pool</h3>
 <p>The Request is then routed by <em>when</em> it should run:<sup><a href="#s2">2</a></sup></p>
 <ul>
-<li><strong>Has an ETA / countdown, or is rate-limited</strong> → it goes to the <strong>Timer</strong>, an in-memory scheduler that holds it until its due time, then releases it to the pool. (This is why a countdown task still occupies the worker — it's parked in memory, already pulled off the broker.)</li>
+<li><strong>Has an ETA / countdown, or is rate-limited</strong> → it goes to the <strong>Timer</strong>, an in-memory scheduler that holds it until its due time, then releases it to the pool. (This is why a countdown task still occupies the worker: it's parked in memory, already pulled off the broker.)</li>
 <li><strong>Ready to run now</strong> → straight to the <strong>execution pool</strong>.</li>
 </ul>
 
@@ -74,51 +74,51 @@
 </div>
 
 <h3>Step 6 — The result leaves by a different door</h3>
-<p>The child's return value goes to the <strong>result backend</strong> — a separate store (often Redis again, but a <em>different</em> set of keys, or a database) keyed by task id. It does <strong>not</strong> go back onto the broker queue. Broker = work going <em>in</em>; backend = results coming <em>out</em>. They're independent systems that happen to both be able to use Redis.</p>
+<p>The child's return value goes to the <strong>result backend</strong>, a separate store (often Redis again, but a <em>different</em> set of keys, or a database) keyed by task id. It does <strong>not</strong> go back onto the broker queue. Broker = work going <em>in</em>; backend = results coming <em>out</em>. They're independent systems that happen to both be able to use Redis.</p>
 
 <h2>Why this matters</h2>
 
 <p>The two-layer shape explains the symptoms people actually hit.</p>
 
-<p><strong>1. "I have idle workers but tasks are stuck."</strong> Prefetch (step 2). A worker that grabbed 32 messages holds them in memory even while a fresh worker sits empty — the stuck tasks were reserved off the broker long ago. The fix is <code>worker_prefetch_multiplier = 1</code> for long tasks, so the broker stays the source of truth for "what's unclaimed."</p>
+<p><strong>1. "I have idle workers but tasks are stuck."</strong> Prefetch (step 2). A worker that grabbed 32 messages holds them in memory even while a fresh worker sits empty: the stuck tasks were reserved off the broker long ago. The fix is <code>worker_prefetch_multiplier = 1</code> for long tasks, so the broker stays the source of truth for "what's unclaimed."</p>
 
-<p><strong>2. Concurrency lives in the pool, not the fetch.</strong> Raising prefetch doesn't add parallelism — it only deepens the in-memory buffer. Parallelism is the number of pool children/threads/greenlets. Conflating the two is the classic Celery tuning mistake.</p>
+<p><strong>2. Concurrency lives in the pool, not the fetch.</strong> Raising prefetch doesn't add parallelism: it only deepens the in-memory buffer. Parallelism is the number of pool children/threads/greenlets. Conflating the two is the classic Celery tuning mistake.</p>
 
-<p><strong>3. The main process is a bottleneck and a single point of bookkeeping.</strong> Every message flows through one Consumer before fanning out to children. If your task code blocks the main process (it shouldn't — it runs in a child), or the pipe backs up, the whole worker stalls. It also means the main process is what acks messages and what restores them on shutdown (a later lesson).</p>
+<p><strong>3. The main process is a bottleneck and a single point of bookkeeping.</strong> Every message flows through one Consumer before fanning out to children. If your task code blocks the main process (it shouldn't: it runs in a child), or the pipe backs up, the whole worker stalls. It also means the main process is what acks messages and what restores them on shutdown (a later lesson).</p>
 
 <div class="callout interview">
   <span class="tag">Interview line</span>
-  "A Celery worker is two layers: one main process — the Consumer — that <code>BRPOP</code>s messages off Redis, turns each into a Request, and prefetches ahead into memory; and a pool of child processes that actually run the code, fed over a pipe. Concurrency is the pool size; prefetch is just how far ahead the consumer reads. Results leave through a separate backend, not the broker."
+  "A Celery worker is two layers: one main process, the Consumer, that <code>BRPOP</code>s messages off Redis, turns each into a Request, and prefetches ahead into memory; and a pool of child processes that actually run the code, fed over a pipe. Concurrency is the pool size; prefetch is just how far ahead the consumer reads. Results leave through a separate backend, not the broker."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow: "the worker runs the task." The worker's <em>main</em> process runs none of your code — it's a broker client and dispatcher; a forked <em>child</em> runs the task, fed over a pipe. The deeper tell is naming <strong>prefetch</strong>: messages are pulled off Redis and reserved <em>in memory</em> long before a slot is free, which is why "stuck tasks + idle workers" happens and why <code>prefetch_multiplier=1</code> fixes it.
+  Shallow: "the worker runs the task." The worker's <em>main</em> process runs none of your code: it's a broker client and dispatcher; a forked <em>child</em> runs the task, fed over a pipe. The deeper tell is naming <strong>prefetch</strong>: messages are pulled off Redis and reserved <em>in memory</em> long before a slot is free, which is why "stuck tasks + idle workers" happens and why <code>prefetch_multiplier=1</code> fixes it.
 </div>
 
 <div class="recall">
   <p class="q">Recall — answer out loud before peeking:</p>
-  <p>① What does the worker's <em>main</em> process actually do — and what does it not do?</p>
+  <p>① What does the worker's <em>main</em> process actually do, and what does it not do?</p>
   <details><summary>show answer</summary>
-  <p class="a">It runs the Consumer: connects to the broker, <code>BRPOP</code>s messages, builds Requests, prefetches, dispatches, and does bookkeeping (acks). It does <em>not</em> run task code — child processes in the pool do.</p></details>
+  <p class="a">It runs the Consumer: connects to the broker, <code>BRPOP</code>s messages, builds Requests, prefetches, dispatches, and does bookkeeping (acks). It does <em>not</em> run task code. Child processes in the pool do.</p></details>
   <p>② Where does a message go between the Consumer and the child process?</p>
   <details><summary>show answer</summary>
   <p class="a">It's turned into a Request, then either parked in the Timer (if it has an ETA/countdown/rate-limit) or sent to the execution pool, which writes it down a pipe to an idle child.</p></details>
   <p>③ What is prefetch, and what is it <em>not</em>?</p>
   <details><summary>show answer</summary>
-  <p class="a">It's how many messages the consumer reserves ahead into memory: <code>prefetch_multiplier × concurrency</code> (default multiplier 4). It is <em>not</em> parallelism — that's the pool size. More prefetch just deepens the buffer.</p></details>
+  <p class="a">It's how many messages the consumer reserves ahead into memory: <code>prefetch_multiplier × concurrency</code> (default multiplier 4). It is <em>not</em> parallelism: that's the pool size. More prefetch just deepens the buffer.</p></details>
   <p>④ Where does a task's return value go?</p>
   <details><summary>show answer</summary>
-  <p class="a">To the result backend — a separate store keyed by task id (can be Redis, but different keys, or a DB). Never back onto the broker queue.</p></details>
+  <p class="a">To the result backend, a separate store keyed by task id (can be Redis, but different keys, or a DB). Never back onto the broker queue.</p></details>
 </div>
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://docs.celeryq.dev/en/stable/internals/worker.html">Celery docs — Internals: The worker</a>. The authoritative component list: Consumer → Request → Timer vs execution pool. Short. Pair it with <a href="https://docs.celeryq.dev/en/stable/userguide/workers.html#concurrency">Workers › Concurrency</a> for the pool types, and <a href="https://patrick.cloke.us/posts/2023/09/15/celery-architecture-breakdown/">Patrick Cloke's "Celery architecture breakdown"</a> for a clean walk of the same pipeline with diagrams.
+  <a href="https://docs.celeryq.dev/en/stable/internals/worker.html">Celery docs, Internals: The worker</a>. The authoritative component list: Consumer → Request → Timer vs execution pool. Short. Pair it with <a href="https://docs.celeryq.dev/en/stable/userguide/workers.html#concurrency">Workers › Concurrency</a> for the pool types, and <a href="https://patrick.cloke.us/posts/2023/09/15/celery-architecture-breakdown/">Patrick Cloke's "Celery architecture breakdown"</a> for a clean walk of the same pipeline with diagrams.
 </div>
 
 <div class="ask-teacher">
-  <strong>Pull the threads.</strong> Want to see the two layers for real? <code>celery -A app worker -c 4</code>, then <code>celery -A app inspect reserved</code> shows messages prefetched-but-not-running, and <code>ps</code> shows the one parent + four child PIDs. Curious how <code>worker_disable_prefetch</code> (Redis-only — fetch only when a slot is free) changes step 2, or exactly <em>when</em> the message gets acked in this pipeline? That ack timing is a later lesson — ask if you want it now. <strong>Lesson 3 zooms into the child process: which task method runs when.</strong>
+  <strong>Pull the threads.</strong> Want to see the two layers for real? <code>celery -A app worker -c 4</code>, then <code>celery -A app inspect reserved</code> shows messages prefetched-but-not-running, and <code>ps</code> shows the one parent + four child PIDs. Curious how <code>worker_disable_prefetch</code> (Redis-only, fetch only when a slot is free) changes step 2, or exactly <em>when</em> the message gets acked in this pipeline? That ack timing is a later lesson. Ask if you want it now. <strong>Lesson 3 zooms into the child process: which task method runs when.</strong>
 </div>
 
 <div class="course-nav">
