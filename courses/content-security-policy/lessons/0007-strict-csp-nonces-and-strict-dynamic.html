@@ -3,18 +3,18 @@
 
 <p class="eyebrow">Content Security Policy · Lesson 7</p>
 <h1>Strict CSP: nonces + <code>'strict-dynamic'</code></h1>
-<p class="lede">L6 showed the host-allowlist model is broken. This is the answer the same researchers proposed and Google now recommends: stop trusting <em>origins</em> and start trusting <em>the specific scripts you emitted</em>. A nonce marks your scripts, <code>'strict-dynamic'</code> lets them pull in their dependencies, and the domain allowlist is thrown away — which is exactly why every L6 vector stops working.</p>
+<p class="lede">L6 showed the host-allowlist model is broken. This is the answer the same researchers proposed and Google now recommends: stop trusting <em>origins</em> and start trusting <em>the specific scripts you emitted</em>. A nonce marks your scripts, <code>'strict-dynamic'</code> lets them pull in their dependencies, and the domain allowlist is thrown away, which is exactly why every L6 vector stops working.</p>
 
 <h2>The concept</h2>
 
-<p>A strict CSP inverts the question. Instead of "which origins may serve script?" (unanswerable safely, per L6), it asks "which script elements did <em>this server</em> put on <em>this page</em>?" — and answers with a per-response nonce. The whole recommended policy is short:<sup><a href="#s1">1</a></sup></p>
+<p>A strict CSP inverts the question. Instead of "which origins may serve script?" (unanswerable safely, per L6), it asks "which script elements did <em>this server</em> put on <em>this page</em>?", and answers with a per-response nonce. The whole recommended policy is short:<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
 <pre><code>Content-Security-Policy:
   script-src 'nonce-{RANDOM}' 'strict-dynamic';
   object-src 'none';
   base-uri  'none';</code></pre>
-<p class="cap">Three directives. The nonce authorizes your scripts, <code>'strict-dynamic'</code> lets them load more, and <code>object-src</code>/<code>base-uri</code> close the two flanks a script policy can't. No host allowlist anywhere — so there's nothing for a JSONP endpoint or open redirect to hide behind.</p>
+<p class="cap">Three directives. The nonce authorizes your scripts, <code>'strict-dynamic'</code> lets them load more, and <code>object-src</code>/<code>base-uri</code> close the two flanks a script policy can't. No host allowlist anywhere, so there's nothing for a JSONP endpoint or open redirect to hide behind.</p>
 </div>
 
 <h2>The steps</h2>
@@ -22,7 +22,7 @@
 <p>Build the policy piece by piece, then make it survive old browsers.</p>
 
 <h3>Step 1 — The nonce: trust what you emitted</h3>
-<p>Recapping L2: the server generates a fresh, unguessable value each response, puts it in the policy (<code>'nonce-r4nd0m'</code>) and on every script it means to run (<code>&lt;script nonce="r4nd0m"&gt;</code>). Injected markup can't guess this response's nonce, so injected <code>&lt;script&gt;</code> — inline or <code>src</code> — never runs. That's the foundation; the rest of the policy just extends this trust safely.</p>
+<p>Recapping L2: the server generates a fresh, unguessable value each response, puts it in the policy (<code>'nonce-r4nd0m'</code>) and on every script it means to run (<code>&lt;script nonce="r4nd0m"&gt;</code>). Injected markup can't guess this response's nonce, so injected <code>&lt;script&gt;</code>, inline or <code>src</code>, never runs. That's the foundation; the rest of the policy just extends this trust safely.</p>
 
 <h3>Step 2 — <code>'strict-dynamic'</code>: propagate trust, discard the allowlist</h3>
 <p>A nonce alone is painful: every third-party script your app loads (analytics, tag managers, widgets) would each need the nonce threaded through, and many load <em>further</em> scripts you never see. <code>'strict-dynamic'</code> solves it with one rule: <strong>a script that was already trusted (via nonce or hash) may create more scripts, and those run too.</strong> The critical distinction:<sup><a href="#s1">1</a></sup></p>
@@ -33,16 +33,16 @@
 BLOCKED   parser-inserted script: document.write('&lt;script…&gt;'), or a &lt;script&gt; that
           arrived in injected/innerHTML markup without the nonce
           → these are the XSS vector → never run</code></pre>
-<p class="cap"><code>'strict-dynamic'</code> draws the line exactly where the danger is: script a trusted script <em>chose</em> to add (safe) vs script that showed up in the parsed HTML (the injection). And — the key consequence — when <code>'strict-dynamic'</code> is present, <strong>host-source, scheme-source, <code>'self'</code> and <code>'unsafe-inline'</code> in that directive are all ignored.</strong><sup><a href="#s2">2</a></sup></p>
+<p class="cap"><code>'strict-dynamic'</code> draws the line exactly where the danger is: script a trusted script <em>chose</em> to add (safe) vs script that showed up in the parsed HTML (the injection). The key consequence: when <code>'strict-dynamic'</code> is present, <strong>host-source, scheme-source, <code>'self'</code> and <code>'unsafe-inline'</code> in that directive are all ignored.</strong><sup><a href="#s2">2</a></sup></p>
 </div>
 
 <div class="callout gotcha">
   <span class="tag">Why this kills every L6 vector</span>
-  With the host allowlist ignored, there's no trusted domain to abuse. A JSONP endpoint on <code>apis.example.com</code>? Not allowlisted anymore — the injected <code>&lt;script src&gt;</code> to it is parser-inserted and unnonced, so it's blocked. An open redirect? Same. A hosted AngularJS gadget? The injected markup that would drive it has no nonce. Strict CSP doesn't <em>patch</em> the L6 bypasses — it removes the allowlist they all depended on.
+  With the host allowlist ignored, there's no trusted domain to abuse. A JSONP endpoint on <code>apis.example.com</code>? Not allowlisted anymore: the injected <code>&lt;script src&gt;</code> to it is parser-inserted and unnonced, so it's blocked. An open redirect? Same. A hosted AngularJS gadget? The injected markup that would drive it has no nonce. Strict CSP doesn't <em>patch</em> the L6 bypasses: it removes the allowlist they all depended on.
 </div>
 
 <h3>Step 3 — The flanks: <code>object-src 'none'</code> and <code>base-uri 'none'</code></h3>
-<p><code>'strict-dynamic'</code> governs script, but two non-script holes (L4) would still sink you, and neither inherits from a script directive. <code>object-src 'none'</code> kills plugin execution (<code>&lt;object&gt;</code>/<code>&lt;embed&gt;</code> — legacy Flash-style vectors). <code>base-uri 'none'</code> forbids an injected <code>&lt;base&gt;</code> from rewriting where your relative script URLs resolve. These two lines are non-negotiable in a strict policy precisely because a great <code>script-src</code> doesn't cover them.<sup><a href="#s1">1</a></sup></p>
+<p><code>'strict-dynamic'</code> governs script, but two non-script holes (L4) would still sink you, and neither inherits from a script directive. <code>object-src 'none'</code> kills plugin execution (<code>&lt;object&gt;</code>/<code>&lt;embed&gt;</code>, legacy Flash-style vectors). <code>base-uri 'none'</code> forbids an injected <code>&lt;base&gt;</code> from rewriting where your relative script URLs resolve. These two lines are non-negotiable in a strict policy precisely because a great <code>script-src</code> doesn't cover them.<sup><a href="#s1">1</a></sup></p>
 
 <h3>Step 4 — Make it backwards-compatible</h3>
 <p>Not every browser speaks CSP3. The deployable form layers fallbacks so each engine takes the strictest rule it understands:<sup><a href="#s1">1</a></sup></p>
@@ -57,34 +57,34 @@ CSP1 browser:  no nonce support → honours 'unsafe-inline' (best it can do)</co
 </div>
 
 <h3>Step 5 — The costs you take on</h3>
-<p>Strict CSP forbids two things teams lean on. <strong>Inline event handlers</strong> (<code>&lt;span onclick="…"&gt;</code>) and <code>javascript:</code> URLs are blocked — refactor them to <code>addEventListener()</code> inside a nonced script. And <strong><code>eval()</code></strong>: a strict policy blocks it; if you truly need it you add <code>'unsafe-eval'</code> (weakening the policy) — better to refactor to <code>JSON.parse()</code>. Whatever DOM-XSS remains inside your trusted scripts is beyond <code>script-src</code> entirely — that's the residue Trusted Types (L4) targets.<sup><a href="#s1">1</a></sup></p>
+<p>Strict CSP forbids two things teams lean on. <strong>Inline event handlers</strong> (<code>&lt;span onclick="…"&gt;</code>) and <code>javascript:</code> URLs are blocked: refactor them to <code>addEventListener()</code> inside a nonced script. And <strong><code>eval()</code></strong>: a strict policy blocks it; if you truly need it you add <code>'unsafe-eval'</code> (weakening the policy). Better to refactor to <code>JSON.parse()</code>. Whatever DOM-XSS remains inside your trusted scripts is beyond <code>script-src</code> entirely: that's the residue Trusted Types (L4) targets.<sup><a href="#s1">1</a></sup></p>
 
 <h2>Why this matters</h2>
 
-<p><strong>1. It's the model L1–L6 were building toward.</strong> The evaluation algorithm, the source grammar, the directive map, the level history, the allowlist failure — all of it converges here: trust specific emitted code, not origins. If you can derive this policy from L6's problem, you understand CSP rather than memorize it.</p>
+<p><strong>1. It's the model L1–L6 were building toward.</strong> The evaluation algorithm, the source grammar, the directive map, the level history, the allowlist failure, all of it converges here: trust specific emitted code, not origins. If you can derive this policy from L6's problem, you understand CSP rather than memorize it.</p>
 
-<p><strong>2. The programmatic-vs-parser-inserted line is the interview core.</strong> Anyone can recite "nonce plus <code>strict-dynamic</code>." The depth signal is <em>why</em> it's safe: it trusts scripts a trusted script deliberately created, and blocks scripts that arrived in the parsed HTML — which is the injection. And that <code>'strict-dynamic'</code> ignores the host allowlist is the sentence that connects it back to L6.</p>
+<p><strong>2. The programmatic-vs-parser-inserted line is the interview core.</strong> Anyone can recite "nonce plus <code>strict-dynamic</code>." The depth signal is <em>why</em> it's safe: it trusts scripts a trusted script deliberately created, and blocks scripts that arrived in the parsed HTML, which is the injection. And that <code>'strict-dynamic'</code> ignores the host allowlist is the sentence that connects it back to L6.</p>
 
-<p><strong>3. Strict CSP is a mitigation ceiling, not a force field.</strong> It neutralizes reflected/stored injection of script tags brilliantly; it does not fix <code>'unsafe-eval'</code> if you keep it, DOM-XSS inside trusted code (→ Trusted Types), or non-script issues. Naming those limits is the honest, senior answer.</p>
+<p><strong>3. Strict CSP is a mitigation ceiling.</strong> It neutralizes reflected and stored injection of script tags; it does not fix <code>'unsafe-eval'</code> if you keep it, DOM-XSS inside trusted code (→ Trusted Types), or non-script issues. Naming those limits is the honest, senior answer.</p>
 
 <div class="callout interview">
   <span class="tag">Key line</span>
-  "Strict CSP stops trusting origins and trusts the scripts you emitted: a per-response nonce authorizes your <code>&lt;script&gt;</code>s, and <code>'strict-dynamic'</code> lets an already-trusted script create more — while ignoring the host allowlist, <code>'self'</code>, and <code>'unsafe-inline'</code>. It allows programmatically-created script and blocks parser-inserted script — the injection. Add <code>object-src 'none'</code> and <code>base-uri 'none'</code> for the non-script flanks, and layer <code>https: 'unsafe-inline'</code> as fallbacks for old browsers that ignore <code>strict-dynamic</code>."
+  "Strict CSP stops trusting origins and trusts the scripts you emitted: a per-response nonce authorizes your <code>&lt;script&gt;</code>s, and <code>'strict-dynamic'</code> lets an already-trusted script create more, while ignoring the host allowlist, <code>'self'</code>, and <code>'unsafe-inline'</code>. It allows programmatically-created script and blocks parser-inserted script, the injection. Add <code>object-src 'none'</code> and <code>base-uri 'none'</code> for the non-script flanks, and layer <code>https: 'unsafe-inline'</code> as fallbacks for old browsers that ignore <code>strict-dynamic</code>."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow: "<code>strict-dynamic</code> lets trusted scripts load other scripts." Half-right, and it misses the security-defining half: it allows <em>programmatically created</em> scripts while <em>blocking parser-inserted ones</em> — and it makes the host allowlist inert. Someone who can't state what <code>strict-dynamic</code> <em>blocks</em>, or that it discards the allowlist, doesn't yet see why it's safe.
+  Shallow: "<code>strict-dynamic</code> lets trusted scripts load other scripts." Half-right, and it misses the security-defining half: it allows <em>programmatically created</em> scripts while <em>blocking parser-inserted ones</em>, and it makes the host allowlist inert. Someone who can't state what <code>strict-dynamic</code> <em>blocks</em>, or that it discards the allowlist, doesn't yet see why it's safe.
 </div>
 
 <div class="recall">
   <p class="q">Recall — answer out loud before peeking:</p>
   <p>① Under <code>script-src 'nonce-abc' 'strict-dynamic'</code>, a nonced script does <code>document.createElement('script')</code> pointing at a random CDN. Does it run?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>Yes.</strong> A trusted (nonced) script created it programmatically, so <code>'strict-dynamic'</code> propagates trust — regardless of origin. (The host allowlist is ignored anyway.)</p></details>
+  <p class="a"><strong>Yes.</strong> A trusted (nonced) script created it programmatically, so <code>'strict-dynamic'</code> propagates trust, regardless of origin. (The host allowlist is ignored anyway.)</p></details>
   <p>② Same policy. Injected markup contains <code>&lt;script src="https://evil.com/x.js"&gt;</code> with no nonce. Runs?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>No.</strong> It's parser-inserted and carries no nonce, so it's blocked — exactly the injection <code>'strict-dynamic'</code> is designed to stop.</p></details>
+  <p class="a"><strong>No.</strong> It's parser-inserted and carries no nonce, so it's blocked, exactly the injection <code>'strict-dynamic'</code> is designed to stop.</p></details>
   <p>③ Why are <code>object-src 'none'</code> and <code>base-uri 'none'</code> in the strict policy if <code>script-src</code> is already tight?</p>
   <details><summary>show answer</summary>
   <p class="a">Because neither is covered by a script directive and neither falls back to <code>default-src</code> (L3/L4). <code>object-src 'none'</code> kills plugin vectors; <code>base-uri 'none'</code> stops a <code>&lt;base&gt;</code> injection rewriting relative script URLs.</p></details>
@@ -95,11 +95,11 @@ CSP1 browser:  no nonce support → honours 'unsafe-inline' (best it can do)</co
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://web.dev/articles/strict-csp">web.dev — "Mitigate cross-site scripting (XSS) with a strict Content Security Policy"</a>. Google's deployment guide: the exact policy strings, the nonce/hash choice, the backwards-compatible fallbacks, and the refactoring checklist (inline handlers → <code>addEventListener</code>, <code>eval</code> → <code>JSON.parse</code>). This is the practitioner companion to L6's research paper.
+  <a href="https://web.dev/articles/strict-csp">web.dev, "Mitigate cross-site scripting (XSS) with a strict Content Security Policy"</a>. Google's deployment guide: the exact policy strings, the nonce/hash choice, the backwards-compatible fallbacks, and the refactoring checklist (inline handlers → <code>addEventListener</code>, <code>eval</code> → <code>JSON.parse</code>). This is the practitioner companion to L6's research paper.
 </div>
 
 <div class="ask-teacher">
-  <strong>Adapt it to a real stack.</strong> The strict policy changes shape per stack — how a framework injects the per-request nonce, or hash-based instead of nonce-based for a static site. <strong>Lesson 8 is operating it: <code>Report-Only</code>, <code>report-uri</code> vs <code>report-to</code>, the violation report, and the report-only → enforce rollout — flipping it on without breaking the site.</strong>
+  <strong>Adapt it to a real stack.</strong> The strict policy changes shape per stack: how a framework injects the per-request nonce, or hash-based instead of nonce-based for a static site. <strong>Lesson 8 is operating it: <code>Report-Only</code>, <code>report-uri</code> vs <code>report-to</code>, the violation report, and the report-only → enforce rollout, flipping it on without breaking the site.</strong>
 </div>
 
 <div class="course-nav">
@@ -110,6 +110,6 @@ CSP1 browser:  no nonce support → honours 'unsafe-inline' (best it can do)</co
 
 <hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
 <p class="src"><strong>Sources</strong><br>
-<span id="s1">1.</span> Recommended nonce/hash strict policies, backwards-compatible layering (<code>https:</code>/<code>'unsafe-inline'</code> fallbacks &amp; browser tiers), <code>object-src</code>/<code>base-uri</code> rationale, programmatic-vs-parser-inserted rule, inline-handler/<code>eval</code> refactoring — <a href="https://web.dev/articles/strict-csp">web.dev: Strict CSP</a>.<br>
-<span id="s2">2.</span> <code>'strict-dynamic'</code> causes host-source/scheme-source/<code>'self'</code>/<code>'unsafe-inline'</code> to be ignored, and allows script loaded via non-parser-inserted elements — <a href="https://www.w3.org/TR/CSP3/#strict-dynamic-usage">W3C CSP Level 3 — <code>'strict-dynamic'</code></a>.
+<span id="s1">1.</span> Recommended nonce/hash strict policies, backwards-compatible layering (<code>https:</code>/<code>'unsafe-inline'</code> fallbacks &amp; browser tiers), <code>object-src</code>/<code>base-uri</code> rationale, programmatic-vs-parser-inserted rule, inline-handler/<code>eval</code> refactoring, <a href="https://web.dev/articles/strict-csp">web.dev: Strict CSP</a>.<br>
+<span id="s2">2.</span> <code>'strict-dynamic'</code> causes host-source/scheme-source/<code>'self'</code>/<code>'unsafe-inline'</code> to be ignored, and allows script loaded via non-parser-inserted elements, <a href="https://www.w3.org/TR/CSP3/#strict-dynamic-usage">W3C CSP Level 3, <code>'strict-dynamic'</code></a>.
 </p>

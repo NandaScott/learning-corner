@@ -3,7 +3,7 @@
 
 <p class="eyebrow">Content Security Policy · Lesson 2</p>
 <h1>The source-list grammar</h1>
-<p class="lede">Lesson 1 ended at "the browser matches the request against the directive's source list." This lesson is that match, in full. A source list is a handful of expression <em>kinds</em>, each with its own matching rule — and the rules have sharp edges (wildcards that don't cover the apex, paths that stop mattering after a redirect, an <code>'unsafe-inline'</code> that silently disables itself) that separate a deep answer from a shallow one.</p>
+<p class="lede">Lesson 1 ended at "the browser matches the request against the directive's source list." This lesson is that match, in full. A source list is a handful of expression <em>kinds</em>, each with its own matching rule, and the rules have sharp edges (wildcards that don't cover the apex, paths that stop mattering after a redirect, an <code>'unsafe-inline'</code> that disables itself) that separate a deep answer from a shallow one.</p>
 
 <h2>The concept</h2>
 
@@ -14,7 +14,7 @@
            └──┬──┘ └────────┬──────────┘ └────┬────┘ └────┬────┘
           keyword       host-source        nonce      hash
 </code></pre>
-<p class="cap">Four different expression kinds in one directive. A script is allowed if it satisfies any of them. There are five kinds in total — keyword, scheme, host, nonce, hash.</p>
+<p class="cap">Four different expression kinds in one directive. A script is allowed if it satisfies any of them. There are five kinds in total: keyword, scheme, host, nonce, hash.</p>
 </div>
 
 <h2>The steps</h2>
@@ -28,28 +28,28 @@
 3. host         *.cdn.example.com:443/js/   an origin (+ optional path)
 4. nonce        'nonce-Xk9f2p…'             an element carrying nonce="Xk9f2p…"
 5. hash         'sha256-abc123…'            an inline block whose digest equals this</code></pre>
-<p class="cap">Kinds 1–3 are about <em>where</em> a resource comes from. Kinds 4–5 are about <em>which specific inline/marked element</em> is trusted — the CSP2 additions that made inline code governable without <code>'unsafe-inline'</code>.</p>
+<p class="cap">Kinds 1–3 are about <em>where</em> a resource comes from. Kinds 4–5 are about <em>which specific inline/marked element</em> is trusted, the CSP2 additions that made inline code governable without <code>'unsafe-inline'</code>.</p>
 </div>
 
 <h3>Step 1 — Keyword sources</h3>
 <p>Fixed, quoted tokens with hard-coded meaning. The ones that matter:</p>
 <ul>
-<li><code>'self'</code> — the page's own origin (scheme + host + port). Not subdomains, not "inline." CSP3 also lets <code>'self'</code> match the <code>https:</code>/<code>wss:</code> variants of the origin even on an <code>http</code> page.<sup><a href="#s1">1</a></sup></li>
-<li><code>'none'</code> — matches nothing. Must be the <em>only</em> token in the list; it <em>is</em> the empty list. Blocks the whole category.</li>
-<li><code>'unsafe-inline'</code> — allows inline scripts/styles and <code>on*=</code> handlers. The hole CSP exists to close.</li>
-<li><code>'unsafe-eval'</code> — allows <code>eval</code>/<code>Function</code>/string <code>setTimeout</code>.</li>
-<li><code>'strict-dynamic'</code>, <code>'unsafe-hashes'</code>, <code>'report-sample'</code>, <code>'wasm-unsafe-eval'</code> — CSP3 additions (covered in L5/L7). The keyword set is open-ended; browsers ignore ones they don't know.</li>
+<li><code>'self'</code>: the page's own origin (scheme + host + port). Not subdomains, not "inline." CSP3 also lets <code>'self'</code> match the <code>https:</code>/<code>wss:</code> variants of the origin even on an <code>http</code> page.<sup><a href="#s1">1</a></sup></li>
+<li><code>'none'</code>: matches nothing. Must be the <em>only</em> token in the list; it <em>is</em> the empty list. Blocks the whole category.</li>
+<li><code>'unsafe-inline'</code>: allows inline scripts/styles and <code>on*=</code> handlers. The hole CSP exists to close.</li>
+<li><code>'unsafe-eval'</code>: allows <code>eval</code>/<code>Function</code>/string <code>setTimeout</code>.</li>
+<li><code>'strict-dynamic'</code>, <code>'unsafe-hashes'</code>, <code>'report-sample'</code>, <code>'wasm-unsafe-eval'</code>: CSP3 additions (covered in L5/L7). The keyword set is open-ended; browsers ignore ones they don't know.</li>
 </ul>
 
 <h3>Step 2 — Scheme sources</h3>
-<p>A bare scheme plus colon — <code>https:</code>, <code>data:</code>, <code>blob:</code>, <code>mediastream:</code>, <code>filesystem:</code>. Matches <em>any</em> URL with that scheme, regardless of host. <code>img-src https:</code> = "images from any HTTPS origin." Powerful and blunt — <code>data:</code> in a <code>script-src</code>, for instance, re-opens injection via <code>data:</code> URLs.</p>
+<p>A bare scheme plus colon: <code>https:</code>, <code>data:</code>, <code>blob:</code>, <code>mediastream:</code>, <code>filesystem:</code>. Matches <em>any</em> URL with that scheme, regardless of host. <code>img-src https:</code> = "images from any HTTPS origin." It matches broadly: <code>data:</code> in a <code>script-src</code>, for instance, re-opens injection via <code>data:</code> URLs.</p>
 <div class="callout gotcha">
   <span class="tag">Edge — the secure-upgrade rule (CSP2+)</span>
-  URL matching treats insecure schemes/ports as matching their secure variants. The spec: <em>"the source expression <code>http://example.com:80</code> will match both <code>http://example.com:80</code> and <code>https://example.com:443</code>."</em> A scheme-less host-source uses the page's scheme, with the same <code>http</code>→<code>https</code> / <code>ws</code>→<code>wss</code> upgrade allowance. So listing the <code>http</code> form doesn't <em>exclude</em> HTTPS — it includes it.
+  URL matching treats insecure schemes/ports as matching their secure variants. The spec: <em>"the source expression <code>http://example.com:80</code> will match both <code>http://example.com:80</code> and <code>https://example.com:443</code>."</em> A scheme-less host-source uses the page's scheme, with the same <code>http</code>→<code>https</code> / <code>ws</code>→<code>wss</code> upgrade allowance. So listing the <code>http</code> form doesn't <em>exclude</em> HTTPS: it includes it.
 </div>
 
 <h3>Step 3 — Host sources (where the edges cluster)</h3>
-<p>The general shape is <code>[scheme://] host [:port] [path]</code> — e.g. <code>https://*.cdn.example.com:443/assets/</code>. Each part has a rule:</p>
+<p>The general shape is <code>[scheme://] host [:port] [path]</code>, e.g. <code>https://*.cdn.example.com:443/assets/</code>. Each part has a rule:</p>
 
 <div class="figure">
 <pre><code>WILDCARD HOST   *.example.com   matches  sub.example.com, a.b.example.com
@@ -61,43 +61,43 @@ PORT             example.com     → the scheme's default port only (443 for htt
 PATH             /assets/        trailing slash ⇒ PREFIX match  (/assets/app.js ✓, /assets ✗)
                  /assets/app.js  no trailing slash ⇒ EXACT match of that path
                  (query string and #fragment are ignored in path matching)</code></pre>
-<p class="cap">The two most-missed: <code>*.example.com</code> does <strong>not</strong> match the bare apex <code>example.com</code> (the <code>*.</code> prefix requires at least one extra label), and a bare <code>*</code> does <strong>not</strong> cover <code>data:</code>/<code>blob:</code>/<code>filesystem:</code> — those always need an explicit scheme-source.<sup><a href="#s1">1</a></sup></p>
+<p class="cap">The two most-missed: <code>*.example.com</code> does <strong>not</strong> match the bare apex <code>example.com</code> (the <code>*.</code> prefix requires at least one extra label), and a bare <code>*</code> does <strong>not</strong> cover <code>data:</code>/<code>blob:</code>/<code>filesystem:</code>. Those always need an explicit scheme-source.<sup><a href="#s1">1</a></sup></p>
 </div>
 
 <div class="callout gotcha">
   <span class="tag">Edge — paths stop mattering after a redirect</span>
-  If a request is <em>redirected</em>, the browser matches against the request's original URL and <strong>does not enforce the path component</strong> against the redirect target — only scheme/host/port. This is deliberate: it stops an attacker from using redirects to probe a path-restricted allowlist (e.g. learning valid paths on an internal host) and stops path info leaking across the redirect. Consequence: a path-restricted allowlist entry like <code>example.com/safe/</code> gives you <em>no</em> path guarantee once a redirect is in play.<sup><a href="#s2">2</a></sup>
+  If a request is <em>redirected</em>, the browser matches against the request's original URL and <strong>does not enforce the path component</strong> against the redirect target, only scheme/host/port. This is deliberate: it stops an attacker from using redirects to probe a path-restricted allowlist (e.g. learning valid paths on an internal host) and stops path info leaking across the redirect. Consequence: a path-restricted allowlist entry like <code>example.com/safe/</code> gives you <em>no</em> path guarantee once a redirect is in play.<sup><a href="#s2">2</a></sup>
 </div>
 
 <h3>Step 4 — Nonce sources</h3>
-<p><code>'nonce-<var>base64value</var>'</code> (CSP2). The server puts a fresh random value in the policy <em>and</em> as a <code>nonce</code> attribute on the element it wants to trust: <code>&lt;script nonce="Xk9f2p"&gt;</code>. The element runs iff the two match. The value must be <strong>≥128 bits, cryptographically random, and regenerated on every response</strong> — a static or guessable nonce is worthless, since an injected element could just carry it. Nonces are what let you trust <em>your</em> inline script without opening <code>'unsafe-inline'</code> to <em>all</em> inline script.</p>
+<p><code>'nonce-<var>base64value</var>'</code> (CSP2). The server puts a fresh random value in the policy <em>and</em> as a <code>nonce</code> attribute on the element it wants to trust: <code>&lt;script nonce="Xk9f2p"&gt;</code>. The element runs iff the two match. The value must be <strong>≥128 bits, cryptographically random, and regenerated on every response</strong>. A static or guessable nonce is worthless, since an injected element could just carry it. Nonces are what let you trust <em>your</em> inline script without opening <code>'unsafe-inline'</code> to <em>all</em> inline script.</p>
 
 <h3>Step 5 — Hash sources</h3>
-<p><code>'sha256-…'</code> / <code>'sha384-…'</code> / <code>'sha512-…'</code> (CSP2): the base64 digest of an inline block's <em>exact</em> bytes. The block runs iff its computed digest is in the list — so one stray whitespace change breaks the match. Good for static inline snippets you can hash at build time (no per-request token needed). CSP3 extends hashes to match an <em>external</em> script whose <code>integrity</code> attribute lists that same hash.<sup><a href="#s1">1</a></sup></p>
+<p><code>'sha256-…'</code> / <code>'sha384-…'</code> / <code>'sha512-…'</code> (CSP2): the base64 digest of an inline block's <em>exact</em> bytes. The block runs iff its computed digest is in the list, so one stray whitespace change breaks the match. Good for static inline snippets you can hash at build time (no per-request token needed). CSP3 extends hashes to match an <em>external</em> script whose <code>integrity</code> attribute lists that same hash.<sup><a href="#s1">1</a></sup></p>
 
 <div class="callout gotcha">
   <span class="tag">Edge — a nonce or hash silently disables <code>'unsafe-inline'</code></span>
-  If a directive's source list contains <em>any</em> nonce-source or hash-source, then <code>'unsafe-inline'</code> in that same directive is <strong>ignored</strong>. This is a back-compat ramp: a CSP1 browser sees <code>'unsafe-inline'</code> and runs your inline script; a CSP2+ browser sees the nonce/hash, ignores <code>'unsafe-inline'</code>, and enforces the stricter rule. Deliberately listing both is how you degrade gracefully — <em>not</em> a mistake.<sup><a href="#s1">1</a></sup>
+  If a directive's source list contains <em>any</em> nonce-source or hash-source, then <code>'unsafe-inline'</code> in that same directive is <strong>ignored</strong>. This is a back-compat ramp: a CSP1 browser sees <code>'unsafe-inline'</code> and runs your inline script; a CSP2+ browser sees the nonce/hash, ignores <code>'unsafe-inline'</code>, and enforces the stricter rule. Deliberately listing both is how you degrade gracefully, <em>not</em> a mistake.<sup><a href="#s1">1</a></sup>
 </div>
 
 <h2>Why this matters</h2>
 
 <p>The grammar is where "I wrote a CSP" and "I wrote a CSP that does what I think" diverge.</p>
 
-<p><strong>1. The edges are where real policies leak.</strong> <code>*.example.com</code> that forgot the apex; a <code>data:</code> left in <code>script-src</code>; a path restriction that evaporates on redirect; the <code>http</code> form that quietly admits HTTPS. None of these throw an error — the policy just permits more than its author believed. Reading a source list means reading it against these rules, not at face value.</p>
+<p><strong>1. The edges are where real policies leak.</strong> <code>*.example.com</code> that forgot the apex; a <code>data:</code> left in <code>script-src</code>; a path restriction that evaporates on redirect; the <code>http</code> form that admits HTTPS. None of these throw an error: the policy just permits more than its author believed. Reading a source list means reading it against these rules, not at face value.</p>
 
-<p><strong>2. Nonces and hashes changed the model.</strong> Before CSP2, governing inline code meant <code>'unsafe-inline'</code> — all-or-nothing. Nonces/hashes made it <em>surgical</em>: trust this specific block, deny the rest. That shift is the seed of strict CSP (L7), where a nonce plus <code>'strict-dynamic'</code> replaces the host allowlist entirely.</p>
+<p><strong>2. Nonces and hashes changed the model.</strong> Before CSP2, governing inline code meant <code>'unsafe-inline'</code>, all-or-nothing. Nonces/hashes made it <em>surgical</em>: trust this specific block, deny the rest. That shift is the seed of strict CSP (L7), where a nonce plus <code>'strict-dynamic'</code> replaces the host allowlist entirely.</p>
 
-<p><strong>3. "OR within a directive" cuts both ways.</strong> Every expression you add is another way in. A long allowlist isn't "more configured" — it's more surface. The security of a directive is the security of its <em>weakest</em> expression, because a match against any one is a pass.</p>
+<p><strong>3. "OR within a directive" cuts both ways.</strong> Every expression you add is another way in, so a long allowlist is more attack surface. The security of a directive is the security of its <em>weakest</em> expression, because a match against any one is a pass.</p>
 
 <div class="callout interview">
   <span class="tag">Key line</span>
-  "A source list is five kinds of expression — keyword, scheme, host, nonce, hash — matched with OR. The traps live in the host rule: <code>*.example.com</code> excludes the apex, bare <code>*</code> excludes <code>data:</code>/<code>blob:</code>/<code>filesystem:</code>, the path is a prefix match only with a trailing slash and is dropped entirely after a redirect, and <code>http:</code> matches <code>https:</code> too. And any nonce or hash in a directive makes <code>'unsafe-inline'</code> a no-op."
+  "A source list is five kinds of expression (keyword, scheme, host, nonce, hash) matched with OR. The traps live in the host rule: <code>*.example.com</code> excludes the apex, bare <code>*</code> excludes <code>data:</code>/<code>blob:</code>/<code>filesystem:</code>, the path is a prefix match only with a trailing slash and is dropped entirely after a redirect, and <code>http:</code> matches <code>https:</code> too. And any nonce or hash in a directive makes <code>'unsafe-inline'</code> a no-op."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow: "<code>script-src *.example.com</code> locks scripts to example.com." Deep answer catches that it (a) doesn't include <code>example.com</code> itself, (b) admits <em>every</em> subdomain — including an attacker-controlled one if subdomains aren't tightly held, and (c) says nothing about inline script or <code>eval</code>. Naming the redirect-path-drop and the <code>'unsafe-inline'</code>-ignored rules unprompted is the tell of someone who's actually read the matching algorithm.
+  Shallow: "<code>script-src *.example.com</code> locks scripts to example.com." Deep answer catches that it (a) doesn't include <code>example.com</code> itself, (b) admits <em>every</em> subdomain, including an attacker-controlled one if subdomains aren't tightly held, and (c) says nothing about inline script or <code>eval</code>. Naming the redirect-path-drop and the <code>'unsafe-inline'</code>-ignored rules unprompted is the tell of someone who's actually read the matching algorithm.
 </div>
 
 <div class="recall">
@@ -107,22 +107,22 @@ PATH             /assets/        trailing slash ⇒ PREFIX match  (/assets/app.j
   <p class="a"><strong>No.</strong> <code>*.example.com</code> matches subdomains only; the <code>*.</code> prefix requires at least one extra label. The apex needs its own entry (<code>example.com</code>).</p></details>
   <p>② When does a source path do a prefix match vs an exact match?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>Trailing slash ⇒ prefix</strong> (<code>/assets/</code> matches <code>/assets/app.js</code>); <strong>no trailing slash ⇒ exact</strong> (<code>/app.js</code> matches only that path). Query and fragment are ignored either way — and the path is dropped after a redirect.</p></details>
+  <p class="a"><strong>Trailing slash ⇒ prefix</strong> (<code>/assets/</code> matches <code>/assets/app.js</code>); <strong>no trailing slash ⇒ exact</strong> (<code>/app.js</code> matches only that path). Query and fragment are ignored either way, and the path is dropped after a redirect.</p></details>
   <p>③ A directive is <code>script-src 'unsafe-inline' 'nonce-abc123'</code>. Does an un-nonced inline script run?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>No.</strong> The presence of a nonce (or hash) makes <code>'unsafe-inline'</code> ignored in CSP2+ browsers. Only the element carrying <code>nonce="abc123"</code> runs. (A CSP1 browser would honour <code>'unsafe-inline'</code> — that's the graceful-degradation intent.)</p></details>
+  <p class="a"><strong>No.</strong> The presence of a nonce (or hash) makes <code>'unsafe-inline'</code> ignored in CSP2+ browsers. Only the element carrying <code>nonce="abc123"</code> runs. (A CSP1 browser would honour <code>'unsafe-inline'</code>: that's the graceful-degradation intent.)</p></details>
   <p>④ Does <code>default-src *</code> allow a <code>data:</code> URL script?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>No.</strong> Bare <code>*</code> matches network-scheme hosts but excludes <code>data:</code>, <code>blob:</code>, and <code>filesystem:</code> — those must be listed as explicit scheme-sources.</p></details>
+  <p class="a"><strong>No.</strong> Bare <code>*</code> matches network-scheme hosts but excludes <code>data:</code>, <code>blob:</code>, and <code>filesystem:</code>. Those must be listed as explicit scheme-sources.</p></details>
 </div>
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://www.w3.org/TR/CSP3/#framework-directive-source-list">W3C CSP Level 3 — §2.3 Source Lists</a> and the matching algorithms in <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">§6.7 (Matching)</a>. This is the exact grammar and the step-by-step host/scheme/path matching this lesson describes — including the redirect and <code>'unsafe-inline'</code>-ignored rules. Read §6.7.2's host-part and path-part steps once; they're short and they cement the edges.
+  <a href="https://www.w3.org/TR/CSP3/#framework-directive-source-list">W3C CSP Level 3, §2.3 Source Lists</a> and the matching algorithms in <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">§6.7 (Matching)</a>. This is the exact grammar and the step-by-step host/scheme/path matching this lesson describes, including the redirect and <code>'unsafe-inline'</code>-ignored rules. Read §6.7.2's host-part and path-part steps once; they're short and they cement the edges.
 </div>
 
 <div class="ask-teacher">
-  <strong>Stress-test a policy.</strong> Take a real source list and read it against these rules — what does it <em>actually</em> permit versus what its author intended? Or drop it into <a href="https://csp-evaluator.withgoogle.com/">Google's CSP Evaluator</a> and see what it flags and why. <strong>Lesson 3 leaves individual expressions behind and maps the <em>directives</em> themselves — the full fetch family and the fallback cascades.</strong>
+  <strong>Stress-test a policy.</strong> Take a real source list and read it against these rules: what does it <em>actually</em> permit versus what its author intended? Or drop it into <a href="https://csp-evaluator.withgoogle.com/">Google's CSP Evaluator</a> and see what it flags and why. <strong>Lesson 3 leaves individual expressions behind and maps the <em>directives</em> themselves, the full fetch family and the fallback cascades.</strong>
 </div>
 
 <div class="course-nav">
@@ -133,6 +133,6 @@ PATH             /assets/        trailing slash ⇒ PREFIX match  (/assets/app.j
 
 <hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
 <p class="src"><strong>Sources</strong><br>
-<span id="s1">1.</span> Source-list grammar, keyword/scheme/host/nonce/hash matching, secure-upgrade, apex-vs-wildcard, bare-<code>*</code> scheme exclusions, <code>'unsafe-inline'</code>-ignored-with-nonce/hash — <a href="https://www.w3.org/TR/CSP3/#framework-directive-source-list">W3C CSP Level 3 §2.3</a> &amp; <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">§6.7 matching algorithms</a>; secure-upgrade wording from the "Changes from Level 2" note; bare-<code>*</code> exclusions cross-checked against <a href="https://content-security-policy.com/">content-security-policy.com</a>.<br>
-<span id="s2">2.</span> Redirect path handling — match against request URL, not current URL, to avoid leaking redirect targets — <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">W3C CSP Level 3 §6.7.2</a>.
+<span id="s1">1.</span> Source-list grammar, keyword/scheme/host/nonce/hash matching, secure-upgrade, apex-vs-wildcard, bare-<code>*</code> scheme exclusions, <code>'unsafe-inline'</code>-ignored-with-nonce/hash, <a href="https://www.w3.org/TR/CSP3/#framework-directive-source-list">W3C CSP Level 3 §2.3</a> &amp; <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">§6.7 matching algorithms</a>; secure-upgrade wording from the "Changes from Level 2" note; bare-<code>*</code> exclusions cross-checked against <a href="https://content-security-policy.com/">content-security-policy.com</a>.<br>
+<span id="s2">2.</span> Redirect path handling, match against request URL, not current URL, to avoid leaking redirect targets, <a href="https://www.w3.org/TR/CSP3/#match-url-to-source-list">W3C CSP Level 3 §6.7.2</a>.
 </p>

@@ -3,11 +3,11 @@
 
 <p class="eyebrow">Content Security Policy · Lesson 3</p>
 <h1>Fetch directives &amp; the fallback cascade</h1>
-<p class="lede">L1 said the browser resolves "the one governing directive" by walking a fallback chain. L2 was the value side of a directive. This lesson is the <em>name</em> side: the fetch directives — the largest family — and the exact cascades they fall through. The payoff is being able to answer, for any resource type, "which directive actually decides this?" — and to see why <code>default-src</code> is a weaker backstop than it looks.</p>
+<p class="lede">L1 said the browser resolves "the one governing directive" by walking a fallback chain. L2 was the value side of a directive. This lesson is the <em>name</em> side: the fetch directives, the largest family, and the exact cascades they fall through. The payoff is being able to answer, for any resource type, "which directive actually decides this?", and to see why <code>default-src</code> is a weaker backstop than it looks.</p>
 
 <h2>The concept</h2>
 
-<p>Fetch directives are the "where may <em>this kind</em> of resource load from" rules. They're the bulk of CSP, and they share one behaviour: when the specific directive is absent, the browser walks a <strong>fallback list</strong> until it finds one that's present — and if it reaches the end with nothing, the fetch is allowed (L1's rule). <code>default-src</code> sits at the bottom of most of those lists. That's its entire job: it is the fallback for fetch directives — not a global "deny everything" switch.<sup><a href="#s1">1</a></sup></p>
+<p>Fetch directives are the "where may <em>this kind</em> of resource load from" rules. They're the bulk of CSP, and they share one behaviour: when the specific directive is absent, the browser walks a <strong>fallback list</strong> until it finds one that's present, and if it reaches the end with nothing, the fetch is allowed (L1's rule). <code>default-src</code> sits at the bottom of most of those lists. That's its entire job: it is the fallback for fetch directives, not a global "deny everything" switch.<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
 <pre><code>GROUP                DIRECTIVES                              falls back to
@@ -17,7 +17,7 @@ simple loaders       img-src, font-src, media-src,      →                   de
                      connect-src, object-src, manifest-src
 nested contexts      frame-src   →  child-src           →                   default-src
                      worker-src  →  child-src  →  script-src  →             default-src</code></pre>
-<p class="cap">Every fetch directive terminates at <code>default-src</code>, but the <em>paths</em> differ. The nested-context group has intermediate hops — that's where people mis-predict which rule wins.</p>
+<p class="cap">Every fetch directive terminates at <code>default-src</code>, but the <em>paths</em> differ. The nested-context group has intermediate hops: that's where people mis-predict which rule wins.</p>
 </div>
 
 <h2>The steps</h2>
@@ -30,8 +30,8 @@ nested contexts      frame-src   →  child-src           →                   
 <h3>Step 2 — The script/style <em>elem</em> vs <em>attr</em> split (CSP3)</h3>
 <p>CSP3 split scripts into two governing directives so you can rule on <em>elements</em> and <em>attributes</em> separately:<sup><a href="#s2">2</a></sup></p>
 <ul>
-<li><code>script-src-elem</code> — <code>&lt;script&gt;</code> elements (inline blocks <em>and</em> <code>src=</code> loads).</li>
-<li><code>script-src-attr</code> — inline event-handler attributes (<code>onclick=</code>, <code>onload=</code>, …).</li>
+<li><code>script-src-elem</code>: <code>&lt;script&gt;</code> elements (inline blocks <em>and</em> <code>src=</code> loads).</li>
+<li><code>script-src-attr</code>: inline event-handler attributes (<code>onclick=</code>, <code>onload=</code>, …).</li>
 </ul>
 <p>Both fall back to <code>script-src</code>, then <code>default-src</code>. Style mirrors this exactly: <code>style-src-elem</code> (<code>&lt;style&gt;</code> / <code>&lt;link rel=stylesheet&gt;</code>) and <code>style-src-attr</code> (inline <code>style=</code>), both backstopped by <code>style-src</code>.</p>
 
@@ -42,7 +42,7 @@ nested contexts      frame-src   →  child-src           →                   
   set only script-src  ⇒  it backstops BOTH  (one rule for elements and handlers)
   set script-src-attr 'none' + script-src 'self'
                         ⇒  external/inline scripts allowed, ALL inline handlers blocked</code></pre>
-<p class="cap">The split's value: block DOM event-handler attributes (a classic injection sink) while still permitting normal <code>&lt;script&gt;</code> loads — impossible with the single <code>script-src</code>.</p>
+<p class="cap">The split's value: block DOM event-handler attributes (a classic injection sink) while still permitting normal <code>&lt;script&gt;</code> loads: impossible with the single <code>script-src</code>.</p>
 </div>
 
 <h3>Step 3 — The nested-context cascade (the confusing one)</h3>
@@ -52,30 +52,30 @@ nested contexts      frame-src   →  child-src           →                   
 <pre><code>  &lt;iframe src&gt;              →  frame-src   →  child-src  →  default-src
   new Worker(…)/SharedWorker →  worker-src  →  child-src  →  script-src  →  default-src
                                                              └── note the extra hop ──┘</code></pre>
-<p class="cap"><code>frame-src</code> and <code>worker-src</code> both prefer <code>child-src</code> when they're absent — but if <code>child-src</code> is <em>also</em> absent, they part ways: framing drops to <code>default-src</code>, whereas a worker drops to <code>script-src</code> first (a worker <em>is</em> executable script), and only then <code>default-src</code>.</p>
+<p class="cap"><code>frame-src</code> and <code>worker-src</code> both prefer <code>child-src</code> when they're absent, but if <code>child-src</code> is <em>also</em> absent, they part ways: framing drops to <code>default-src</code>, whereas a worker drops to <code>script-src</code> first (a worker <em>is</em> executable script), and only then <code>default-src</code>.</p>
 </div>
 
 <p>History note (full story in L5): CSP1 had only <code>frame-src</code>; CSP2 deprecated it in favour of <code>child-src</code> (which also governed workers); CSP3 <em>un</em>-deprecated <code>frame-src</code> and split workers back out into <code>worker-src</code>. So <code>child-src</code> is now a middle-tier fallback that rarely needs setting directly.</p>
 
 <h3>Step 4 — What <code>default-src</code> actually backstops (and doesn't)</h3>
-<p>Because every fetch directive terminates at <code>default-src</code>, it's tempting to read <code>default-src 'none'</code> as "nothing can happen." It isn't. <code>default-src</code> is the fallback for <strong>fetch directives only</strong>. A whole set of directives never consult it — they're simply <em>off</em> if you don't set them:</p>
+<p>Because every fetch directive terminates at <code>default-src</code>, it's tempting to read <code>default-src 'none'</code> as "nothing can happen." It isn't. <code>default-src</code> is the fallback for <strong>fetch directives only</strong>. A whole set of directives never consult it. They're simply <em>off</em> if you don't set them:</p>
 
 <div class="callout gotcha">
   <span class="tag">Flag — <code>default-src</code> is not a global deny</span>
-  <code>default-src 'none'</code> does <strong>not</strong> restrict <code>base-uri</code>, <code>form-action</code>, <code>frame-ancestors</code>, <code>sandbox</code>, or <code>report-to</code>/<code>report-uri</code>. So a page with only <code>default-src 'none'</code> can still be framed by anyone (no <code>frame-ancestors</code>), can still have its <code>&lt;base&gt;</code> hijacked (no <code>base-uri</code>), and can still post a form anywhere (no <code>form-action</code>). Those are Lesson 4's directives — and they're exactly why a "locked down" <code>default-src 'none'</code> policy often isn't.
+  <code>default-src 'none'</code> does <strong>not</strong> restrict <code>base-uri</code>, <code>form-action</code>, <code>frame-ancestors</code>, <code>sandbox</code>, or <code>report-to</code>/<code>report-uri</code>. So a page with only <code>default-src 'none'</code> can still be framed by anyone (no <code>frame-ancestors</code>), can still have its <code>&lt;base&gt;</code> hijacked (no <code>base-uri</code>), and can still post a form anywhere (no <code>form-action</code>). Those are Lesson 4's directives, and they're exactly why a "locked down" <code>default-src 'none'</code> policy often isn't.
 </div>
 
 <h2>Why this matters</h2>
 
-<p><strong>1. "Which directive decides this?" is now mechanical.</strong> Given any resource, you name its specific directive and walk the chain to the first one present. That's the L1 algorithm made concrete across the whole fetch family — and it's the exact reasoning an interviewer probes with "if I only set <code>script-src</code>, are my inline <code>onclick</code>s covered?" (Yes — <code>script-src-attr</code> falls back to it.)</p>
+<p><strong>1. "Which directive decides this?" is now mechanical.</strong> Given any resource, you name its specific directive and walk the chain to the first one present. That's the L1 algorithm made concrete across the whole fetch family, and it's the exact reasoning an interviewer probes with "if I only set <code>script-src</code>, are my inline <code>onclick</code>s covered?" (Yes, <code>script-src-attr</code> falls back to it.)</p>
 
 <p><strong>2. The intermediate hops are the trap.</strong> Almost everyone knows "falls back to <code>default-src</code>." The depth signal is knowing the <em>middle</em>: <code>worker-src</code>'s extra <code>script-src</code> hop, <code>frame-src</code>/<code>worker-src</code> both preferring <code>child-src</code>, the elem/attr split resolving through <code>script-src</code>. Get the middle wrong and you'll mis-predict which rule a real policy applies.</p>
 
-<p><strong>3. Fetch directives are only half of CSP.</strong> <code>default-src</code> backstops fetches and nothing else. The directives that stop framing, form exfiltration, and <code>&lt;base&gt;</code> hijacking stand alone and must be set explicitly — which is why the next lesson exists.</p>
+<p><strong>3. Fetch directives are only half of CSP.</strong> <code>default-src</code> backstops fetches and nothing else. The directives that stop framing, form exfiltration, and <code>&lt;base&gt;</code> hijacking stand alone and must be set explicitly, which is why the next lesson exists.</p>
 
 <div class="callout interview">
   <span class="tag">Key line</span>
-  "Fetch directives all terminate at <code>default-src</code>, but the paths differ. Scripts and styles resolve through an elem/attr split into <code>script-src</code>/<code>style-src</code> first; simple loaders like <code>img-src</code> go straight to <code>default-src</code>; framing goes <code>frame-src</code> → <code>child-src</code> → <code>default-src</code>, and workers take an extra hop: <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code>. And <code>default-src</code> only backstops <em>fetch</em> directives — not <code>frame-ancestors</code>, <code>base-uri</code>, or <code>form-action</code>."
+  "Fetch directives all terminate at <code>default-src</code>, but the paths differ. Scripts and styles resolve through an elem/attr split into <code>script-src</code>/<code>style-src</code> first; simple loaders like <code>img-src</code> go straight to <code>default-src</code>; framing goes <code>frame-src</code> → <code>child-src</code> → <code>default-src</code>, and workers take an extra hop: <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code>. And <code>default-src</code> only backstops <em>fetch</em> directives, not <code>frame-ancestors</code>, <code>base-uri</code>, or <code>form-action</code>."
 </div>
 
 <div class="callout gotcha">
@@ -87,10 +87,10 @@ nested contexts      frame-src   →  child-src           →                   
   <p class="q">Recall — answer out loud before peeking:</p>
   <p>① You set only <code>script-src 'self'</code>. Is an inline <code>onclick=</code> handler allowed?</p>
   <details><summary>show answer</summary>
-  <p class="a"><strong>No — it's governed, and blocked.</strong> <code>script-src-attr</code> is absent, so it falls back to <code>script-src 'self'</code>. An inline attribute isn't same-origin script, so it fails to match and is blocked. (Add <code>'unsafe-hashes'</code> or restructure to allow it.)</p></details>
+  <p class="a"><strong>No, it's governed, and blocked.</strong> <code>script-src-attr</code> is absent, so it falls back to <code>script-src 'self'</code>. An inline attribute isn't same-origin script, so it fails to match and is blocked. (Add <code>'unsafe-hashes'</code> or restructure to allow it.)</p></details>
   <p>② A worker is created and there's no <code>worker-src</code> and no <code>child-src</code>. Which directive decides?</p>
   <details><summary>show answer</summary>
-  <p class="a"><code>script-src</code> — then <code>default-src</code> if that's also absent. Full chain: <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code>. The extra <code>script-src</code> hop is the worker-specific quirk.</p></details>
+  <p class="a"><code>script-src</code>, then <code>default-src</code> if that's also absent. Full chain: <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code>. The extra <code>script-src</code> hop is the worker-specific quirk.</p></details>
   <p>③ Does <code>default-src 'none'</code> stop the page from being framed by evil.com?</p>
   <details><summary>show answer</summary>
   <p class="a"><strong>No.</strong> Framing is governed by <code>frame-ancestors</code>, which does not fall back to <code>default-src</code>. Without an explicit <code>frame-ancestors</code>, anyone can frame the page.</p></details>
@@ -101,11 +101,11 @@ nested contexts      frame-src   →  child-src           →                   
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://www.w3.org/TR/CSP3/#directives-fetch">W3C CSP Level 3 — §6.1 Fetch Directives</a> (each directive lists its own fallback), and <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#fetch_directives">MDN's fetch-directive table</a> for the fallback chains at a glance. The worker/frame chains are called out verbatim in CSP3 §1.3 "Changes from Level 2."
+  <a href="https://www.w3.org/TR/CSP3/#directives-fetch">W3C CSP Level 3, §6.1 Fetch Directives</a> (each directive lists its own fallback), and <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#fetch_directives">MDN's fetch-directive table</a> for the fallback chains at a glance. The worker/frame chains are called out verbatim in CSP3 §1.3 "Changes from Level 2."
 </div>
 
 <div class="ask-teacher">
-  <strong>Keep it handy.</strong> The fallback chains are a one-page, print-ready reference: <a href="../reference/fallback-cheat-sheet.html">📑 Fallback-chain cheat sheet</a> — every directive, its chain, and the "never falls back" list. <strong>Lesson 4 crosses out of the fetch family entirely — the document, navigation, and "rider" directives that <code>default-src</code> never touches: <code>base-uri</code>, <code>sandbox</code>, <code>form-action</code>, <code>frame-ancestors</code> (vs <code>X-Frame-Options</code>), and <code>upgrade-insecure-requests</code>.</strong>
+  <strong>Keep it handy.</strong> The fallback chains are a one-page, print-ready reference: <a href="../reference/fallback-cheat-sheet.html">📑 Fallback-chain cheat sheet</a>, every directive, its chain, and the "never falls back" list. <strong>Lesson 4 crosses out of the fetch family entirely, the document, navigation, and "rider" directives that <code>default-src</code> never touches: <code>base-uri</code>, <code>sandbox</code>, <code>form-action</code>, <code>frame-ancestors</code> (vs <code>X-Frame-Options</code>), and <code>upgrade-insecure-requests</code>.</strong>
 </div>
 
 <div class="course-nav">
@@ -116,6 +116,6 @@ nested contexts      frame-src   →  child-src           →                   
 
 <hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
 <p class="src"><strong>Sources</strong><br>
-<span id="s1">1.</span> Fetch-directive fallback lists; <code>frame-src</code> → <code>child-src</code> → <code>default-src</code> and <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code> (quoted in §1.3 Changes from Level 2); <code>default-src</code> as fetch-directive fallback — <a href="https://www.w3.org/TR/CSP3/#directives-fetch">W3C CSP Level 3 §6.1</a>.<br>
-<span id="s2">2.</span> The <code>script-src-elem</code>/<code>script-src-attr</code> and <code>style-src-elem</code>/<code>style-src-attr</code> split and their fallbacks — <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#fetch_directives">MDN: Content-Security-Policy fetch directives</a>; <a href="https://www.w3.org/TR/CSP3/#directive-script-src-elem">W3C CSP3 §6.1</a>.
+<span id="s1">1.</span> Fetch-directive fallback lists; <code>frame-src</code> → <code>child-src</code> → <code>default-src</code> and <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code> (quoted in §1.3 Changes from Level 2); <code>default-src</code> as fetch-directive fallback, <a href="https://www.w3.org/TR/CSP3/#directives-fetch">W3C CSP Level 3 §6.1</a>.<br>
+<span id="s2">2.</span> The <code>script-src-elem</code>/<code>script-src-attr</code> and <code>style-src-elem</code>/<code>style-src-attr</code> split and their fallbacks, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#fetch_directives">MDN: Content-Security-Policy fetch directives</a>; <a href="https://www.w3.org/TR/CSP3/#directive-script-src-elem">W3C CSP3 §6.1</a>.
 </p>

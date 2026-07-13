@@ -3,11 +3,11 @@
 
 <p class="eyebrow">Content Security Policy · Lesson 5</p>
 <h1>CSP1 vs CSP2 vs CSP3</h1>
-<p class="lede">You now have the whole directive map. This lesson is the <em>story</em> that produced it: three W3C levels, each born because the previous one didn't stop XSS well enough. Read as history it's trivia; read as an argument it's the setup for the rest of the course — the levels trace a single arc, from "allowlist the hosts" toward "drop the host allowlist entirely."</p>
+<p class="lede">You now have the whole directive map. This lesson is the <em>story</em> that produced it: three W3C levels, each born because the previous one didn't stop XSS well enough. Read as history it's trivia; read as an argument it's the setup for the rest of the course: the levels trace a single arc, from "allowlist the hosts" toward "drop the host allowlist entirely."</p>
 
 <h2>The concept</h2>
 
-<p>"CSP" isn't one spec. It's three levels, each a near-superset of the last, published years apart. Knowing which directive arrived in which level is the surface answer to "CSP1 vs CSP2 vs CSP3." The deeper answer is <em>why</em> each level happened — and that why is the same each time: the previous level left a way for injected script to run.<sup><a href="#s1">1</a></sup></p>
+<p>"CSP" isn't one spec. It's three levels, each a near-superset of the last, published years apart. Knowing which directive arrived in which level is the surface answer to "CSP1 vs CSP2 vs CSP3." The deeper answer is <em>why</em> each level happened, and that why is the same each time: the previous level left a way for injected script to run.<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
 <pre><code> 2011            2012                    2016                         2016 → today
@@ -21,7 +21,7 @@
  X-WebKit-CSP                           form-action, base-uri,        rebased on Fetch,
  (Chrome/                               child-src, plugin-types       deprecations
  Safari)</code></pre>
-<p class="cap">Origin: proposed as "Content Restrictions" (Hansen, 2004), shipped experimentally behind vendor prefixes in 2011, standardized as 1.0 in 2012. Note CSP 1.0 <em>never</em> became a full Recommendation — it stalled at Candidate Recommendation and CSP2 was the first to reach REC.<sup><a href="#s2">2</a></sup></p>
+<p class="cap">Origin: proposed as "Content Restrictions" (Hansen, 2004), shipped experimentally behind vendor prefixes in 2011, standardized as 1.0 in 2012. Note CSP 1.0 <em>never</em> became a full Recommendation: it stalled at Candidate Recommendation and CSP2 was the first to reach REC.<sup><a href="#s2">2</a></sup></p>
 </div>
 
 <h2>The steps</h2>
@@ -29,24 +29,24 @@
 <p>Walk the three levels: what each shipped, and the hole that motivated the next.</p>
 
 <h3>Step 1 — CSP1 (1.0, 2012): allowlist the sources</h3>
-<p>The founding idea: a page declares, per resource type, which <em>origins</em> it trusts. CSP1 shipped the core fetch directives — <code>default-src</code>, <code>script-src</code>, <code>style-src</code>, <code>img-src</code>, <code>connect-src</code>, <code>font-src</code>, <code>media-src</code>, <code>object-src</code>, <code>frame-src</code> — plus <code>sandbox</code> and <code>report-uri</code>, and the keywords <code>'self'</code>, <code>'none'</code>, <code>'unsafe-inline'</code>, <code>'unsafe-eval'</code>.<sup><a href="#s3">3</a></sup></p>
+<p>The founding idea: a page declares, per resource type, which <em>origins</em> it trusts. CSP1 shipped the core fetch directives (<code>default-src</code>, <code>script-src</code>, <code>style-src</code>, <code>img-src</code>, <code>connect-src</code>, <code>font-src</code>, <code>media-src</code>, <code>object-src</code>, <code>frame-src</code>) plus <code>sandbox</code> and <code>report-uri</code>, and the keywords <code>'self'</code>, <code>'none'</code>, <code>'unsafe-inline'</code>, <code>'unsafe-eval'</code>.<sup><a href="#s3">3</a></sup></p>
 <div class="callout gotcha">
   <span class="tag">The hole CSP1 left</span>
-  Inline script was all-or-nothing. To run your <em>own</em> inline <code>&lt;script&gt;</code> you set <code>'unsafe-inline'</code> — which also permitted <em>injected</em> inline script. So any page with inline code (nearly all of them) had to open the exact door CSP was built to shut. There was also no framing-protection directive — <code>X-Frame-Options</code> lived outside CSP.
+  Inline script was all-or-nothing. To run your <em>own</em> inline <code>&lt;script&gt;</code> you set <code>'unsafe-inline'</code>, which also permitted <em>injected</em> inline script. So any page with inline code (nearly all of them) had to open the exact door CSP was built to shut. There was also no framing-protection directive: <code>X-Frame-Options</code> lived outside CSP.
 </div>
 
 <h3>Step 2 — CSP2 (2016): trust specific inline code</h3>
-<p>CSP2 — the first full W3C Recommendation (15 Dec 2016) — answered the inline problem with <strong>nonces</strong> and <strong>hashes</strong>: mark <em>this</em> inline block as trusted without trusting inline in general. It also folded in the neighbouring gaps: <code>frame-ancestors</code> (absorbing <code>X-Frame-Options</code>), <code>form-action</code>, <code>base-uri</code>, <code>child-src</code> (deprecating <code>frame-src</code>), and <code>plugin-types</code>. Reports got richer (<code>effective-directive</code>, source file, line/column), and URL matching gained the secure-upgrade and redirect-path rules from L2.<sup><a href="#s1">1</a></sup></p>
+<p>CSP2, the first full W3C Recommendation (15 Dec 2016), answered the inline problem with <strong>nonces</strong> and <strong>hashes</strong>: mark <em>this</em> inline block as trusted without trusting inline in general. It also folded in the neighbouring gaps: <code>frame-ancestors</code> (absorbing <code>X-Frame-Options</code>), <code>form-action</code>, <code>base-uri</code>, <code>child-src</code> (deprecating <code>frame-src</code>), and <code>plugin-types</code>. Reports got richer (<code>effective-directive</code>, source file, line/column), and URL matching gained the secure-upgrade and redirect-path rules from L2.<sup><a href="#s1">1</a></sup></p>
 <div class="callout gotcha">
   <span class="tag">The hole CSP2 left</span>
-  Nonces/hashes fixed <em>inline</em>, but most policies still leaned on <strong>host allowlists</strong> for external script (<code>script-src 'self' https://cdn… https://analytics…</code>). Google's research then showed those allowlists were bypassable in the overwhelming majority of real sites — via JSONP endpoints, open redirects, and hosted libraries on allowlisted domains (L6). The allowlist model itself was the weakness.
+  Nonces/hashes fixed <em>inline</em>, but most policies still leaned on <strong>host allowlists</strong> for external script (<code>script-src 'self' https://cdn… https://analytics…</code>). Google's research then showed those allowlists were bypassable in the overwhelming majority of real sites, via JSONP endpoints, open redirects, and hosted libraries on allowlisted domains (L6). The allowlist model itself was the weakness.
 </div>
 
 <h3>Step 3 — CSP3 (Working Draft): drop the host allowlist</h3>
 <p>CSP3 (still a Working Draft, but widely shipped) is a rewrite <em>rebased on the Fetch standard</em>, and its headline is <code>'strict-dynamic'</code>: trust propagates from a nonce/hash'd script to the scripts <em>it</em> loads, and host/scheme entries in that directive are ignored. That lets a policy stop depending on a host allowlist at all (L7). CSP3 also added <code>'unsafe-hashes'</code>, <code>'report-sample'</code>, <code>report-to</code> (Reporting API) superseding <code>report-uri</code>, <code>worker-src</code> and <code>manifest-src</code>, the <code>script-src-elem</code>/<code>-attr</code> and <code>style-src-elem</code>/<code>-attr</code> split, and hashes that can match <em>external</em> scripts via <code>integrity</code>. It <em>un</em>-deprecated <code>frame-src</code> and deprecated <code>plugin-types</code> and <code>block-all-mixed-content</code>.<sup><a href="#s1">1</a></sup></p>
 <div class="callout">
   <span class="tag">History detail — things that came and went</span>
-  "History of the changes" isn't only additions. CSP3 drafts introduced <code>navigate-to</code> (restrict where the page could navigate) and <code>prefetch-src</code>, then <strong>removed</strong> both over compatibility and privacy concerns. Directive names in a Working Draft are not load-bearing until they ship broadly — a reason to check current browser support, not just the spec.
+  "History of the changes" isn't only additions. CSP3 drafts introduced <code>navigate-to</code> (restrict where the page could navigate) and <code>prefetch-src</code>, then <strong>removed</strong> both over compatibility and privacy concerns. Directive names in a Working Draft are not load-bearing until they ship broadly, a reason to check current browser support, not just the spec.
 </div>
 
 <h3>Step 4 — Which directive arrived when</h3>
@@ -59,25 +59,25 @@
 <tr><td><strong>CSP3</strong> (WD)</td><td><code>'strict-dynamic'</code>, <code>'unsafe-hashes'</code>, <code>'report-sample'</code>, <code>report-to</code>, <code>worker-src</code>, <code>manifest-src</code>, <code>script-src-elem</code>/<code>-attr</code>, <code>style-src-elem</code>/<code>-attr</code>, external-script hashes; deprecates <code>plugin-types</code> &amp; <code>block-all-mixed-content</code>; un-deprecates <code>frame-src</code></td></tr>
 </tbody>
 </table>
-<p class="cap"><code>upgrade-insecure-requests</code> and Trusted Types are defined in their own specs (not "a CSP level") but delivered on the CSP header — which is why they don't slot cleanly into this table.</p>
+<p class="cap"><code>upgrade-insecure-requests</code> and Trusted Types are defined in their own specs (not "a CSP level") but delivered on the CSP header, which is why they don't slot cleanly into this table.</p>
 </div>
 
 <h2>Why this matters</h2>
 
-<p><strong>1. The arc is the whole point.</strong> CSP1 = <em>allowlist origins</em>. CSP2 = <em>plus trust specific inline blocks</em> (nonces/hashes). CSP3 = <em>propagate that trust and abandon the host allowlist</em> (<code>'strict-dynamic'</code>). Each level is a response to the previous one failing to stop injected script. Tell that story and the directive list stops being a list.</p>
+<p><strong>1. The arc is the whole point.</strong> CSP1 = <em>allowlist origins</em>. CSP2 = <em>plus trust specific inline blocks</em> (nonces/hashes). CSP3 = <em>propagate that trust and abandon the host allowlist</em> (<code>'strict-dynamic'</code>). Each level is a response to the previous one failing to stop injected script. Told as that story, the directives connect into an argument instead of a list to memorize.</p>
 
-<p><strong>2. "Which level" has real deployment stakes.</strong> Nonces need CSP2+; <code>'strict-dynamic'</code> and <code>report-to</code> need CSP3-era browsers. This is exactly why real policies layer old and new — <code>'unsafe-inline'</code> beside a nonce (L2), <code>report-uri</code> beside <code>report-to</code> (L8), <code>X-Frame-Options</code> beside <code>frame-ancestors</code> (L4). Older engines take the fallback; newer ones enforce the stricter rule.</p>
+<p><strong>2. "Which level" has real deployment stakes.</strong> Nonces need CSP2+; <code>'strict-dynamic'</code> and <code>report-to</code> need CSP3-era browsers. This is exactly why real policies layer old and new: <code>'unsafe-inline'</code> beside a nonce (L2), <code>report-uri</code> beside <code>report-to</code> (L8), <code>X-Frame-Options</code> beside <code>frame-ancestors</code> (L4). Older engines take the fallback; newer ones enforce the stricter rule.</p>
 
-<p><strong>3. The spec status is a caveat, not a footnote.</strong> CSP3 is a Working Draft whose contents have shifted (<code>navigate-to</code>, <code>prefetch-src</code> came and went). Teach and deploy against <em>current browser support</em>, not just the draft — the healthy instinct is "verify it ships," which is the sourcing discipline this whole course runs on.</p>
+<p><strong>3. The spec status is a caveat, not a footnote.</strong> CSP3 is a Working Draft whose contents have shifted (<code>navigate-to</code>, <code>prefetch-src</code> came and went). Teach and deploy against <em>current browser support</em>, not just the draft. The healthy instinct is "verify it ships," which is the sourcing discipline this course runs on.</p>
 
 <div class="callout interview">
   <span class="tag">Key line</span>
-  "Three levels, one arc. CSP1 (2012) allowlisted origins but forced <code>'unsafe-inline'</code> for any inline script. CSP2 (2016, the first W3C REC) added nonces and hashes to trust specific inline blocks, plus <code>frame-ancestors</code>/<code>form-action</code>/<code>base-uri</code>. CSP3 added <code>'strict-dynamic'</code> — propagate trust from a nonced script and ignore the host allowlist — because Google showed host allowlists were almost always bypassable. Each level exists because the last one still let injected script run."
+  "Three levels, one arc. CSP1 (2012) allowlisted origins but forced <code>'unsafe-inline'</code> for any inline script. CSP2 (2016, the first W3C REC) added nonces and hashes to trust specific inline blocks, plus <code>frame-ancestors</code>/<code>form-action</code>/<code>base-uri</code>. CSP3 added <code>'strict-dynamic'</code> (propagate trust from a nonced script and ignore the host allowlist) because Google showed host allowlists were almost always bypassable. Each level exists because the last one still let injected script run."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Shallow: "CSP2 added nonces, CSP3 added <code>strict-dynamic</code>" — a memorized list. Deep: naming the <em>motivation</em> — nonces because <code>'unsafe-inline'</code> was all-or-nothing; <code>strict-dynamic</code> because host allowlists were empirically bypassable — and knowing CSP1 never reached full Recommendation while CSP2 did. The list is fluency; the causal chain is understanding.
+  Shallow: "CSP2 added nonces, CSP3 added <code>strict-dynamic</code>", a memorized list. Deep: naming the <em>motivation</em> (nonces because <code>'unsafe-inline'</code> was all-or-nothing; <code>strict-dynamic</code> because host allowlists were empirically bypassable) and knowing CSP1 never reached full Recommendation while CSP2 did. The list is fluency; the causal chain is understanding.
 </div>
 
 <div class="recall">
@@ -93,7 +93,7 @@
   <p class="a"><strong>CSP Level 2</strong> (15 Dec 2016). CSP 1.0 stalled at Candidate Recommendation (2012) and was superseded; CSP3 remains a Working Draft.</p></details>
   <p>④ Name one directive that was proposed in a CSP3 draft and later removed.</p>
   <details><summary>show answer</summary>
-  <p class="a"><code>navigate-to</code> (and <code>prefetch-src</code>) — both introduced in CSP3 drafts, then removed. A reminder that Working-Draft names aren't stable until broadly shipped.</p></details>
+  <p class="a"><code>navigate-to</code> (and <code>prefetch-src</code>), both introduced in CSP3 drafts, then removed. A reminder that Working-Draft names aren't stable until broadly shipped.</p></details>
 </div>
 
 <div class="callout">
@@ -102,7 +102,7 @@
 </div>
 
 <div class="ask-teacher">
-  <strong>The setup pays off next.</strong> This lesson kept pointing forward at "host allowlists are bypassable." <strong>Lesson 6 makes it concrete: exactly <em>how</em> an attacker turns <code>script-src 'self' https://trusted-cdn.com</code> into arbitrary script execution — JSONP, open redirects, and framework gadgets.</strong>
+  <strong>The setup pays off next.</strong> This lesson kept pointing forward at "host allowlists are bypassable." <strong>Lesson 6 makes it concrete: exactly <em>how</em> an attacker turns <code>script-src 'self' https://trusted-cdn.com</code> into arbitrary script execution: JSONP, open redirects, and framework gadgets.</strong>
 </div>
 
 <div class="course-nav">
@@ -113,7 +113,7 @@
 
 <hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
 <p class="src"><strong>Sources</strong><br>
-<span id="s1">1.</span> Per-level additions and deprecations — <a href="https://www.w3.org/TR/CSP3/#changes-from-level-2">W3C CSP3 "Changes from Level 2"</a>; <a href="https://www.w3.org/TR/CSP2/#changes-from-level-1">W3C CSP2 "Changes from Level 1"</a>.<br>
-<span id="s2">2.</span> Origin timeline (prefixed <code>X-Content-Security-Policy</code>/<code>X-WebKit-CSP</code>, 2011; "Content Restrictions" proposal 2004) — <a href="https://en.wikipedia.org/wiki/Content_Security_Policy">Wikipedia: Content Security Policy</a>. Publication status: CSP 1.0 Candidate Recommendation, 15 Nov 2012 (<a href="https://www.w3.org/TR/2012/CR-CSP-20121115/">/TR/2012/CR-CSP-20121115/</a>); CSP2 Recommendation, 15 Dec 2016 (<a href="https://www.w3.org/TR/2016/REC-CSP2-20161215/">/TR/2016/REC-CSP2-20161215/</a>); CSP3 Working Draft (<a href="https://www.w3.org/TR/CSP3/">/TR/CSP3/</a>).<br>
-<span id="s3">3.</span> CSP 1.0 directive set and keywords — <a href="https://www.w3.org/TR/2012/CR-CSP-20121115/">W3C CSP 1.0</a>.
+<span id="s1">1.</span> Per-level additions and deprecations, <a href="https://www.w3.org/TR/CSP3/#changes-from-level-2">W3C CSP3 "Changes from Level 2"</a>; <a href="https://www.w3.org/TR/CSP2/#changes-from-level-1">W3C CSP2 "Changes from Level 1"</a>.<br>
+<span id="s2">2.</span> Origin timeline (prefixed <code>X-Content-Security-Policy</code>/<code>X-WebKit-CSP</code>, 2011; "Content Restrictions" proposal 2004), <a href="https://en.wikipedia.org/wiki/Content_Security_Policy">Wikipedia: Content Security Policy</a>. Publication status: CSP 1.0 Candidate Recommendation, 15 Nov 2012 (<a href="https://www.w3.org/TR/2012/CR-CSP-20121115/">/TR/2012/CR-CSP-20121115/</a>); CSP2 Recommendation, 15 Dec 2016 (<a href="https://www.w3.org/TR/2016/REC-CSP2-20161215/">/TR/2016/REC-CSP2-20161215/</a>); CSP3 Working Draft (<a href="https://www.w3.org/TR/CSP3/">/TR/CSP3/</a>).<br>
+<span id="s3">3.</span> CSP 1.0 directive set and keywords, <a href="https://www.w3.org/TR/2012/CR-CSP-20121115/">W3C CSP 1.0</a>.
 </p>
