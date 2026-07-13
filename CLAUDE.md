@@ -9,7 +9,7 @@ The generic `teach` skill treats "the current directory" as a single workspace. 
 When teaching here:
 
 - **Workspace = `courses/<slug>/`.** Create one folder per topic (e.g. `courses/connection-pooling/`). All of the topic's `MISSION.md`, `NOTES.md`, `RESOURCES.md`, `lessons/`, `reference/`, and `learning-records/` live inside that folder — never at the repo root.
-- **Assets are shared, at the repo root `assets/`.** `course.css` and the `quiz.js` + `quiz.css` engine are reused across every course. Reuse them; do not re-author. From a lesson or reference page (`courses/<slug>/lessons/…`), link assets with `../../../assets/…`. From a course `overview.html` (`courses/<slug>/…`), use `../../assets/…`.
+- **Assets are shared, at the repo root `assets/`.** `course.css` and the `quiz.js` + `quiz.css` engine are reused across every course. `twisty.js` (vendored cubing.js `<twisty-player>`, MPL-2.0) animates twisty-puzzle algorithms; `cube-diagram.js` renders declarative SVG cube-face grids. Reuse them; do not re-author. Two `<twisty-player>` rules: the embedding page must start with `<!doctype html>`, and never style the `twisty-player` element from page CSS (any host rule breaks its canvas — use its default size inside a `.figure`). Its `experimental-stickering` attribute works (e.g. `L2C` for centers-only demos). When verifying via the firefox-devtools MCP, a blank cube is usually per-launch WebGL flakiness of the debug instance — restart Firefox and re-test before concluding anything about the page or the player's attributes. From a lesson or reference page (`courses/<slug>/lessons/…`), link assets with `../../../assets/…`. From a course `overview.html` (`courses/<slug>/…`), use `../../assets/…`.
 - **Register the course in the hub.** After creating or materially updating a course, add or refresh its card in the root `index.html` so it shows up in the hub.
 - **Each course gets an `overview.html`** (the course front page: lessons grouped by arc + quiz CTA), breadcrumbing up to `../../index.html`.
 - **Keep links relative and depth-correct** — they must resolve both on `file://` and on GitHub Pages (`https://<user>.github.io/learning-corner/`).
@@ -38,15 +38,9 @@ Then close with: a crisp **key line** (the soundbite that nails the point), the 
 
 **Hub-neutral framing:** Courses live in a shared, published hub — not a private 1:1 tutorial. Teach the specific stack deeply (Django + Postgres content is right), but don't frame pages with single-learner possessives ("Your stack", "your teacher", "your real deploy") or 1:1 tutoring voice. Use "the stack" and neutral second-person instruction ("you'll", "run it cold") — that pedagogical second person is fine; the possessive *ownership* framing is what to avoid. (This governs *voice*; "Tool-specific truth over generic theory" above governs *content depth* — they don't conflict.)
 
-**Plain voice — no AI tone:** Write lesson prose plain and calm from the first draft. State a point once, positively, then move on. Avoid the tells that read as machine-written:
-- **Alliterative / rule-of-three triads** ("the dice, the drama, the dopamine") — cut to the real point.
-- **Dramatic filler one-liners** ("The metric is the metric", "the shooting is just the receipt") — delete, don't decorate.
-- **Antithesis / negation-flips** ("This is not X. It is Y.") — say the thing once, positively.
-- **Self-narration / meta-scaffolding** ("Here is the whole shape before we walk each piece", "If you only keep one diagram…", "Three things follow") — just present the content.
-- **Editorializing adjectives** ("gorgeous", "juicy", "crucially", "worth saying out loud") and **"whole X" overuse** ("the whole point / discipline / mental model").
-- **Em-dashes leaned on for drama** — a period or colon is usually cleaner. (Em-dashes at a light rate are acceptable house style; don't build sentences around them.)
+**Plain voice — no AI tone:** Lesson prose follows the `article-voice` skill (plain third-person lecture voice plus the named-tell catalog and de-slop proofread pass), which sits on top of the `ai-tells` shared blocklist. Write lesson prose plain and calm from the first draft, and run `article-voice` as a proofread pass over any lesson that reads machine-written. The skill's catalog is canonical for the tells; this file no longer restates them, so it cannot drift.
 
-This is a *register* rule, not a depth cut: keep the substance, diagrams, and the key-line / trap / recall callouts. The deliberate **key line** soundbite may stay punchy — that's its job.
+Repo-specific carve-out for the proofread pass: this is a *register* rule, not a depth cut. Keep the substance, diagrams, and the key-line / trap / recall callouts. The deliberate **key line** soundbite is a marked callout and may stay punchy, so `article-voice` leaves it alone rather than flagging it as an aphoristic closer.
 
 ## How this learner learns (cross-topic)
 
