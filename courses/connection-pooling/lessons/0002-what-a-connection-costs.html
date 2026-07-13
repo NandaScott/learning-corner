@@ -3,11 +3,11 @@
 
 <p class="eyebrow">Connection Pooling · Lesson 2</p>
 <h1>What a connection costs at scale</h1>
-<p class="lede">Lesson 1 showed the <em>mechanism</em> — the fork, the auth, the per-process cost. Now the consequence: add those costs up across thousands of requests and hundreds of backends, and you hit a wall pooling exists to keep you off.</p>
+<p class="lede">Lesson 1 showed the <em>mechanism</em>: the fork, the auth, the per-process cost. Now the consequence: add those costs up across thousands of requests and hundreds of backends, and you hit a wall pooling exists to keep you off.</p>
 
 <h2>The three costs, totalled up</h2>
 
-<p>From Lesson 1 we know each connection is a forked backend process that must handshake and authenticate. Tally what that means in aggregate — you should be able to rattle these off:</p>
+<p>From Lesson 1 we know each connection is a forked backend process that must handshake and authenticate. Tally what that means in aggregate. You should be able to rattle these off:</p>
 
 <table>
   <tr><th>Cost</th><th>Roughly</th><th>Why it exists</th></tr>
@@ -22,7 +22,7 @@
 idle cost       ≈ 7 MB × 500
               ≈ 3.5 GB of RAM gone
               before a single useful query runs</code></pre>
-  <p class="cap">Idle connections are not free seats. They are paid-for, empty chairs.</p>
+  <p class="cap">Idle connections still hold their RAM and a backend slot even when doing no work.</p>
 </div>
 
 <h2>The ceiling: <code>max_connections</code></h2>
@@ -31,16 +31,16 @@ idle cost       ≈ 7 MB × 500
 
 <pre><code>FATAL: sorry, too many clients already</code></pre>
 
-<p>The instinct is "just raise it." But each slot costs RAM and adds the concurrency drag from Lesson 1, so you can't raise it to infinity — and past a few hundred active backends, <strong>throughput goes <em>down</em>, not up</strong>. The CPU spends its time context-switching (cold caches, TLB flushes) and fighting over internal locks instead of running your queries.<sup><a href="#s3">3</a></sup></p>
+<p>The instinct is "just raise it." But each slot costs RAM and adds the concurrency drag from Lesson 1, so you can't raise it to infinity. And past a few hundred active backends, <strong>throughput goes <em>down</em>, not up</strong>. The CPU spends its time context-switching (cold caches, TLB flushes) and fighting over internal locks instead of running your queries.<sup><a href="#s3">3</a></sup></p>
 
 <div class="callout interview">
   <span class="tag">Interview line</span>
-  "A Postgres connection isn't free because it's a forked backend process with private memory. So connections are bounded by RAM and CPU, not sockets — and there's a hard <code>max_connections</code> ceiling you can't just raise away, because past the sweet spot more backends make the database <em>slower</em>."
+  "A Postgres connection isn't free because it's a forked backend process with private memory. So connections are bounded by RAM and CPU, not sockets. And there's a hard <code>max_connections</code> ceiling you can't just raise away, because past the sweet spot more backends make the database <em>slower</em>."
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  More connections ≠ more throughput. There's a sweet spot — often only a few times your core count of <em>active</em> connections; beyond it you're paying to make the database slower. This is exactly the curve pooling lets you stay on.
+  More connections ≠ more throughput. There's a sweet spot, often only a few times your core count of <em>active</em> connections; beyond it you're paying to make the database slower. This is exactly the curve pooling lets you stay on.
 </div>
 
 <h2>Why this is the setup for pooling</h2>
@@ -52,7 +52,7 @@ idle cost       ≈ 7 MB × 500
   <li>And there's a <strong>hard ceiling</strong> you can't just raise away.</li>
 </ul>
 
-<p>A naïve web app opens a fresh connection per request — paying the setup cost every time — and under load tries to open thousands at once, slamming into the ceiling. <strong>Pooling exists to break both: reuse a small set of already-open connections instead of forking a new backend per request.</strong> That's Lesson 3.</p>
+<p>A naïve web app opens a fresh connection per request, paying the setup cost every time, and under load tries to open thousands at once, slamming into the ceiling. <strong>Pooling exists to break both: reuse a small set of already-open connections instead of forking a new backend per request.</strong> That's Lesson 3.</p>
 
 <div class="recall">
   <p class="q">Recall — close your eyes and answer out loud before peeking:</p>
@@ -61,10 +61,10 @@ idle cost       ≈ 7 MB × 500
   <p class="a">Setup latency (~20–100 ms), idle memory (~5–10 MB each), and concurrency drag (context switches + lock contention) that grows with the number of backends.</p></details>
   <p>② Why can't you fix "too many clients" by setting <code>max_connections = 10000</code>?</p>
   <details><summary>show answer</summary>
-  <p class="a">Each slot costs RAM and adds context-switch + lock contention. Past a few hundred active backends throughput drops — you'd be paying to make the DB slower, not faster.</p></details>
+  <p class="a">Each slot costs RAM and adds context-switch + lock contention. Past a few hundred active backends throughput drops. You'd be paying to make the DB slower, not faster.</p></details>
   <p>③ In one sentence, what problem does pooling solve?</p>
   <details><summary>show answer</summary>
-  <p class="a">It reuses a small set of already-open backends instead of forking a new one per request — avoiding both the per-request setup cost and the connection-count ceiling.</p></details>
+  <p class="a">It reuses a small set of already-open backends instead of forking a new one per request, avoiding both the per-request setup cost and the connection-count ceiling.</p></details>
 </div>
 
 <div class="callout">
@@ -73,7 +73,7 @@ idle cost       ≈ 7 MB × 500
 </div>
 
 <div class="ask-teacher">
-  <strong>Go deeper.</strong> Want the real per-connection memory number on a given machine? Curious where the throughput sweet spot actually lands for a given core count? Ask — the lesson is the floor, not the ceiling.
+  <strong>Go deeper.</strong> Want the real per-connection memory number on a given machine? Curious where the throughput sweet spot actually lands for a given core count? Ask. This lesson is a starting point, and there's plenty more to dig into.
 </div>
 
 <div class="course-nav">

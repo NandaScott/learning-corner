@@ -3,11 +3,11 @@
 
 <p class="eyebrow">Connection Pooling · Lesson 5</p>
 <h1>PgBouncer and pooling modes</h1>
-<p class="lede">Lesson 4 left you stuck: every worker pins its own backend, and no Django setting unifies them. The fix is to move the pool <em>out</em> of the app entirely — and the cost of doing so is the most-tested topic in the whole subject.</p>
+<p class="lede">Lesson 4 left you stuck: every worker pins its own backend, and no Django setting unifies them. The fix is to move the pool <em>out</em> of the app entirely, and the cost of doing so is the most-tested topic in the subject.</p>
 
 <h2>The concept</h2>
 
-<p><strong>PgBouncer is a connection pool that lives as a separate process between your app and Postgres.</strong> It's tiny and single-threaded (event-driven, no fork-per-connection), so it can accept thousands of cheap client connections while holding only a small pool of real Postgres backends — and hand those few backends around among all the clients.<sup><a href="#s1">1</a></sup></p>
+<p><strong>PgBouncer is a connection pool that lives as a separate process between your app and Postgres.</strong> It's tiny and single-threaded (event-driven, no fork-per-connection), so it can accept thousands of cheap client connections while holding only a small pool of real Postgres backends, and hand those few backends around among all the clients.<sup><a href="#s1">1</a></sup></p>
 
 <p>The thing that breaks Lesson 4's trap: PgBouncer sits <em>below every worker and every app instance at once</em>. There's one shared pool for the whole fleet, not one per worker. So Postgres's backend count stops depending on how many workers or instances you run.</p>
 
@@ -29,7 +29,7 @@
 
 <h2>The steps</h2>
 
-<p>How one request rides through PgBouncer — and notice that step 5, <em>when the backend is returned</em>, is the whole ballgame.</p>
+<p>How one request rides through PgBouncer. Notice that step 5, <em>when the backend is returned</em>, is what matters most.</p>
 
 <div class="figure">
 <pre><code>1. App workers connect to PgBouncer (cheap — no fork, no per-conn backend)
@@ -41,39 +41,39 @@
 </div>
 
 <h3>Step 1 — Workers connect to PgBouncer</h3>
-<p>The app's connections now point at PgBouncer, not Postgres. A client connection to PgBouncer is <em>cheap</em> — PgBouncer isn't Postgres, so there's no <code>fork</code> and no backend process behind each one (Lesson 1). It can hold thousands of idle client connections happily, which is exactly why every worker, thread, and instance keeping a connection open is no longer a problem.</p>
+<p>The app's connections now point at PgBouncer, not Postgres. A client connection to PgBouncer is <em>cheap</em>: PgBouncer isn't Postgres, so there's no <code>fork</code> and no backend process behind each one (Lesson 1). It can hold thousands of idle client connections happily, which is exactly why every worker, thread, and instance keeping a connection open is no longer a problem.</p>
 
 <h3>Step 2 — A request begins its database work</h3>
-<p>Holding a client connection to PgBouncer ties up <em>nothing</em> on Postgres by itself. A real backend isn't involved until the worker actually starts running SQL — so an idle worker (Lesson 4's pinned-backend villain) now costs a Postgres backend exactly zero.</p>
+<p>Holding a client connection to PgBouncer ties up <em>nothing</em> on Postgres by itself. A real backend isn't involved until the worker actually starts running SQL, so an idle worker (Lesson 4's pinned-backend villain) now costs a Postgres backend exactly zero.</p>
 
 <h3>Step 3 — Assigning a backend</h3>
-<p>When a client needs the database, PgBouncer lends it one of its pooled Postgres backends. If all are busy, the client waits — same queue idea as Lesson 3, just now shared across the entire fleet instead of trapped inside one worker.</p>
+<p>When a client needs the database, PgBouncer lends it one of its pooled Postgres backends. If all are busy, the client waits. Same queue idea as Lesson 3, just now shared across the entire fleet instead of trapped inside one worker.</p>
 
 <h3>Step 4 — Queries run on the borrowed backend</h3>
-<p>PgBouncer speaks the Postgres wire protocol and is transparent: the app runs its queries exactly as if connected directly. From the query's point of view there's no pooler in the path at all — which is also why the breakages in Step 5 are so easy to miss until they bite.</p>
+<p>PgBouncer speaks the Postgres wire protocol and is transparent: the app runs its queries exactly as if connected directly. From the query's point of view there's no pooler in the path at all, which is also why the breakages in Step 5 are so easy to miss until they bite.</p>
 
 <h3>Step 5 — Returning the backend: the pooling <em>mode</em></h3>
-<p>The single most important PgBouncer setting is <code>pool_mode</code>: it decides <strong>when</strong> a borrowed backend goes back to the pool. More aggressive return = fewer backends needed = better multiplexing — but it breaks more of Postgres's session-scoped features.<sup><a href="#s1">1</a></sup></p>
+<p>The single most important PgBouncer setting is <code>pool_mode</code>: it decides <strong>when</strong> a borrowed backend goes back to the pool. More aggressive return = fewer backends needed = better multiplexing, but it breaks more of Postgres's session-scoped features.<sup><a href="#s1">1</a></sup></p>
 
 <table>
   <tr><th>Mode</th><th>Backend returned…</th><th>Breaks</th><th>Use when</th></tr>
-  <tr><td><strong>session</strong></td><td>when the client <em>disconnects</em></td><td>nothing — full Postgres compatibility</td><td>you need every session feature; least multiplexing</td></tr>
-  <tr><td><strong>transaction</strong></td><td>at each <code>COMMIT</code>/<code>ROLLBACK</code></td><td>session-scoped state (see below)</td><td>the default choice for web apps — best multiplexing</td></tr>
+  <tr><td><strong>session</strong></td><td>when the client <em>disconnects</em></td><td>nothing: full Postgres compatibility</td><td>you need every session feature; least multiplexing</td></tr>
+  <tr><td><strong>transaction</strong></td><td>at each <code>COMMIT</code>/<code>ROLLBACK</code></td><td>session-scoped state (see below)</td><td>the default choice for web apps, with the best multiplexing</td></tr>
   <tr><td><strong>statement</strong></td><td>after <em>every statement</em></td><td>transaction-scoped state; multi-statement txns forbidden</td><td>autocommit-only / sharding setups; rare</td></tr>
 </table>
 
 <h3>What transaction mode breaks — and why</h3>
 <p>In transaction mode, two consecutive transactions from the same client may land on <em>different</em> backends. So anything that lives in the <em>session</em> rather than the transaction silently breaks:<sup><a href="#s1">1</a></sup></p>
 <ul>
-  <li><strong>Session-level prepared statements</strong> — prepared on one backend, gone on the next.</li>
-  <li><strong><code>SET</code> / <code>RESET</code> session variables</strong> — don't persist across transactions.</li>
-  <li><strong><code>LISTEN</code> / <code>NOTIFY</code></strong> — the channel is bound to a specific backend.</li>
-  <li><strong>Session-scoped advisory locks</strong> — held by a backend you may not get back.</li>
-  <li><strong>Server-side cursors</strong> (incl. <code>WITH HOLD</code>) — local to a backend; a later fetch may hit a different one.</li>
+  <li><strong>Session-level prepared statements</strong>: prepared on one backend, gone on the next.</li>
+  <li><strong><code>SET</code> / <code>RESET</code> session variables</strong>: don't persist across transactions.</li>
+  <li><strong><code>LISTEN</code> / <code>NOTIFY</code></strong>: the channel is bound to a specific backend.</li>
+  <li><strong>Session-scoped advisory locks</strong>: held by a backend you may not get back.</li>
+  <li><strong>Server-side cursors</strong> (incl. <code>WITH HOLD</code>): local to a backend; a later fetch may hit a different one.</li>
 </ul>
 
 <h3>Step 6 — Postgres only ever sees <code>pool_size</code> backends</h3>
-<p>This is the whole payoff. No matter how many client connections arrive — thousands across the fleet — Postgres only runs the small fixed number of backends in PgBouncer's server-side pool (<code>default_pool_size</code>). Backend count is now a knob <em>you</em> set to land on Lesson 2's throughput sweet spot, not a number that drifts upward with every worker, thread, and instance you add.</p>
+<p>This is the payoff. No matter how many client connections arrive, thousands across the fleet, Postgres only runs the small fixed number of backends in PgBouncer's server-side pool (<code>default_pool_size</code>). Backend count is now a knob <em>you</em> set to land on Lesson 2's throughput sweet spot, not a number that drifts upward with every worker, thread, and instance you add.</p>
 
 <h2>Why it works — and the Django wiring</h2>
 
@@ -89,12 +89,12 @@ DATABASES["default"].update({
     # psycopg3: also disable server-side prepared statements
     "OPTIONS": {"prepare_threshold": None},
 })</code></pre>
-<p class="cap"><code>DISABLE_SERVER_SIDE_CURSORS=True</code> is the famous one — Django 1.11 made <code>QuerySet.iterator()</code> use server-side cursors, which transaction pooling can't keep alive.<sup><a href="#s2">2</a></sup></p>
+<p class="cap"><code>DISABLE_SERVER_SIDE_CURSORS=True</code> is the famous one: Django 1.11 made <code>QuerySet.iterator()</code> use server-side cursors, which transaction pooling can't keep alive.<sup><a href="#s2">2</a></sup></p>
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Don't double-pool. If PgBouncer owns persistence, set Django's <code>CONN_MAX_AGE=0</code> (or use Django's native pool <em>or</em> PgBouncer — not both layers fighting). And never point an app that uses <code>LISTEN/NOTIFY</code>, session advisory locks, or long server-side cursors at a <em>transaction-mode</em> pooler without knowing those features are now broken.
+  Don't double-pool. If PgBouncer owns persistence, set Django's <code>CONN_MAX_AGE=0</code> (or use Django's native pool <em>or</em> PgBouncer, not both layers fighting). And never point an app that uses <code>LISTEN/NOTIFY</code>, session advisory locks, or long server-side cursors at a <em>transaction-mode</em> pooler without knowing those features are now broken.
 </div>
 
 <div class="callout interview">
@@ -109,7 +109,7 @@ DATABASES["default"].update({
   <p class="a">It's one shared pool below all workers and instances, so Postgres backend count is decoupled from app process count. <code>CONN_MAX_AGE</code> is per-worker, so it scales with worker count.</p></details>
   <p>② In transaction mode, name three things that break and the one reason behind all of them.</p>
   <details><summary>show answer</summary>
-  <p class="a">Prepared statements, <code>SET</code> vars, <code>LISTEN</code>/<code>NOTIFY</code>, advisory locks, server-side cursors — because consecutive transactions can land on different backends, so session-scoped state doesn't persist.</p></details>
+  <p class="a">Prepared statements, <code>SET</code> vars, <code>LISTEN</code>/<code>NOTIFY</code>, advisory locks, server-side cursors. All because consecutive transactions can land on different backends, so session-scoped state doesn't persist.</p></details>
   <p>③ Which two Django settings let it run safely in transaction mode, and why?</p>
   <details><summary>show answer</summary>
   <p class="a"><code>DISABLE_SERVER_SIDE_CURSORS=True</code> (server-side cursors can't survive across transactions) and <code>CONN_MAX_AGE=0</code> (let PgBouncer own persistence instead of double-pooling).</p></details>
@@ -121,7 +121,7 @@ DATABASES["default"].update({
 </div>
 
 <div class="ask-teacher">
-  <strong>Go deeper.</strong> You've now got the full arc — want to consolidate? There's a one-page printable <em>decision cheat-sheet</em> (CONN_MAX_AGE vs. Django native pool vs. PgBouncer, and which mode to pick), and an interleaved quiz across all five lessons to test storage strength before an interview. Just ask.
+  <strong>Go deeper.</strong> You've now got the full arc. Want to consolidate? There's a one-page printable <em>decision cheat-sheet</em> (CONN_MAX_AGE vs. Django native pool vs. PgBouncer, and which mode to pick), and an interleaved quiz across all five lessons to test storage strength before an interview. Just ask.
 </div>
 
 <div class="course-nav">

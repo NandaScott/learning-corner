@@ -30,9 +30,9 @@ On ASGI/async? → disable CONN_MAX_AGE; use a pool (native or PgBouncer).</code
   <tr><td><strong>What it is</strong></td><td>Persistent connection per worker</td><td>psycopg3 pool per worker</td><td>External pooler below the fleet</td></tr>
   <tr><td><strong>Scope</strong></td><td>One per worker process</td><td>One pool per worker process</td><td>One pool for all workers + instances</td></tr>
   <tr><td><strong>Cuts handshake cost?</strong></td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
-  <tr><td><strong>Reduces backend count?</strong></td><td><strong>No</strong></td><td>Within a worker only</td><td><strong>Yes — globally</strong></td></tr>
+  <tr><td><strong>Reduces backend count?</strong></td><td><strong>No</strong></td><td>Within a worker only</td><td><strong>Yes, globally</strong></td></tr>
   <tr><td><strong>Total backends</strong></td><td>≈ workers (×&nbsp;threads&nbsp;×&nbsp;instances)</td><td>workers × pool_size</td><td><code>default_pool_size</code> (fixed)</td></tr>
-  <tr><td><strong>Extra infra?</strong></td><td>None</td><td>None (just <code>psycopg[pool]</code>)</td><td>Yes — run/operate PgBouncer</td></tr>
+  <tr><td><strong>Extra infra?</strong></td><td>None</td><td>None (just <code>psycopg[pool]</code>)</td><td>Yes, run/operate PgBouncer</td></tr>
   <tr><td><strong>Best when</strong></td><td>Small/stable deploy</td><td>Threaded workers, no infra appetite</td><td>Large/spiky/autoscaled fleet</td></tr>
 </table>
 

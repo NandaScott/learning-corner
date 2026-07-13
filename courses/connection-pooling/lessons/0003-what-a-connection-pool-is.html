@@ -3,11 +3,11 @@
 
 <p class="eyebrow">Connection Pooling · Lesson 3</p>
 <h1>What a connection pool actually is</h1>
-<p class="lede">Lessons 1 and 2 built the problem: opening connections is slow, holding too many is fatal. This is the payoff — the one idea that fixes both at once.</p>
+<p class="lede">Lessons 1 and 2 built the problem: opening connections is slow, holding too many is fatal. This is the payoff: the one idea that fixes both at once.</p>
 
 <h2>The concept</h2>
 
-<p>A <strong>connection pool</strong> is a managed set of already-open database connections that an app keeps around and hands out on demand — instead of opening a fresh one per request and closing it after.</p>
+<p>A <strong>connection pool</strong> is a managed set of already-open database connections that an app keeps around and hands out on demand, instead of opening a fresh one per request and closing it after.</p>
 
 <p>The shift in mental model is small but total: a connection stops being something you <em>create and destroy</em>, and becomes something you <em>borrow and return</em>. The pool opens its connections once, up front, and then those same backend processes are reused thousands of times.</p>
 
@@ -37,11 +37,11 @@
 4. Use              run the query on the borrowed connection
 5. Reset            roll back any open txn, clear session state
 6. Release          return the connection to the pool ("check in"), still open</code></pre>
-<p class="cap">The connection is never closed at step 6 — that's the whole point. It goes back in the box, warm, for the next request.</p>
+<p class="cap">The connection is never closed at step 6: that's the whole point. It goes back in the pool, warm, for the next request.</p>
 </div>
 
 <h3>Step 1 — Pool initialization</h3>
-<p>When the app starts, the pool opens a configured number of connections — paying the Lesson 1 handshake cost <em>once</em>, at boot, not on the request hot path — and parks them idle, ready to use.</p>
+<p>When the app starts, the pool opens a configured number of connections and parks them idle, ready to use. It pays the Lesson 1 handshake cost <em>once</em>, at boot, not on the request hot path.</p>
 
 <h3>Step 2 — Acquire (check out)</h3>
 <p>When a request needs the database, it doesn't connect to Postgres; it asks the <em>pool</em> for a connection. This is the "checkout." The request now holds that connection exclusively until it gives it back.<sup><a href="#s1">1</a></sup></p>
@@ -56,7 +56,7 @@
 <p>This queue is a feature, not a bug: it lets the app absorb a burst of requests <em>without</em> opening a burst of connections at the database.</p>
 
 <h3>Step 4 — Use</h3>
-<p>The request runs its SQL on the borrowed connection — exactly as it would on a freshly-opened one. No difference from the query's point of view.</p>
+<p>The request runs its SQL on the borrowed connection, exactly as it would on a freshly-opened one. No difference from the query's point of view.</p>
 
 <h3>Step 5 — Reset (or invalidate)</h3>
 <p>Before the connection goes back, the pool decides between two very different actions depending on the connection's health:</p>
@@ -71,21 +71,21 @@
 <p class="cap"><strong>Reset</strong> = "clean it for reuse." <strong>Invalidate</strong> = "throw it away." A failed <em>query</em> triggers reset; a failed <em>connection</em> triggers invalidation.</p>
 </div>
 
-<p>The reset matters because, without it, the next borrower could inherit a half-finished transaction — or its table and row locks — from a stranger.</p>
+<p>The reset matters because, without it, the next borrower could inherit a half-finished transaction, or its table and row locks, from a stranger.</p>
 
 <div class="callout gotcha">
   <span class="tag">The trap — psycopg3 defaults</span>
-  psycopg3's <em>default</em> reset is <strong><code>ROLLBACK</code> only</strong>. It does <strong>not</strong> run <code>DISCARD ALL</code>, so leftover <em>session</em> state — <code>SET</code> variables, prepared statements, temp tables, <code>LISTEN</code> channels — survives into the next borrower.<sup><a href="#s4">4</a></sup> You get transaction safety for free, but <em>not</em> session isolation. To get the latter, pass a reset callback:
+  psycopg3's <em>default</em> reset is <strong><code>ROLLBACK</code> only</strong>. It does <strong>not</strong> run <code>DISCARD ALL</code>, so leftover <em>session</em> state survives into the next borrower: <code>SET</code> variables, prepared statements, temp tables, <code>LISTEN</code> channels.<sup><a href="#s4">4</a></sup> You get transaction safety for free, but <em>not</em> session isolation. To get the latter, pass a reset callback:
   <pre><code>def full_reset(conn):
     conn.execute("DISCARD ALL")   # temp tables, prepared stmts, SET, LISTEN — all cleared
 
 ConnectionPool(conninfo, reset=full_reset)</code></pre>
 </div>
 
-<p>Detecting a <em>broken</em> connection happens in two ways. <strong>Optimistically</strong> (the default, free): an operation fails, the connection is flagged broken and discarded on return. <strong>Pessimistically</strong>: pass <code>check=ConnectionPool.check_connection</code> to run a liveness ping <em>before</em> handing a connection to a client — psycopg's equivalent of <code>pool_pre_ping</code>. It costs a network round trip per checkout, so it's off by default; turn it on if your database does failovers.<sup><a href="#s4">4</a></sup> (Lesson 5's "pooling modes" govern <em>when</em> the reset is even safe to do.)</p>
+<p>Detecting a <em>broken</em> connection happens in two ways. <strong>Optimistically</strong> (the default, free): an operation fails, the connection is flagged broken and discarded on return. <strong>Pessimistically</strong>: pass <code>check=ConnectionPool.check_connection</code> to run a liveness ping <em>before</em> handing a connection to a client, psycopg's equivalent of <code>pool_pre_ping</code>. It costs a network round trip per checkout, so it's off by default; turn it on if your database does failovers.<sup><a href="#s4">4</a></sup> (Lesson 5's "pooling modes" govern <em>when</em> the reset is even safe to do.)</p>
 
 <h3>Step 6 — Release (check in)</h3>
-<p>The connection is returned to the pool — <strong>still open</strong>. No <code>fork</code>, no auth, no teardown. It sits idle until the next request checks it out, and the cycle repeats.</p>
+<p>The connection is returned to the pool, <strong>still open</strong>. No <code>fork</code>, no auth, no teardown. It sits idle until the next request checks it out, and the cycle repeats.</p>
 
 <h2>Why this works</h2>
 
@@ -94,26 +94,26 @@ ConnectionPool(conninfo, reset=full_reset)</code></pre>
 <table>
   <tr><th>Problem</th><th>How the pool kills it</th></tr>
   <tr><td><strong>Setup is slow</strong> (L1: ~20–100 ms fork + auth per connection)</td><td>Connections are opened once at startup and reused. The handshake leaves the request hot path entirely.</td></tr>
-  <tr><td><strong>Too many backends</strong> (L2: the <code>max_connections</code> ceiling + throughput curve)</td><td>The pool caps connections at its configured size. 10,000 incoming requests still map onto, say, 20 real backends — they queue instead of overwhelming Postgres.</td></tr>
+  <tr><td><strong>Too many backends</strong> (L2: the <code>max_connections</code> ceiling + throughput curve)</td><td>The pool caps connections at its configured size. 10,000 incoming requests still map onto, say, 20 real backends: they queue instead of overwhelming Postgres.</td></tr>
 </table>
 
 <p>That second point is the subtle one. The pool decouples <em>request concurrency</em> (how many users are hitting you) from <em>connection concurrency</em> (how many backends Postgres must run). You keep Postgres parked on the good part of Lesson 2's throughput curve no matter how spiky your traffic gets.</p>
 
 <div class="callout interview">
   <span class="tag">Interview line</span>
-  "A pool decouples request concurrency from connection concurrency. Requests borrow and return a small fixed set of pre-warmed connections, so you skip the per-request handshake <em>and</em> you never blow past <code>max_connections</code> — extra load queues instead of forking more backends."
+  "A pool decouples request concurrency from connection concurrency. Requests borrow and return a small fixed set of pre-warmed connections, so you skip the per-request handshake <em>and</em> you never blow past <code>max_connections</code>: extra load queues instead of forking more backends."
 </div>
 
 <h3>How big should the pool be?</h3>
-<p>Bigger is <em>not</em> better — that's straight from Lesson 2. The pool size should aim for the database's throughput sweet spot, not your request count. A common starting rule of thumb:<sup><a href="#s2">2</a></sup></p>
+<p>Bigger is <em>not</em> better. That's straight from Lesson 2. The pool size should aim for the database's throughput sweet spot, not your request count. A common starting rule of thumb:<sup><a href="#s2">2</a></sup></p>
 <div class="figure">
 <pre><code>pool_size ≈ (cpu_cores × 2) + effective_spindles</code></pre>
-<p class="cap">A starting point, not a law — for an SSD-backed 4-core DB that's ~8–10. Tune from there. The instinct to "set it to 500" recreates the exact Lesson 2 problem the pool was meant to prevent.</p>
+<p class="cap">A starting point, not a law: for an SSD-backed 4-core DB that's ~8–10. Tune from there. The instinct to "set it to 500" recreates the exact Lesson 2 problem the pool was meant to prevent.</p>
 </div>
 
 <div class="callout gotcha">
   <span class="tag">The trap</span>
-  Your total load on Postgres is <strong>pool_size × number of app processes</strong>, not just pool_size. Twenty Gunicorn workers each with a pool of 20 = 400 connections at the database. This is the single biggest pooling footgun in a multi-process Django deploy — and it's exactly what Lesson 4 tackles.
+  Your total load on Postgres is <strong>pool_size × number of app processes</strong>, not just pool_size. Twenty Gunicorn workers each with a pool of 20 = 400 connections at the database. This is the single biggest pooling footgun in a multi-process Django deploy. And it's exactly what Lesson 4 tackles.
 </div>
 
 <div class="recall">
@@ -124,21 +124,21 @@ ConnectionPool(conninfo, reset=full_reset)</code></pre>
   <p>② A pool decouples two kinds of concurrency. Name them.</p>
   <details><summary>show answer</summary>
   <p class="a">Request concurrency (how many users hit the app) from connection concurrency (how many real backends Postgres runs). Excess requests queue instead of opening more connections.</p></details>
-  <p>③ Why does the pool reset a connection before checking it back in — and what does psycopg3 reset by <em>default</em>?</p>
+  <p>③ Why does the pool reset a connection before checking it back in, and what does psycopg3 reset by <em>default</em>?</p>
   <details><summary>show answer</summary>
   <p class="a">So the next borrower doesn't inherit a stranger's dirty connection. psycopg3's default reset is <code>ROLLBACK</code> only (clears the transaction + its locks); session state like <code>SET</code>/temp tables/prepared statements survives unless you add a <code>DISCARD ALL</code> reset callback.</p></details>
-  <p>④ Connection comes back dead (DB restarted). Reset or invalidate — and what's the difference?</p>
+  <p>④ Connection comes back dead (DB restarted). Reset or invalidate, and what's the difference?</p>
   <details><summary>show answer</summary>
   <p class="a">Invalidate: a broken connection is discarded and replaced, never reset. Reset cleans a healthy connection for reuse; invalidate throws a dead one away. A failed query → reset; a failed connection → invalidate.</p></details>
 </div>
 
 <div class="callout">
   <span class="tag">Primary source — read this one</span>
-  <a href="https://docs.sqlalchemy.org/en/20/core/pooling.html">SQLAlchemy — Connection Pooling</a>. The clearest authoritative writeup of checkout/check-in, overflow, queueing, and connection reset. It's a Python library (not Django's ORM), but the mechanics are universal — read it for the model, not the API.
+  <a href="https://docs.sqlalchemy.org/en/20/core/pooling.html">SQLAlchemy — Connection Pooling</a>. The clearest authoritative writeup of checkout/check-in, overflow, queueing, and connection reset. It's a Python library (not Django's ORM), but the mechanics are universal. Read it for the model, not the API.
 </div>
 
 <div class="ask-teacher">
-  <strong>Go deeper.</strong> Want to see what "pool exhaustion" looks like in production (all connections checked out, requests timing out in the queue)? Curious where a pool actually <em>lives</em> — in the app process vs. as a separate service? That last question is the bridge to Lessons 4 and 5 — ask away.
+  <strong>Go deeper.</strong> Want to see what "pool exhaustion" looks like in production (all connections checked out, requests timing out in the queue)? Curious where a pool actually <em>lives</em>: in the app process vs. as a separate service? That last question is the bridge to Lessons 4 and 5. Ask away.
 </div>
 
 <div class="course-nav">
