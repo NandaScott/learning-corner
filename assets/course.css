@@ -243,3 +243,8 @@ mark { background: #fbe6a2; padding: 0 0.15em; }
   .recall details[open] summary { display: none; }
   a { color: #000; text-decoration: none; }
 }
+
+/* ---- animated cube players (assets/twisty.js) ----
+   Never apply CSS to the twisty-player element itself (size, display,
+   anything): host styles break its internal canvas layout. Let it render
+   at its default size inside a .figure. */

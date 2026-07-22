@@ -1,0 +1,143 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<script src="../../../assets/twisty.js"></script>
+<script src="../../../assets/cube-diagram.js" defer></script>
+<title>Lesson 1 — Reduction: how a 5x5 becomes a 3x3</title>
+
+<p class="eyebrow">5x5 Cube · Lesson 1</p>
+<h1>Reduction: how a 5x5 becomes a 3x3</h1>
+<p class="lede">You already solve a 3x3. The entire 5x5 method rests on that: do two preparation stages, and the big cube turns into the puzzle you already know. This lesson gives you the route, the names of the pieces, and the notation — nothing else. Cube in hand while you read.</p>
+
+<h2>The concept</h2>
+
+<p>The standard way to solve a 5x5 is the <strong>reduction method</strong>: first make each face's inner 3×3 block of center pieces one solid color, then glue each edge's three pieces into a solid strip. After that you turn only the outer layers, and the cube behaves — mechanically, exactly — like a 3x3. You finish it with the 3x3 method you already use.<sup><a href="#s1">1</a></sup></p>
+
+<p>Almost every solver uses reduction for 5x5 and larger cubes.<sup><a href="#s1">1</a></sup> You are not learning a niche trick; you are learning the mainline method, minus the speed optimisations the mission doesn't need.</p>
+
+<p>One structural fact makes the 5x5 friendlier than it looks: because it has an odd number of layers, the exact middle piece of every face is <strong>bolted to the core</strong>. Those six fixed centers never move relative to each other. The color scheme is decided before you touch the cube — white's center is always opposite yellow's, and every piece you place must agree with the fixed centers.<sup><a href="#s2">2</a></sup></p>
+
+<h2>The steps</h2>
+
+<p>The whole route, start to finish:</p>
+
+<div class="figure">
+<pre><code>scrambled 5x5
+   │
+1. CENTERS        make six 3×3 one-color blocks,
+   │              each matching its fixed middle piece
+   ▼
+2. EDGE PAIRING   glue each edge's 3 pieces (wing–midge–wing)
+   │              into 12 solid strips
+   ▼
+3. THE 3x3 STAGE  turn only the outer layers —
+   │              the cube now behaves as a 3x3
+   ▼
+solved</code></pre>
+<p class="cap">Two new stages, then a puzzle you already know. Lessons 2–5 teach stages 1 and 2; stage 3 is your existing skill.</p>
+</div>
+
+<h3>Step 0 — Learn the pieces (pick up the cube)</h3>
+<p>Hold any face toward you and read it as a 5×5 grid of stickers. Four kinds of piece live there, plus corners at the corners:</p>
+
+<div class="figure">
+<div class="cube-face"
+     data-cells="C w m w C / w x + x w / m + F + m / w x + x w / C w m w C"
+     data-legend="C:corner (8), m:midge (12), w:wing (24), x:x-center (24), +:plus-center (24), F:fixed center (6)"></div>
+<p class="cap">One face of a 5x5, colored by piece type. The inner 3×3 block (x, +, F) is what stage 1 builds; the w–m–w strips along each side are what stage 2 glues. Corners have 3 stickers, midges and wings 2, center pieces 1.</p>
+</div>
+
+<p>Two of these behave exactly like 3x3 pieces: the 8 <strong>corners</strong> are ordinary 3x3 corners, and the 12 <strong>midges</strong> — the middle piece of each edge — move and flip exactly like 3x3 edges. Everything new about the 5x5 lives in the wings and the movable centers.</p>
+
+<h3>Step 1 — Centers: six solid 3×3 blocks</h3>
+<p>Stage 1 makes the inner 3×3 of every face one color. The fixed center tells you which color each face must be, so there is no guessing and no way to build a center on the wrong side. The working strategy is to build the block as three 1×3 bars and attach them; the usual order is white first, then yellow opposite it, then the four remaining faces around the middle.<sup><a href="#s2">2</a></sup> Lessons 2 and 3 teach this properly.</p>
+
+<h3>Step 2 — Edge pairing: twelve solid strips</h3>
+<p>Each edge of the cube is three pieces: a wing, a midge, a wing. A completed strip — all three showing the same two colors, aligned — is called a <strong>tredge</strong>. Stage 2 finds the three pieces of each edge and joins them, twelve times, using moves that temporarily disturb the centers and then restore them. Lessons 4 and 5 teach the technique.</p>
+
+<h3>Step 3 — Outer layers only: the cube is now a 3x3</h3>
+<p>Here is why reduction works. An outer-layer turn (the top layer, say) moves the whole face — including its center block as one unit — and the outermost strip of each adjacent face, which is corner–wing–midge–wing–corner: complete tredges, never a fragment. So once centers and tredges are built, outer turns can never split them. Center blocks act as single 3x3 centers, tredges act as single 3x3 edges, and the corners were 3x3 corners all along. Solve it with your normal method.</p>
+
+<h3>The notation you need</h3>
+<p>Big-cube algorithms add one idea to 3x3 notation: how many layers a turn grabs.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>R      outer right layer only            (same as 3x3)
+Rw     outer TWO right layers together   ("wide")
+3Rw    outer THREE right layers together
+x y z  whole-cube rotations              (same as 3x3)</code></pre>
+<p class="cap">Same letters as 3x3; the prefix count and the <code>w</code> say how deep the turn goes.</p>
+</div>
+
+<p>Watch the difference — press ⏮ then ▶ on each player, or drag a cube to look around:</p>
+
+<div class="figure">
+  <twisty-player puzzle="5x5x5" alg="R" background="none" control-panel="bottom-row"></twisty-player>
+  <p class="cap"><code>R</code> — the outer layer only, exactly as on a 3x3.</p>
+</div>
+
+<div class="figure">
+  <twisty-player puzzle="5x5x5" alg="Rw" background="none" control-panel="bottom-row"></twisty-player>
+  <p class="cap"><code>Rw</code> — the outer two layers move together.</p>
+</div>
+
+<div class="figure">
+  <twisty-player puzzle="5x5x5" alg="3Rw" background="none" control-panel="bottom-row"></twisty-player>
+  <p class="cap"><code>3Rw</code> — three layers; only the leftmost two stay put.</p>
+</div>
+
+<p>Now do the same three moves on the real cube and undo each, watching which layers travel.</p>
+
+<h2>Why this matters</h2>
+
+<p>The route explains the whole course. Centers come first because edge pairing uses moves that break centers and restore them — you need finished centers to know they came back. Edges come second because the 3x3 stage needs whole tredges to treat as single edges. And the 3x3 stage is free: reduction converts the roughly 2.8×10<sup>74</sup> positions of a 5x5 into a puzzle you already finish reliably.</p>
+
+<p>The fixed centers do quiet work throughout. They pin the color scheme, so at every stage there is exactly one correct home for what you're building. When a lesson says "the white center," that means the 3×3 block on the face whose bolted middle piece is white — never a judgement call.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A 5x5 is a 3x3 wearing armor: build the six center blocks, glue the twelve edge strips, and from then on outer-layer turns can't break either — so you just solve the 3x3 underneath."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow take is that a 5x5 is "like a 3x3 but more of everything." The deep answer names the mechanism: outer-layer turns move center blocks whole and tredges whole, which is <em>why</em> a reduced 5x5 is a 3x3 and not merely similar to one. If you can say which pieces an outer turn carries (corner–wing–midge–wing–corner strips, never a fragment of a block), you understand reduction rather than just following it.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Name the three stages of reduction, in order.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Solve the six centers → pair the twelve edges (tredges) → turn only outer layers and solve as a 3x3.</p></details>
+  <p>② Which 5x5 pieces behave exactly like 3x3 pieces?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The 8 corners (same as 3x3 corners) and the 12 midges (the middle edge pieces — they move and flip like 3x3 edges).</p></details>
+  <p>③ Why can't you build a center on the wrong face?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The middle piece of each face is fixed to the core. The six fixed centers never move relative to each other, so each face's color is decided in advance and every center block must match its fixed piece.</p></details>
+  <p>④ What do <code>Rw</code> and <code>3Rw</code> mean?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>Rw</code> turns the outer two right layers together; <code>3Rw</code> turns the outer three. Plain <code>R</code> is the outer layer only, as on a 3x3.</p></details>
+  <p>⑤ Why does a fully reduced 5x5 behave exactly like a 3x3?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Outer-layer turns move each face's center block as one unit and carry complete tredges (the adjacent-face strip is corner–wing–midge–wing–corner). They can never split a finished block or strip, so the reduced pieces act as single 3x3 centers and edges.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://jperm.net/5x5">J Perm — How To Solve the 5x5 Rubik's Cube</a>. The course follows this guide. For this lesson, watch the first section (the method overview and notation) and stop before center details — that's Lesson 2's material.
+</div>
+
+<div class="ask-teacher">
+  <strong>Drill before next lesson.</strong> With the cube in hand: point to and name a midge, a wing, an x-center, a plus-center, and the fixed center. Then perform <code>R</code>, <code>Rw</code>, and <code>3Rw</code> and undo each, watching which layers move. Scramble freely — nothing is solved yet, so nothing can be lost. Questions about any piece or move are exactly what the teacher is for.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-centers-i-the-first-two.html"><em>Next: Lesson 2 — Centers I: the first two →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Reduction as the dominant method for 5x5+; stages (centers, edge matching, 3x3) — <a href="https://www.speedsolving.com/wiki/index.php/Reduction_Method">Speedsolving Wiki: Reduction Method</a>.<br>
+<span id="s2">2.</span> Method walkthrough, wide-move notation (<code>Rw</code>, <code>3Rw</code>), white-then-opposite center order — <a href="https://jperm.net/5x5">J Perm: How To Solve the 5x5 Rubik's Cube</a>; cross-checked against <a href="https://www.cubeskills.com/uploads/pdf/tutorials/beginners-method-for-solving-the-5x5-cube.pdf">CubeSkills: Beginner's Method for Solving the 5x5 Cube (PDF)</a>.
+</p>

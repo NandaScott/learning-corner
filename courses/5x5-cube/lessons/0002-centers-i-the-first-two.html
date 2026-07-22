@@ -1,0 +1,299 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css" />
+<script src="../../../assets/twisty.js"></script>
+<script src="../../../assets/cube-diagram.js" defer></script>
+<title>Lesson 2 — Centers I: the first two</title>
+
+<p class="eyebrow">5x5 Cube · Lesson 2</p>
+<h1>Centers I: the first two</h1>
+<p class="lede">
+  Stage 1 begins. The first center costs nothing — every move is legal because
+  nothing is built yet. The second center introduces the move pattern that
+  carries the rest of the stage: put a bar in place, then pay the round trip
+  that protects what's already done.
+</p>
+
+<h2>The concept</h2>
+
+<p>
+  A center is the inner 3×3 block of one face, all one color, matching its fixed
+  middle piece (Lesson 1). You build it as three <strong>1×3 bars</strong>: a
+  middle bar through the fixed center, then two outer bars attached to its
+  sides.<sup><a href="#s1">1</a></sup>
+</p>
+
+<p>
+  The order is white first, then yellow.<sup><a href="#s1">1</a></sup> Not
+  because those colors are special — because they're opposite. While you build
+  yellow, white sits on the bottom face, out of the way of everything you do on
+  top. The real subject of this lesson is the difference between the two builds:
+  the white center is unconstrained, and the yellow center is the first time a
+  move can cost you finished work.
+</p>
+
+<h2>The steps</h2>
+
+<div class="figure">
+  <pre><code>FIRST CENTER (white)                 SECOND CENTER (yellow)
+1. middle bar    + F +               4. turn white to the BOTTOM
+2. outer bar     x + x  → attach        (yellow fixed center is now on top)
+3. outer bar     x + x  → attach     5. middle yellow bar, built on the top face
+                                     6. outer bar on the front → Rw U2 Rw'
+                                     7. repeat step 6 for the last bar</code></pre>
+  <p class="cap">
+    Steps 1–3 are a free build. Steps 6–7 use the lift–park–restore maneuver
+    this lesson teaches.
+  </p>
+</div>
+
+<h3>The anatomy of one center, as bars</h3>
+
+<div class="figure">
+  <div
+    class="cube-face"
+    data-cells="x + x / + F + / x + x"
+    data-legend="F:fixed center, +:plus-center, x:x-center"
+  ></div>
+  <p class="cap">
+    One center block, split into bars: the middle bar is +&nbsp;F&nbsp;+ (the
+    fixed center and two plus-centers); each outer bar is x&nbsp;+&nbsp;x (two
+    x-centers around a plus-center).<sup><a href="#s1">1</a></sup> Knowing which
+    piece types a bar needs tells you what to hunt for.
+  </p>
+</div>
+
+<h3>Building a bar</h3>
+<p>
+  Join two pieces of the color first, then bring in the third. At this stage the
+  moves are intuitive, not memorized: turn faces to sit two pieces side by side,
+  then rotate the pair next to the third. If a piece is on the wrong face, a
+  wide turn (<code>Rw</code>, <code>Lw</code>) travels it across the cube.
+  Expect this to feel like puzzle-solving rather than algorithm-following —
+  that's the correct experience for centers.<sup><a href="#s1">1</a></sup>
+</p>
+
+<div class="figure">
+  <div class="cube-face" data-cells=". . . / W W W / . . ."></div>
+  <div class="cube-face" data-cells="W W W / W W W / . . ."></div>
+  <p class="cap">
+    The white face mid-build: middle bar done (top), then one outer bar attached
+    (bottom). One bar to go.
+  </p>
+</div>
+
+<h3>The first center is free</h3>
+<p>
+  While white is the only thing being built, no move can break anything. Use
+  that freedom: turn any face, slice any layer, experiment. The only goal is the
+  3×3 white block around the fixed white center. This is also where bar-building
+  intuition gets trained cheaply — mistakes cost nothing.
+</p>
+
+<h3>The second center: the constraint arrives</h3>
+<p>
+  Turn the whole cube so white faces the bottom.<sup><a href="#s1">1</a></sup>
+  Because the six fixed centers never move relative to each other (Lesson 1),
+  the fixed center now on top is automatically yellow. Build the yellow middle
+  bar directly on the top face — pieces can be joined up there with
+  <code>U</code> turns and wide turns that stay off the bottom.
+</p>
+
+<p>
+  The outer bars are the new skill. Build each one vertically on the front face,
+  then run the maneuver:
+</p>
+
+<div class="figure">
+  <pre><code>Rw    lift     the front bar rides up onto the top face —
+               the same turn pulls a column OUT of white
+U2    park     spin the top: the new bar leaves the return path
+Rw'   restore  the white column slides home; yellow keeps its bar</code></pre>
+  <p class="cap">
+    Lift–park–restore. <code>Rw</code> and <code>Rw'</code> cancel everywhere
+    except where the <code>U2</code> moved things in between.<sup
+      ><a href="#s1">1</a></sup
+    >
+  </p>
+</div>
+
+<p>
+  Watch it on the player below. The cube wears the
+  <strong>opposite-centers</strong> view, a training stickering that keeps only
+  the center pieces of the top and bottom faces — exactly the pair this
+  maneuver is about, the center being built and the center being protected.
+  Every other piece is blanked, edges and the other four centers
+  included.<sup><a href="#s2">2</a></sup> The stickering follows pieces, so the
+  new bar stays bright while it waits on the front face: it is made of top-face
+  center pieces wherever it happens to sit. Because the view hides every edge,
+  it stops helping once the centers stage is over — but for centers it removes
+  exactly the pieces you shouldn't be looking at.
+</p>
+
+<div class="figure">
+  <twisty-player
+    experimental-stickering="opposite-centers"
+    puzzle="5x5x5"
+    experimental-setup-alg="Rw U2 Rw'"
+    alg="Rw U2 Rw'"
+    background="none"
+    control-panel="bottom-row"
+  ></twisty-player>
+  <p class="cap">
+    Press ⏮ then ▶. Only the two opposite centers' pieces are visible. Watch
+    the front-right column ride up on <code>Rw</code>, the top spin on
+    <code>U2</code>, and the displaced column drop back home on
+    <code>Rw'</code>. (The player's solved orientation has white on top rather
+    than the bottom — the motion is identical to your grip.)
+  </p>
+</div>
+
+<p>
+  Why <code>U2</code> and not <code>U</code>? Anything even — <code>U</code>,
+  <code>U'</code>, <code>U2</code> — that moves the parked bar off the column
+  you're about to slice back down. <code>U2</code> is the habit worth building
+  because it never collides with the middle bar you placed first.
+</p>
+
+<h2>Why this matters</h2>
+
+<p>
+  The maneuver is the general engine, not a one-off trick. Its shape — do a move
+  that breaks something, hide your progress from the undo, then undo the damage
+  — is how every remaining center gets built, and the costs only rise from here:
+  with white and yellow both done, more of the cube becomes off-limits and the
+  free moves keep shrinking. Learning it now, when only one face needs
+  protecting, is the cheap version.
+</p>
+
+<p>
+  It also explains the ordering rule from the map: white and yellow are chosen
+  <em>because</em> they're opposite. The protected face spends the whole second
+  build on the bottom, touched only by the brief <code>Rw</code>–<code
+    >Rw'</code
+  >
+  round trips.
+</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "The first center is free. Every bar after that is bought with a round trip:
+  lift the bar up, park it with U2, slice back to restore what the lift broke."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow version is memorizing <code>Rw U2 Rw'</code> as a magic insert.
+  The deep version names each move's job: <code>Rw</code> both places the bar
+  <em>and</em> damages the bottom center; <code>U2</code> exists only to move
+  the placed bar off the return path; <code>Rw'</code> is a pure undo of the
+  damage. Once you can say that, you can improvise the maneuver from any angle
+  instead of resetting to a memorized grip.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Which pieces make up the middle bar of a center? The outer bars?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      Middle bar: plus-center, fixed center, plus-center (+&nbsp;F&nbsp;+).
+      Outer bars: x-center, plus-center, x-center (x&nbsp;+&nbsp;x).
+    </p>
+  </details>
+  <p>
+    ② Which two centers come first, and where does the first one sit while you
+    build the second?
+  </p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      White first, then yellow — opposites. White goes to the bottom face while
+      yellow is built on top, keeping it out of the way.
+    </p>
+  </details>
+  <p>③ In <code>Rw U2 Rw'</code>, what is the <code>U2</code> for?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      It moves the just-placed yellow bar off the column that
+      <code>Rw'</code> will slice back down. Without it, <code>Rw'</code> would
+      undo the insertion along with the damage.
+    </p>
+  </details>
+  <p>④ Why is the first center "free"?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      Nothing else is built yet, so no move can destroy finished work. Any face
+      or slice can be turned; the only goal is assembling the white block.
+    </p>
+  </details>
+  <p>
+    ⑤ What does <code>Rw</code> do to the bottom center during an insertion, and
+    what undoes it?
+  </p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      It pulls a column of the white center up out of the bottom face.
+      <code>Rw'</code> — after the <code>U2</code> — slices that column straight
+      back home.
+    </p>
+  </details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://jperm.net/5x5">J Perm — How To Solve the 5x5 Rubik's Cube</a
+  >, centers section of the video (start through ~3:03). It shows the bar builds
+  and the lift–park–restore in real time; 3:03 onward covers awkward pieces
+  worth watching after your first attempts.
+</div>
+
+<div class="ask-teacher">
+  <strong>Drill before next lesson.</strong> Scramble fully. Build the white
+  center bar by bar, turn it to the bottom, and build yellow on top using
+  <code>Rw U2 Rw'</code> for both outer bars. Then scramble and do it again —
+  three full white+yellow builds. If a bar refuses to come together, note the
+  position and bring it here; stuck-piece cases are the best teaching material.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span
+    ><a href="0001-reduction-how-a-5x5-becomes-a-3x3.html">← Lesson 1</a></span
+  >
+  <span
+    ><a href="0003-centers-ii-the-last-four.html"
+      ><em>Next: Lesson 3 — Centers II: the last four →</em></a
+    ></span
+  >
+</div>
+
+<hr
+  style="border: none; border-top: 1px solid var(--rule); margin: 2.5rem 0 1rem"
+/>
+<p class="src">
+  <strong>Sources</strong><br />
+  <span id="s1">1.</span> Center order (white first, opposite second, first
+  center held on the bottom), three-bar construction (middle center bar + two
+  outer bars), and the build-on-front → move up → <code>U2</code> → restore
+  maneuver —
+  <a href="https://jperm.net/5x5">J Perm: How To Solve the 5x5 Rubik's Cube</a>
+  (centers section); cross-checked against
+  <a
+    href="https://www.cubeskills.com/uploads/pdf/tutorials/beginners-method-for-solving-the-5x5-cube.pdf"
+    >CubeSkills: Beginner's Method for Solving the 5x5 Cube (PDF)</a
+  >.<br />
+  <span id="s2">2.</span> <code>opposite-centers</code> stickering definition —
+  everything except (center pieces ∩ pieces moved by <code>U</code>/<code
+    >D</code
+  >) is <em>ignored</em>; no dim tier. Listed under the 4x4x4 Reduction group
+  but implemented size-generically, so it applies to 5x5x5. Compare
+  <code>L2C</code> ("last two centers"): top/front centers regular, other
+  centers dimmed, non-centers ignored —
+  <a
+    href="https://github.com/cubing/cubing.js/blob/main/src/cubing/puzzles/stickerings/cube-like-stickerings.ts"
+    >cubing.js source: <code>cube-like-stickerings.ts</code></a
+  >.
+</p>

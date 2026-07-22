@@ -1,0 +1,287 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css" />
+<script src="../../../assets/twisty.js"></script>
+<script src="../../../assets/cube-diagram.js" defer></script>
+<title>Lesson 3 — Centers II: the last four</title>
+
+<p class="eyebrow">5x5 Cube · Lesson 3</p>
+<h1>Centers II: the last four</h1>
+<p class="lede">
+  Two centers are done. The remaining four wrap around them in a ring, and the
+  move that builds them is the one you already know — lift, park, restore. What
+  changes is the room you have to work in. Every center you finish takes a face
+  out of play, and by the last two the face you would scribble on is the face
+  you are trying to solve.
+</p>
+
+<h2>The concept</h2>
+
+<p>
+  Hold the two finished centers (white and yellow) on the
+  <strong>left and right</strong>.<sup><a href="#s1">1</a></sup> The four faces
+  still open — top, front, bottom, back — form a ring around that left–right
+  axis. Filling them uses the same three-bar build and the same lift–park–restore
+  round trip from Lesson 2. There is no new algorithm to learn in this
+  lesson.<sup><a href="#s1">1</a></sup>
+</p>
+
+<p>
+  The difficulty is spatial, not algorithmic. In Lesson 2 one face needed
+  protecting (white, parked on the bottom). Now two centers are held on the
+  sides, and both are adjacent to every face in the ring — so a careless wide
+  turn can break either of them. As more centers go in, the number of faces you
+  can turn freely keeps shrinking.<sup><a href="#s1">1</a></sup> The last two
+  centers are the pinch: no free face is left to assemble a bar on.
+</p>
+
+<h2>The steps</h2>
+
+<div class="figure">
+  <pre><code>START  white + yellow held on LEFT / RIGHT
+       four open faces form a ring:   U  F  D  B
+   │
+1. adjacency   pick centers 3 &amp; 4 as two ADJACENT faces (e.g. U, then F)
+2. build 3     middle bar + 2 outer bars — round-trip each insert to
+   │           protect the held L/R centers
+3. build 4     same build, on a face next to #3
+   │           (now L, R and #3 are all off-limits)
+   ▼
+THE LAST TWO   the two open faces left are the last two centers —
+4. build 5     no free face to scratch-build on; stage the bar in the
+   │           space you have and round-trip it in
+5. build 6     the final pieces fall in as 5 completes;
+               awkward positions use the same engine</code></pre>
+  <p class="cap">
+    One engine throughout. Steps 2–5 are all lift–park–restore; the only thing
+    that changes down the list is how much free space you have to stage a bar.
+  </p>
+</div>
+
+<h3>Hold the finished pair on left and right</h3>
+<p>
+  Turn the whole cube so white and yellow sit on the left and right
+  faces.<sup><a href="#s1">1</a></sup> That leaves top, front, bottom, and back
+  open — a four-face ring circling the left–right axis. Every remaining bar gets
+  built and inserted somewhere in that ring, and every insert has to leave the
+  two held centers intact.
+</p>
+
+<h3>Centers 3 and 4 must be adjacent, not opposite</h3>
+<p>
+  Choose your third and fourth centers as two faces that touch each other — say
+  the top, then the front — never two opposite faces.<sup><a href="#s1">1</a></sup>
+  The reason is what it leaves behind. The ring is a cycle (U–F–D–B and back to
+  U), so taking an adjacent pair always leaves the other two faces adjacent as
+  well. Solve top and front, and the last two are bottom and back — still next
+  to each other, which is the workable shape for the endgame. Solve two opposite
+  faces instead and the last two would sit across the cube from one another, with
+  no shared space to build in.
+</p>
+
+<div class="figure">
+  <pre><code>ring around the L/R axis (a cycle):
+
+        U
+      ╱   ╲
+    B       F        adjacent pair done  →  { U, F }
+      ╲   ╱          last two left over  →  { D, B }  (also adjacent)
+        D</code></pre>
+  <p class="cap">
+    Take an adjacent pair for centers 3 and 4 and the leftover pair is adjacent
+    too. That is what keeps the last two centers solvable.
+  </p>
+</div>
+
+<h3>The round trip now protects two centers</h3>
+<p>
+  The insert is the Lesson 2 maneuver, unchanged: build an outer bar on a free
+  face, lift it with a wide turn, park it out of the return path with a
+  <code>U2</code> (or <code>D2</code>), then restore. The difference is what a
+  wide turn now costs. A move that grabs the right layers disturbs the
+  right-held center; one that grabs the left layers disturbs the left. So you
+  keep every insert to a clean round trip — the wide turn and its inverse cancel
+  everywhere except where the parking spin moved things.<sup><a href="#s1">1</a></sup>
+  With two centers held instead of one, the set of faces you can turn without
+  cost is smaller, and it shrinks again with center 3, and again with center 4.
+</p>
+
+<p>
+  Watch the same engine on the player. The cube wears the <strong>L2C</strong>
+  view: the two adjacent open centers (top and front) show in full color, and
+  every already-built center is dimmed — including the pair held on the
+  sides.<sup><a href="#s2">2</a></sup> This is exactly the endgame geometry, two
+  adjacent faces left to fill. The stickering follows pieces, so a bar you stage
+  on the front stays bright as it rides up on the lift.
+</p>
+
+<div class="figure">
+  <twisty-player
+    experimental-stickering="L2C"
+    puzzle="5x5x5"
+    experimental-setup-alg="Rw U2 Rw'"
+    alg="Rw U2 Rw'"
+    background="none"
+    control-panel="bottom-row"
+  ></twisty-player>
+  <p class="cap">
+    Press ⏮ then ▶. The bright faces are the two adjacent centers still being
+    filled; every dimmed center is already built and must survive the insert.
+    The front bar lifts on <code>Rw</code>, the top parks it on <code>U2</code>,
+    and <code>Rw'</code> restores what the lift displaced. Same round trip as
+    Lesson 2 — now it is guarding more.
+  </p>
+</div>
+
+<h3>The last two centers: no free face</h3>
+<p>
+  When only two faces are left open, there is no spare face to freely assemble a
+  bar on — both open faces are centers you are trying to
+  finish.<sup><a href="#s1">1</a></sup> You still build with inner bar then two
+  outer bars,<sup><a href="#s3">3</a></sup> but you stage each bar in the narrow
+  space that remains and round-trip it into place with the same lift–park–restore
+  move. Most positions fall in cleanly; a few land awkwardly. Those hard cases
+  are what the primary-source video covers from 3:03.<sup><a href="#s1">1</a></sup>
+  The mission is reliability, not a memorized case list — so when a piece traps
+  itself, note the exact position and bring it to the teacher, and lean on the
+  round trip you already trust rather than hunting for a special algorithm.
+</p>
+
+<h2>Why this matters</h2>
+
+<p>
+  The whole centers stage is one move applied under shrinking freedom. Lesson 2
+  taught lift–park–restore with a single protected face and a whole cube of scratch
+  space. This lesson is the same move with two protected centers and a work area
+  that vanishes to nothing by the sixth center. Recognizing that keeps the
+  endgame calm: when the last two feel hard, it is the tight space talking, not a
+  gap in your technique.
+</p>
+
+<p>
+  The adjacency rule is the one piece of foresight that pays off here. Choosing
+  centers 3 and 4 next to each other guarantees the final two are a matched
+  adjacent pair, which is the only configuration the round trip can still reach
+  once the cube is nearly full. Solve them opposite and you strand yourself.
+</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Same round trip, less room. Two centers held on the sides, a shrinking ring
+  to fill — and by the last two, the face you would scribble on is the face
+  you're solving."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow expectation is that the last centers need special algorithms. They
+  don't — it is lift–park–restore the whole way down. What actually changes is
+  the free space available to stage a bar, which is why the last two feel hard.
+  The one decision that matters is made early: build centers 3 and 4
+  <em>adjacent</em>, so the final two are an adjacent pair you can still work.
+  Naming the tight workspace as the difficulty — rather than reaching for a
+  memorized case — is the deep answer.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Where do the two finished centers go while you build the remaining four?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      On the left and right faces. That leaves top, front, bottom, and back — a
+      four-face ring around the left–right axis — open to build in.
+    </p>
+  </details>
+  <p>② Why must centers 3 and 4 be two adjacent faces, not opposite ones?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      The ring is a cycle, so taking an adjacent pair leaves the other two faces
+      adjacent as well. That keeps the last two centers next to each other — the
+      workable shape. An opposite pair would strand the final two across the cube
+      with no shared space to build in.
+    </p>
+  </details>
+  <p>③ Is there a new algorithm for the last four centers?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      No. It is the Lesson 2 lift–park–restore round trip (<code>Rw U2 Rw'</code>
+      and its variants) throughout. Only the free space to stage a bar changes.
+    </p>
+  </details>
+  <p>④ Why are the last two centers the hardest part of the stage?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      No free face is left — both open faces are centers you are finishing, so
+      there is no spare face to assemble a bar on. The difficulty is the tight
+      workspace, not a new move.
+    </p>
+  </details>
+  <p>⑤ What makes the move set "more restricted" as you finish more centers?</p>
+  <details>
+    <summary>show answer</summary>
+    <p class="a">
+      Each finished center is a face you can no longer turn freely without
+      breaking it. Two held on the sides, then a third, then a fourth — every one
+      removes safe turns, so more inserts must be clean round trips.
+    </p>
+  </details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://jperm.net/5x5">J Perm — How To Solve the 5x5 Rubik's Cube</a>,
+  centers section. It shows the third-and-fourth-center builds with the pair held
+  on the sides, and from ~3:03 it works the awkward last-two-center cases in real
+  time — watch that part after your first attempts, not before.
+</div>
+
+<div class="ask-teacher">
+  <strong>Drill before next lesson.</strong> Start from a cube with white and
+  yellow already built. Hold them on the left and right, then solve the four
+  remaining centers: top and front first (adjacent), then the last two. Do three
+  full runs. When a bar on the last two centers refuses to place, freeze the
+  cube, write down where every needed piece sits, and bring that position here —
+  the trapped cases are the best material for the next session.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-centers-i-the-first-two.html">← Lesson 2</a></span>
+  <span
+    ><em>Next: Lesson 4 — Edge pairing (coming next session)</em></span
+  >
+</div>
+
+<hr
+  style="border: none; border-top: 1px solid var(--rule); margin: 2.5rem 0 1rem"
+/>
+<p class="src">
+  <strong>Sources</strong><br />
+  <span id="s1">1.</span> Holding the first two centers on the left/right, solving
+  the third and fourth as <em>two adjacent</em> centers, the move set becoming
+  more restricted as centers are added, and the last-two-centers hard cases
+  (video ~3:03) —
+  <a href="https://jperm.net/5x5">J Perm: How To Solve the 5x5 Rubik's Cube</a>
+  (centers section); the hold-on-left/right position and the "adjacent third and
+  fourth centers" rule are stated explicitly in
+  <a
+    href="https://www.cubeskills.com/uploads/pdf/tutorials/beginners-method-for-solving-the-5x5-cube.pdf"
+    >CubeSkills: Beginner's Method for Solving the 5x5 Cube (PDF)</a
+  >, p.2.<br />
+  <span id="s2">2.</span> <code>L2C</code> ("last two centers") stickering — the
+  top and front centers render in full color, the other four centers are dimmed,
+  and all non-center pieces are ignored —
+  <a
+    href="https://github.com/cubing/cubing.js/blob/main/src/cubing/puzzles/stickerings/cube-like-stickerings.ts"
+    >cubing.js source: <code>cube-like-stickerings.ts</code></a
+  >.<br />
+  <span id="s3">3.</span> The last two centers are built the same way, inner bar
+  then two outer bars —
+  <a
+    href="https://www.cubeskills.com/uploads/pdf/tutorials/beginners-method-for-solving-the-5x5-cube.pdf"
+    >CubeSkills: Beginner's Method for Solving the 5x5 Cube (PDF)</a
+  >, p.2.
+</p>
