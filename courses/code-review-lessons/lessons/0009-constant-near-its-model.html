@@ -1,0 +1,102 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 9 — Put a constant next to the domain concept it belongs to</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 5 · Lesson 9</p>
+<h1>Put a constant next to its model</h1>
+<p class="lede">A limit that governs the cart was defined in the serializer, because that's where it was first needed. Correct value, wrong home. A rule about a thing should live with the thing it constrains.</p>
+
+<h2>The mistake</h2>
+
+<p>A cart-related constant — a limit describing the <code>Cart</code> — was declared in the serializer module. That was the place it happened to be used first, so it landed there. But the constant isn't <em>about</em> serialization; it's about the cart. Anyone reasoning about what a cart may hold would open the model, not the serializer, and wouldn't find it.</p>
+
+<p>The value is right and the code runs. The cost is discoverability. A rule that lives away from the concept it governs is hard to find from the concept, easy to miss, and easy to duplicate or contradict when the next person, not finding it on the model, defines their own.</p>
+
+<div class="figure">
+<pre><code>declared where first used              declared where it belongs
+─────────────────────────             ──────────────────────────
+serializers.py                         models.py
+  MAX_CART_ITEMS = 50    ← the rule       class Cart(...):
+  class CartSerializer:                       MAX_ITEMS = 50   ← the rule
+      ...  uses MAX_CART_ITEMS                 ...
+
+reader asks "what limits a cart?"      reader asks "what limits a cart?"
+  → opens models.py → not there          → opens models.py → right there
+  → may redefine it elsewhere
+</code></pre>
+<p class="cap">Place a constant by the concept it constrains, not by the line that first reads it.</p>
+</div>
+
+<h2>How to catch it — ask what the constant is about</h2>
+
+<p>When you introduce a constant, ask one question before choosing its home: <em>what domain object does this describe?</em> Put it on or beside that object. The point of first use is where you notice you need it — not where it belongs.</p>
+
+<div class="figure">
+<pre><code>introducing a constant → ask:
+
+   "what domain object does this value constrain / describe?"
+                    │
+                    ▼
+        put it ON or NEXT TO that object
+                    │
+        (point of first use = where you noticed it,
+         not where it lives)
+</code></pre>
+<p class="cap">The placement test is aboutness, not first-touch.</p>
+</div>
+
+<h3>Step 1 — Separate "where I first needed it" from "what it's about"</h3>
+<p>The pull is to define a value at the line that first reads it, because that's the least friction in the moment. But the line that reads a value and the concept the value describes are different things. A cart limit is about the cart wherever it's first consumed. First-use is a fact about your editing session; aboutness is a fact about the domain.</p>
+
+<h3>Step 2 — Move the constant to its concept</h3>
+<p>Locate the constant on the model or domain object it constrains — as a class attribute on <code>Cart</code>, or beside the model definition. Now it's discoverable from the concept it governs: someone asking "how many items can a cart hold?" reads the cart and finds the answer, instead of grepping the codebase and hoping.</p>
+
+<h3>Step 3 — Recognise this as cohesion, not style</h3>
+<p>This is the high-cohesion principle: data and the rules about that data should hang together, so a change to the concept touches one place. A misplaced constant is a small cohesion leak, and cohesion leaks compound — the further a rule drifts from its concept, the more likely a second, contradicting copy appears. (Same co-location instinct as temporal coupling in <a href="0005-temporal-coupling.html">Lesson 5</a>: there, behaviour that always runs together; here, a rule that belongs with its data.)</p>
+
+<h2>Why it matters</h2>
+
+<p>High cohesion is what makes a codebase navigable: everything about one concept is in one place, so you can reason about the concept by reading one place. A constant defined at its point of first use quietly erodes that. The value is invisible from the model it constrains, which means the next person can't find it, can't trust it's the only copy, and may well write a second one that says <code>60</code> where the first says <code>50</code>. Now the cart has two contradicting limits and no single source of truth. Placing the constant with its concept costs nothing at write-time and pays back every time someone reasons about that concept — which is every time the concept changes.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A constant belongs with the domain object it describes, not at the line that first reads it. Ask "what is this value about?" — put it there, so anyone reasoning about the concept finds the rule with the concept.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is defining the constant at its point of first use and calling that "declare close to usage." Declaring a variable near its use is right for a local; a domain rule's "usage" is the concept it governs, not the first line that happens to read it. First-use placement optimises your editing session; aboutness placement optimises every future reader of the concept.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① You need a new limit while editing the serializer. What's the one question that decides where it goes?</p>
+  <details><summary>show answer</summary>
+  <p class="a">"What domain object does this value describe/constrain?" It's about the cart, so it goes on/beside the <code>Cart</code> model — not in the serializer where you first needed it.</p></details>
+  <p>② Point-of-first-use placement runs fine. What does it cost?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Discoverability and cohesion: the rule is invisible from the concept it governs, so it's easy to miss and easy to duplicate or contradict. The value being correct doesn't fix that.</p></details>
+  <p>③ Why is "declare close to usage" not a defence here?</p>
+  <details><summary>show answer</summary>
+  <p class="a">That rule is for locals. For a domain rule, the relevant "usage" is the concept it constrains, not the first line that reads it. A cart limit's home is the cart.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Martin, <em>Clean Code</em>, Ch.10 (Classes) on cohesion, and Ch.6 on keeping data and the rules about it together. The relevant idea: a class should gather everything about one concept so it has one reason to change.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Unsure whether a given constant belongs on the model, a config module, or a settings table? Ask — the "what is it about, and who changes it" split usually decides it. Next: rendering every field a domain object actually carries.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0008-mock-with-spec.html">← Lesson 8</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0010-render-every-field.html"><em>Next: Lesson 10 — Render every field the object carries →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): a cart-describing constant defined in the serializer module rather than on/near the model it constrains.<br>
+Principle — Martin, <em>Clean Code</em>, Ch.10 (cohesion). Already covered in the global Clean Code canon; this lesson is the specific misfire, not the principle.</p>

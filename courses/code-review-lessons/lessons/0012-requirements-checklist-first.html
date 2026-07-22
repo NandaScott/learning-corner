@@ -1,0 +1,107 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 12 — Extract a requirements checklist from the ticket before the first draft</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 6 · Lesson 12</p>
+<h1>Requirements checklist first</h1>
+<p class="lede">"Include the customer's details" was in the ticket and missing from the first draft. It slipped past personal review and AI-assisted review both, and surfaced late — an extra day of rework. A missing requirement is invisible to code review; only the ticket says what should exist.</p>
+
+<h2>The mistake</h2>
+
+<p>Work started without a complete, enumerated list of what the ticket asked for. One requirement — "include the customer's details" — was missed in the first draft. It then survived every review, personal and AI-assisted, because review looks at the code that exists and asks whether it's correct. No reviewer flagged the absence, because there was nothing present to flag. It was caught late, and cost an extra day.</p>
+
+<p>This is the one catch in the course that no amount of code-quality review would have found. The other eleven lessons sharpen the review of code on the page. This one is about code that never made it onto the page — and the only artifact that knows it should have is the ticket.</p>
+
+<div class="figure">
+<pre><code>what code review checks          what it CANNOT check
+──────────────────────          ─────────────────────
+is the code that EXISTS          is required code ABSENT?
+correct, clean, tested?            → nothing present to flag
+   ✓ catches bugs                  → reviewer sees a coherent diff
+   ✓ catches bad names             → the gap is invisible
+   ✗ catches nothing missing
+
+only the TICKET says what should exist.
+no enumerated list → an omission has nothing to fail against → it ships
+</code></pre>
+<p class="cap">A missing requirement has nothing to fail against until someone reads the ticket beside the diff.</p>
+</div>
+
+<h2>How to catch it — enumerate the ticket, then check the diff against it</h2>
+
+<p>Before writing code, read the ticket and pull every requirement into an explicit checklist — from the description, the acceptance criteria, and any linked spec. Keep it visible while you work. Before opening the PR, walk the checklist against the diff and confirm each item is implemented. That's a spec-adherence pass, separate from code-quality review.</p>
+
+<div class="figure">
+<pre><code>two gates, not one:
+
+  START ─→ read ticket → enumerate requirements as checkboxes
+             ☐ render quote PDF
+             ☐ accept additional_notes
+             ☐ include the customer's details   ← the one that got missed
+             ☐ gate behind the feature flag
+
+  ... build ...
+
+  BEFORE PR ─→ Gate A (spec):    walk checklist vs diff — is each item present?
+              Gate B (quality):  is what's present correct / clean / tested?
+
+  "did I build everything asked?"  ≠  "is what I built good?"
+</code></pre>
+<p class="cap">Spec adherence and code quality are different questions; the checklist is what makes the first one answerable.</p>
+</div>
+
+<h3>Step 1 — Enumerate before the first draft, not after</h3>
+<p>At the start of a ticket, turn its description, acceptance criteria, and any linked spec into a list of checkboxes. The point of doing it first is that the list becomes the thing an omission can fail against. Without it, a missed requirement has no counterpart — there's nothing that says "this was supposed to be here," so nothing surfaces the absence until it's expensive.</p>
+
+<h3>Step 2 — Keep the list visible while you build</h3>
+<p>The checklist isn't a one-time reading of the ticket; it's a reference you keep beside the work. Requirements are easy to hold in mind at the start and easy to lose as the implementation grows and attention narrows to the hard parts. A visible list is what carries a low-drama requirement like "include the customer's details" all the way to the end, past the interesting problems that crowd it out.</p>
+
+<h3>Step 3 — Run the spec gate separately from the quality gate</h3>
+<p>Before requesting review, walk the checklist against the diff: is each item actually implemented? Treat "did I build everything that was asked?" as a distinct gate from "is what I built good?" Code review — human or AI — answers the second well and the first not at all, because it reasons about present code. Only a deliberate item-by-item pass against the enumerated requirements answers the first.</p>
+
+<h2>Why it matters</h2>
+
+<p>Code review checks whether the code that exists is correct; it structurally cannot check whether required code is absent, because an absence presents nothing to react to. A reviewer reads a coherent diff, finds it reasonable, and approves — while a whole requirement sits unbuilt and unmentioned. That's why this failure survives every review and surfaces late, where it's most expensive: the earlier lessons all catch things visible in the diff, and this one, by definition, isn't. The enumerated checklist is the fix precisely because it moves the requirement out of your head and onto paper, where an omission finally has something to fail against. It's the same principle as <a href="0010-render-every-field.html">Lesson 10</a> — enumerate the real fields, don't render from memory — lifted from the domain object up to the ticket: the spec, not your recollection of it, is the checklist.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Code review checks whether present code is correct; only the ticket says what should exist. Enumerate the ticket's requirements into a checklist before the first draft, keep it visible, and walk it against the diff before the PR — a spec gate separate from the quality gate.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is trusting review — your own, or an AI's — to catch a missing requirement. Review reasons about the code in front of it; a requirement that was never implemented leaves nothing in the diff to notice, so it passes clean. Thoroughness of review can't substitute for an enumerated spec, because the two answer different questions.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Why did "include the customer's details" survive both personal and AI-assisted review?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Review checks whether present code is correct; it can't flag required code that's absent, because there's nothing in the diff to react to. Only the ticket says the requirement should exist.</p></details>
+  <p>② What artifact makes a missed requirement catchable, and when is it built?</p>
+  <details><summary>show answer</summary>
+  <p class="a">An enumerated requirements checklist drawn from the ticket, built before the first draft — so an omission has something concrete to fail against, and walked against the diff before opening the PR.</p></details>
+  <p>③ What are the two separate gates before requesting review?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The spec gate — "did I build everything asked?" (checklist vs diff) — and the quality gate — "is what I built good?" (code review). Code review answers the second, not the first.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  This catch is self-identified, not from a book: the discipline is to make the ticket's requirements an explicit artifact. The closest canonical backing is the general test-first instinct in Martin, <em>Clean Code</em> — make the expected behaviour explicit and checkable before you rely on judgement to confirm it.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want a lightweight template for turning a ticket into a checkbox list you can paste into the PR description and tick off? Ask. Next: the interleaved quiz — all twelve lessons shuffled and drilled cold.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0011-print-css-render-host.html">← Lesson 11</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0013-interleaved-review.html"><em>Next: Lesson 13 — Interleaved review quiz →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — self-identified (outside the PR review): a "include the customer's details" requirement was missed in the first draft, survived personal and AI-assisted review, and was caught late at the cost of an extra day.<br>
+Principle — spec adherence as a gate distinct from code-quality review; the ticket's enumerated requirements are the checklist.</p>

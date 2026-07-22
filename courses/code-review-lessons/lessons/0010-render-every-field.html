@@ -1,0 +1,102 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 10 — Render every field the domain object actually carries</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 5 · Lesson 10</p>
+<h1>Render every field the object carries</h1>
+<p class="lede">The address block in the quote left out the phone number. The address object carries it and the document needs it. The template rendered a remembered address, not the real one.</p>
+
+<h2>The mistake</h2>
+
+<p>The quote PDF rendered an address block — street, city, region, postcode — and dropped the phone number. Not because the address lacked one: the address object carries a phone field, and the document is a customer-facing quote that wants it. The template rendered a mental picture of "what an address looks like" instead of the fields the address object actually has.</p>
+
+<p>This is the failure mode where the code works, the page renders, and the output is quietly incomplete. Nothing errors. A field the consumer expects is simply absent, and the only way to notice is to compare the output against the object's real shape — which is exactly the step that got skipped.</p>
+
+<div class="figure">
+<pre><code>rendered from memory                   rendered from the model
+────────────────────                   ───────────────────────
+Address:                               Address:
+  name                                   name
+  street                                 street
+  city, region  postcode                 city, region  postcode
+  ─ (phone omitted)                       phone   ← carried, and needed
+
+output renders fine, silently          output matches the object's
+missing a field the doc needs          real field set
+</code></pre>
+<p class="cap">A partial render from memory drops fields the consumer expects, with no error to flag it.</p>
+</div>
+
+<h2>How to catch it — enumerate the object's real fields</h2>
+
+<p>Before rendering a composite domain object — address, contact, line item — list its fields from the model, then decide which the output requires. Render from that list, not from a remembered shape. Treat every field as needed until you've shown it isn't.</p>
+
+<div class="figure">
+<pre><code>rendering a composite object into a template:
+
+   1. open the model → enumerate its ACTUAL fields
+        name · street · city · region · postcode · phone · email
+   2. for each field: does THIS document need it?
+        phone → yes (customer-facing quote)
+        internal_id → no
+   3. render the required set — default a field to "needed"
+      until proven irrelevant
+</code></pre>
+<p class="cap">Output completeness is a spec concern: the object's field list is the checklist.</p>
+</div>
+
+<h3>Step 1 — Get the field list from the object, not your head</h3>
+<p>Open the model (or serializer, or dataclass) and read what the object actually holds. A rendered-from-memory address is a guess about the object's shape, and the guess tends to include the fields you always picture and omit the ones you don't — like a phone number on an address. The object's own field list is the authoritative shape; anything else is a partial recollection.</p>
+
+<h3>Step 2 — Decide each field in or out, on purpose</h3>
+<p>Walk the enumerated fields and make an explicit call for each: does this document need it? Default a field to "needed until proven irrelevant." That default matters — the failure here wasn't deciding phone was unnecessary, it was never considering phone at all. An omission you decided is fine; an omission you never saw is the bug.</p>
+
+<h3>Step 3 — Treat the omission as a spec miss, not a style nit</h3>
+<p>A missing field isn't a formatting preference; it's the output not meeting what the consumer expects. The quote is supposed to carry the customer's contact details, and a quote without the phone number fails that quietly. Rendering completeness is part of the spec the document has to satisfy, and it's checked by comparing render against real shape.</p>
+
+<h2>Why it matters</h2>
+
+<p>Rendering from a mental model instead of the real object is the same root fault as coding against a convention or an imagined future: you're designing against something other than the actual thing in front of you. Here the actual thing is the domain object's field set, and the mind's version of it is lossy in a predictable direction — it keeps the fields you always think of and drops the ones you don't. The result passes every check that asks "does the code run?" and fails the only check that matters: "does the output carry what the object holds and the reader needs?" That check has to be run deliberately, against the model's real fields, because nothing else will surface it until a customer reads a quote with no way to phone them back.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Render a composite object from its real field list, not a remembered shape. Enumerate the model's fields, decide each in or out on purpose, and default a field to "needed" until proven irrelevant — a field you never considered is the one that goes missing.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is rendering the fields that "obviously" make up an address and calling it done. The obvious fields are exactly the ones memory keeps; the dropped phone number is the one it doesn't. "Looks like a complete address" is a judgement from memory. "Matches the address object's fields" is a judgement from the model — only the second catches the gap.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Before rendering an address block into a document, what's the first thing you read, and why not just render from memory?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Read the object's real field list from the model. Memory is lossy in a predictable direction — it keeps the usual fields and drops the rest (like a phone on an address), producing a silently incomplete render.</p></details>
+  <p>② A rendered address looks complete and the page has no errors. What check would still catch a missing field?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Compare the render against the object's actual fields. "Looks complete" is a memory judgement; "matches the model's fields" is the one that surfaces an omission no error will flag.</p></details>
+  <p>③ What's the default disposition for each field the object carries?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Needed until proven irrelevant. The bug wasn't deciding phone was unnecessary — it was never considering it. A decided omission is fine; an unseen one is the defect.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  This one is verified against the code, not a book: open the domain object's definition (Django model / serializer / dataclass) and read its fields — that field list <em>is</em> the source. The habit is to make the model, not memory, the reference for what an output must carry.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want a quick way to diff a template's rendered fields against a model's declared fields so omissions surface at review time? Ask. Next: why print/PDF output follows the render server's rules, not your screen's.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0009-constant-near-its-model.html">← Lesson 9</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0011-print-css-render-host.html"><em>Next: Lesson 11 — Print CSS follows the render host →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): the address block in a quote PDF omitted the phone number the address object carries and the document needs.<br>
+Principle — output completeness as a spec concern; the domain object's field list is the authoritative reference for what to render.</p>

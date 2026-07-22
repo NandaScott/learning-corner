@@ -2,22 +2,22 @@
 <link rel="stylesheet" href="../../../assets/quiz.css">
 <title>Lesson 8 — Interleaved review</title>
 
-<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Lesson 8 · Review</p>
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Lesson 13 · Review</p>
 <h1>Interleaved review</h1>
-<p class="lede">Re-reading the lessons builds <em>fluency</em>, the feeling of knowing. Retrieving each judgment cold, with the seven shuffled together, builds <em>storage strength</em>: the reflex that actually fires at self-review time.</p>
+<p class="lede">Re-reading the lessons builds <em>fluency</em>, the feeling of knowing. Retrieving each judgment cold, with all twelve shuffled together, builds <em>storage strength</em>: the reflex that actually fires at self-review time.</p>
 
 <h2>How to use this</h2>
-<p>Questions are drawn from all seven lessons and <strong>shuffled</strong> every run, by design. Interleaving the principles, rather than reviewing one lesson at a time, is harder, and that difficulty is what makes them stick.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <strong>near-miss</strong>, the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em>, and run it again in a few days. The spacing is the second half of durable memory. These are habits, not facts, so what you are really drilling is which check to run at the moment the mistake would happen.</p>
+<p>Questions are drawn from all twelve lessons and <strong>shuffled</strong> every run, by design. Interleaving the principles, rather than reviewing one lesson at a time, is harder, and that difficulty is what makes them stick.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <strong>near-miss</strong>, the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em>, and run it again in a few days. The spacing is the second half of durable memory. These are habits, not facts, so what you are really drilling is which check to run at the moment the mistake would happen.</p>
 
 <div id="quiz"></div>
 
 <div class="ask-teacher">
-  <strong>Go deeper.</strong> Missed the same lesson twice? Flag which one. It's worth re-explaining a different way, or drilling just that check. The real test isn't this quiz, it's the next PR: run the <a href="../reference/self-review-checklist.html">self-review checklist</a> on your own diff and see which of the seven habits actually fired.
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag which one. It's worth re-explaining a different way, or drilling just that check. The real test isn't this quiz, it's the next PR: run the <a href="../reference/self-review-checklist.html">self-review checklist</a> on your own diff and see which of the twelve habits actually fired.
 </div>
 
 <div class="course-nav">
   <span><a href="../overview.html">⌂ Overview</a></span>
-  <span><a href="0007-test-new-behavior.html">← Lesson 7</a></span>
+  <span><a href="0012-requirements-checklist-first.html">← Lesson 12</a></span>
   <span><a href="../reference/self-review-checklist.html">Checklist ↗</a></span>
   <span><a href="../reference/glossary.html">Glossary ↗</a></span>
 </div>
@@ -171,6 +171,96 @@ Quiz.mount("#quiz", [
       "Unit tests don't count; only integration tests do"
     ], answer: 0,
     explain: "The reviewer couldn't confirm <code>additional_notes</code> reached the context. Testing the easiest internal function to call isn't testing the observable contract. (<a href='0007-test-new-behavior.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "You mock a real function and assert it was called with the new input. What extra step keeps the test honest?",
+    options: [
+      "Create the mock with autospec / create_autospec so it enforces the real signature",
+      "Add a second assertion checking the mock's return value was used",
+      "Assert the mock was called exactly once, not merely called",
+      "Patch the function at its definition module rather than the import site"
+    ], answer: 0,
+    explain: "The near-miss (call-count) still doesn't check the call is valid. A bare mock accepts any arguments; autospec makes a wrong-signature call raise <code>TypeError</code>. (<a href='0008-mock-with-spec.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "A green assert_called_once_with against a plain MagicMock proves what, exactly?",
+    options: [
+      "Only that your code made that call — not that the call matches the real signature",
+      "That the real function accepts those arguments in that order",
+      "That the mocked function returned the value the caller expected",
+      "That the function under test has full branch coverage"
+    ], answer: 0,
+    explain: "It certifies wiring between two pieces of your own code. When the real signature drifts, a bare mock stays green while production breaks. (<a href='0008-mock-with-spec.html'>L8</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "You need a cart limit while editing the serializer. Where does the constant belong?",
+    options: [
+      "On or beside the Cart model — the domain object the value describes",
+      "In the serializer, defined once, close to where it's first read",
+      "In a shared constants module so any layer can import it",
+      "In settings, since limits are configuration and may change"
+    ], answer: 0,
+    explain: "The near-miss ('close to first use') is the local-variable rule misapplied; a domain rule's home is the concept it constrains, so a reader finds it on the cart. (<a href='0009-constant-near-its-model.html'>L9</a>)" },
+
+  { lesson: "Lesson 10",
+    q: "Before rendering an address block into a document, what's the reference for which fields to include?",
+    options: [
+      "The object's real field list from the model, deciding each field in or out",
+      "The fields that make up a standard address, rendered from memory",
+      "Whatever fields the previous document template already rendered",
+      "The fields the designer's mockup shows in the address block"
+    ], answer: 0,
+    explain: "Memory drops the fields it doesn't picture (the phone). Enumerate the model's fields and default each to 'needed until proven irrelevant.' (<a href='0010-render-every-field.html'>L10</a>)" },
+
+  { lesson: "Lesson 11",
+    q: "You're writing CSS for a PDF rendered on a Linux server. What do you use for spacing and fonts?",
+    options: [
+      "Physical units — in for structure, pt for fonts — and a font fc-list confirms on the server",
+      "px for spacing and pt for fonts, with a sans-serif fallback for safety",
+      "rem units throughout so the layout scales with the root font size",
+      "The same units and fonts that render correctly in your local browser"
+    ], answer: 0,
+    explain: "The near-miss keeps <code>px</code> (a screen unit) and leans on the fallback. Print is physical (in/pt), and the font must exist on the render host. (<a href='0011-print-css-render-host.html'>L11</a>)" },
+
+  { lesson: "Lesson 11",
+    q: "Adding a sans-serif fallback to the font stack handles the server-font problem because…",
+    options: [
+      "It doesn't — the fallback resolves to the host's default, not your designed face",
+      "It guarantees the PDF renders in the same font you saw locally",
+      "Generic families are installed identically on every operating system",
+      "The renderer prefers generic families over named ones for print"
+    ], answer: 0,
+    explain: "A fallback prevents failure, not divergence. It resolves to whatever the host calls its default sans-serif. Confirm the named font exists via <code>fc-list</code>. (<a href='0011-print-css-render-host.html'>L11</a>)" },
+
+  { lesson: "Lesson 12",
+    q: "A ticket requirement was never implemented. Why did code review — yours and an AI's — miss it?",
+    options: [
+      "Review checks whether present code is correct; absent code leaves nothing to flag",
+      "The reviewers were rushed and didn't read the ticket carefully enough",
+      "The AI reviewer lacked access to the full acceptance criteria",
+      "The requirement was ambiguous, so it was reasonable to skip it"
+    ], answer: 0,
+    explain: "The near-miss blames diligence; the real cause is structural. Only the ticket says what should exist — an enumerated checklist gives an omission something to fail against. (<a href='0012-requirements-checklist-first.html'>L12</a>)" },
+
+  { lesson: "Lesson 12",
+    q: "What are the two separate gates to clear before requesting review?",
+    options: [
+      "Spec — did I build everything asked? — and quality — is what I built good?",
+      "Self-review first, then a teammate's review as an independent check",
+      "Unit tests passing, then the linter and type-checker passing",
+      "Feature-flag off by default, then a staging smoke test"
+    ], answer: 0,
+    explain: "Code review answers 'is it good?' well and 'did I build it all?' not at all. The checklist-vs-diff pass is the spec gate. (<a href='0012-requirements-checklist-first.html'>L12</a>)" },
+
+  { lesson: "Lessons 10 &amp; 12",
+    q: "Rendering an address from memory drops the phone; a ticket requirement is never built. What single instinct prevents both?",
+    options: [
+      "Enumerate from the real source — the model's fields, the ticket's requirements — instead of from memory",
+      "Ask a second reviewer to check the output against what they expected",
+      "Add more tests around the rendering and the view logic",
+      "Write smaller diffs so each change is easier to review fully"
+    ], answer: 0,
+    explain: "L10 renders from the object's actual fields; L12 builds from the ticket's actual requirements. Both replace a lossy recollection with an enumerated list. (<a href='0010-render-every-field.html'>L10</a>, <a href='0012-requirements-checklist-first.html'>L12</a>)" },
 
   { lesson: "Lessons 1 &amp; 6",
     q: "A copied block fits its origin but not its destination; a hook is added for a caller that doesn't exist. What single pull produces both?",

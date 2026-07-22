@@ -1,0 +1,104 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 11 — Server-rendered print CSS follows the render host, not your screen</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 5 · Lesson 11</p>
+<h1>Print CSS follows the render host</h1>
+<p class="lede">The quote PDF template was written to screen assumptions — pixels for spacing, fonts installed on the dev laptop. It renders on a Linux server whose font inventory and coordinate system are different. "Looks right on my machine" was unverified.</p>
+
+<h2>The mistake</h2>
+
+<p>The PDF template used <code>px</code> for spacing and named fonts that happened to be installed on the author's machine, with a bare <code>sans-serif</code> fallback. But the PDF is generated on a Linux server, not in the author's browser. That server has its own installed-font list (what <code>fc-list</code> reports), and print media has a physical coordinate system — inches and points — that <code>px</code> doesn't map onto cleanly. The design targeted the wrong environment.</p>
+
+<p>The result is output that silently looks different in production: fonts substituted because the named one isn't on the server, spacing that drifts because pixels aren't a print unit, and a <code>sans-serif</code> fallback that resolves to whatever the render host calls its default — not what the author saw locally.</p>
+
+<div class="figure">
+<pre><code>authored against the dev laptop        renders on the Linux server
+──────────────────────────────        ───────────────────────────
+font-family: "Helvetica Neue",         server has no Helvetica Neue →
+             sans-serif                  falls back to server default
+margin: 24px; font-size: 14px          px is a screen unit; print wants
+                                         physical in / pt
+
+"looks right on my machine"            output differs silently:
+   ← unverified for server render        substituted font, drifted spacing
+</code></pre>
+<p class="cap">The render environment, not the author's browser, decides the final output.</p>
+</div>
+
+<h2>How to catch it — design against the render environment</h2>
+
+<p>For print/PDF output, use physical units and fonts you've confirmed exist on the rendering host. Structural spacing in <code>in</code>, fonts and fine spacing in <code>pt</code>. Pick a font that <code>fc-list</code> reports on the server (or ask what ships there), with a generic fallback — and don't assume <code>sans-serif</code> resolves the same everywhere.<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>print/PDF CSS — target the render host:
+
+  units    structural spacing → in      (1in = 96px = 72pt)
+           fonts, fine spacing → pt      (1pt = 1/72 in)
+
+  fonts    named font MUST exist on the server
+             → check: fc-list  (e.g. "Nimbus Sans")
+           generic fallback is a fallback, not a guarantee
+             → sans-serif resolves to the HOST's default, which
+               differs from your laptop's
+
+  rule     "looks right locally" = UNVERIFIED for a server render
+</code></pre>
+<p class="cap">Print media has a physical coordinate system and a fixed font inventory — design to both.</p>
+</div>
+
+<h3>Step 1 — Use physical units, because print is physical</h3>
+<p>Screen layout is measured in pixels; print output is measured in inches and points. In CSS the absolute units are anchored so that <code>1in = 96px = 72pt</code> and <code>1pt = 1/72in</code>.<sup><a href="#s1">1</a></sup> For a document that ends up on a physical page, express structural spacing in <code>in</code> and font sizes and fine spacing in <code>pt</code>. Those units mean the same physical thing regardless of the render host; <code>px</code> is a screen abstraction that only invites the renderer to reinterpret it.</p>
+
+<h3>Step 2 — Name a font the server actually has</h3>
+<p>A <code>font-family</code> is a request, not a guarantee: the renderer uses the named font only if it's installed. On a Linux render server the installed set is whatever <code>fc-list</code> reports — often not the Helvetica/Arial family a laptop has. Pick a font confirmed present on that host (for example <code>Nimbus Sans</code>, a common Linux metric-compatible substitute), and treat "it's on my machine" as irrelevant to what the server will do.</p>
+
+<h3>Step 3 — Don't trust the generic fallback to mean one thing</h3>
+<p>A generic family like <code>sans-serif</code> is a real fallback, but it resolves to whatever the render host calls its default sans-serif — which is not necessarily the one you saw locally. It stops the render from failing; it does not make the output match your screen. So a fallback covers "something readable renders," not "renders as designed." Verify the primary font exists rather than leaning on the generic to save you.</p>
+
+<h2>Why it matters</h2>
+
+<p>The render environment, not the author's browser, decides the final output — and for anything rendered server-side, "looks right on my machine" is a statement about the wrong machine. Print media has a physical coordinate system (inches and points) and a fixed font inventory that lives on the server, so a template designed against local screen defaults produces output that silently diverges in production: a substituted typeface, spacing that shifted because pixels aren't a print unit, a fallback that resolved to a stranger's default. None of it errors; it just comes out wrong on the page a customer receives. The fix is cheap and specific — confirm the render host's fonts with <code>fc-list</code>, use <code>in</code>/<code>pt</code>, and treat the local preview as unverified until it's checked against the server.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Server-rendered print follows the render host's rules, not your screen's. Use physical units (<code>in</code> for structure, <code>pt</code> for fonts), name a font <code>fc-list</code> confirms on the server, and treat "looks right locally" as unverified until checked against production.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is adding a <code>sans-serif</code> fallback and calling the font problem handled. The fallback only guarantees <em>something</em> renders — it resolves to the host's default, not the face you designed against, so the PDF still comes out looking different. Handling the font means confirming the named one exists on the render server, not backstopping it with a generic that means different things on different machines.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① You're writing CSS for a PDF generated on a Linux server. Which units, and why not <code>px</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>in</code> for structural spacing, <code>pt</code> for fonts and fine spacing — print media is physical (1in = 72pt), and <code>px</code> is a screen abstraction the renderer reinterprets.</p></details>
+  <p>② Your named font looks fine locally. What must you check before trusting it in the server-rendered PDF?</p>
+  <details><summary>show answer</summary>
+  <p class="a">That the font is installed on the render host — run <code>fc-list</code> on the server (or ask what ships there). "It's on my laptop" says nothing about the server's inventory.</p></details>
+  <p>③ Does a <code>sans-serif</code> fallback make the output match your screen?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. It guarantees something readable renders, but resolves to the host's default sans-serif — not the face you designed against. It prevents failure, not divergence.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  MDN, <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_values_and_units">CSS values and units</a> for the absolute length units and their fixed physical relationships (<code>in</code>, <code>pt</code>, <code>px</code>), and the <code>fontconfig</code> <a href="https://www.freedesktop.org/software/fontconfig/fontconfig-user.html"><code>fc-list</code></a> manual for querying a render host's installed fonts.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to run <code>fc-list</code> against the actual render host and pin the template's <code>font-family</code> to something you've confirmed is there? Ask. Next: the check that sits before all of these — pulling the ticket's requirements into a list before the first draft.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0010-render-every-field.html">← Lesson 10</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0012-requirements-checklist-first.html"><em>Next: Lesson 12 — Requirements checklist first →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): a quote PDF template authored with <code>px</code> units and locally-installed fonts, rendered on a Linux server with a different font inventory.<br>
+<span id="s1">1.</span> MDN, <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_values_and_units">CSS values and units</a> (absolute lengths: <code>1in = 96px = 72pt</code>); <code>fontconfig</code> <a href="https://www.freedesktop.org/software/fontconfig/fontconfig-user.html"><code>fc-list</code></a> for the render host's installed fonts.</p>

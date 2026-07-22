@@ -3,7 +3,7 @@
 
 <p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Reference</p>
 <h1>Pre-PR self-review checklist</h1>
-<p class="lede">The compressed payoff of the seven lessons: the checks to run on your own diff before it goes up. Each is phrased as the question to ask, the tell that answers it, and the move. Print it; run it cold on the next PR.</p>
+<p class="lede">The compressed payoff of the twelve lessons: the checks to run on your own diff before it goes up. Each is phrased as the question to ask, the tell that answers it, and the move. Print it; run it cold on the next PR.</p>
 
 <table>
   <tr><th>#</th><th>Ask</th><th>Tell → move</th></tr>
@@ -49,16 +49,46 @@
     <td>Did I test the new behaviour's observable contract, regardless of neighbour coverage?</td>
     <td>Cover gating, auth/ownership, missing cases, response status/content type, and that the input reaches the output. "No adjacent test to copy" → write the first one. Testing the helper ≠ testing the contract. <a href="../lessons/0007-test-new-behavior.html">L7</a></td>
   </tr>
+
+  <tr>
+    <td><strong>8</strong></td>
+    <td>Did I mock a real function/method? Does the mock carry its real signature?</td>
+    <td>Bare <code>MagicMock</code> standing in for a real callable → use <code>autospec=True</code> / <code>create_autospec</code> so a wrong-signature call raises <code>TypeError</code>. A green <code>assert_called_once_with</code> proves your call, not that it's valid. Introduce autospec deliberately, not as a sweep. <a href="../lessons/0008-mock-with-spec.html">L8</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>9</strong></td>
+    <td>Did I add a constant? <em>What domain object is it about?</em></td>
+    <td>Defined at its point of first use (e.g. in the serializer) → move it onto/beside the model it constrains, so a reader finds the rule with the concept. First-use placement ≠ "declare close to usage" for a domain rule. <a href="../lessons/0009-constant-near-its-model.html">L9</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>10</strong></td>
+    <td>Rendering a composite object? Did I enumerate its real fields, not a remembered shape?</td>
+    <td>Rendered from memory → open the model, list its actual fields, decide each in/out on purpose, default to "needed until proven irrelevant." A silently missing field (the phone on an address) is a spec miss, not a style nit. <a href="../lessons/0010-render-every-field.html">L10</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>11</strong></td>
+    <td>Is this output rendered server-side (PDF/print)? Did I design to the render host, not my screen?</td>
+    <td>Screen assumptions (<code>px</code>, locally-installed fonts) → use physical units (<code>in</code> for structure, <code>pt</code> for fonts) and a font <code>fc-list</code> confirms on the server. A <code>sans-serif</code> fallback prevents failure, not divergence. "Looks right locally" = unverified. <a href="../lessons/0011-print-css-render-host.html">L11</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>12</strong></td>
+    <td>Before the first draft: did I enumerate the ticket's requirements? Before the PR: did I walk them against the diff?</td>
+    <td>No enumerated checklist → an omission has nothing to fail against and survives every review. Build the checkbox list from the ticket first, keep it visible, and run the spec gate ("built everything asked?") separately from the quality gate ("is it good?"). <a href="../lessons/0012-requirements-checklist-first.html">L12</a></td>
+  </tr>
 </table>
 
-<h2>The one line under all seven</h2>
+<h2>The lines under all twelve</h2>
 <div class="callout interview">
   <span class="tag">Key line</span>
-  A convention is a starting point to interrogate, not a rule to satisfy. Every catch on the PR came from matching what was already there (a context shape, a missing test, an impressive construct, an imagined future) instead of asking whether it fit the case in front of you.
+  Two threads run under the twelve. <strong>A convention is a starting point to interrogate, not a rule to satisfy</strong> — most catches came from matching what was already there (a context shape, a missing test, an impressive construct, an imagined future, a bare mock) instead of asking whether it fit. And <strong>enumerate from the real source, not your memory</strong> — the model's fields, the render host's fonts, the ticket's requirements. Both are the same move: design against the actual thing in front of you, not a remembered or convenient stand-in for it.
 </div>
 
 <div class="course-nav">
   <span><a href="../overview.html">⌂ Overview</a></span>
   <span><a href="glossary.html">Glossary ↗</a></span>
-  <span><a href="../lessons/0008-interleaved-review.html">Review quiz ↗</a></span>
+  <span><a href="../lessons/0013-interleaved-review.html">Review quiz ↗</a></span>
 </div>

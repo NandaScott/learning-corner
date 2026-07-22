@@ -3,4 +3,4 @@ scratchpad/
 *.swp
 
 # Private pr-to-lessons source: carries raw org/repo/PR/reviewer identifiers
-lesson-briefs.md
+lesson-briefs*.md

@@ -1,0 +1,106 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8 — Mock a real callable with a spec, so signature drift fails the test</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 4 · Lesson 8</p>
+<h1>Mock a real callable with a spec</h1>
+<p class="lede">A test proved the wrong thing. It asserted the new input reached a function that no longer had to match the real one. A bare mock accepts any call, so the test stays green even after the real signature moves out from under it.</p>
+
+<h2>The mistake</h2>
+
+<p>The test for the quote view mocked <code>render_sales_quote_html</code> with a plain <code>MagicMock</code>, then asserted the mock was called with <code>additional_notes</code>. That reads like a real check. It isn't. A bare <code>MagicMock</code> overwrites the target's signature with one that accepts anything, so the assertion proves "<code>additional_notes</code> was passed to <em>the thing we mocked</em>" — not "the call matches the real function's actual signature."</p>
+
+<p>The hole opens the moment the real function drifts. Rename <code>additional_notes</code>, reorder its parameters, drop it — and production breaks, while the test stays green, because the mock happily accepts a call the real function would reject.</p>
+
+<div class="figure">
+<pre><code>bare MagicMock                         autospec'd mock
+──────────────                         ───────────────
+signature: accepts anything            signature: copied from the real callable
+
+  mock(additional_notes=x)   ✓ pass      mock(additional_notes=x)   ✓ pass
+  mock(anything_at_all=y)    ✓ pass      mock(anything_at_all=y)    ✗ TypeError
+  mock(wrong, positional)    ✓ pass      mock(wrong, positional)    ✗ TypeError
+
+real fn renames the arg →              real fn renames the arg →
+  test still GREEN, prod BROKEN          test goes RED at the mismatched call
+</code></pre>
+<p class="cap">The green test was asserting wiring, not correctness against the real contract.</p>
+</div>
+
+<h2>How to catch it — make the mock as faithful as the thing it stands in for</h2>
+
+<p>When you mock a real function or method, create the mock with a spec so it carries the real signature. In <code>unittest.mock</code> that means <code>autospec=True</code> on <code>patch</code>, or <code>create_autospec(target)</code> directly. A call that doesn't match the real signature then raises <code>TypeError</code> inside the test.<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code># signature-blind — asserts wiring only
+with patch("app.views.render_sales_quote_html") as render:
+    ...
+    render.assert_called_once_with(cart, additional_notes=notes)
+
+# autospec — the mock enforces the real signature
+with patch("app.views.render_sales_quote_html", autospec=True) as render:
+    ...
+    render.assert_called_once_with(cart, additional_notes=notes)
+    # if render_sales_quote_html no longer takes additional_notes,
+    # this call raises TypeError — the test catches the drift
+</code></pre>
+<p class="cap">One keyword turns a false-green into a failing test the day the real signature changes.</p>
+</div>
+
+<h3>Step 1 — Name what the assertion actually proves</h3>
+<p>An <code>assert_called_once_with</code> against a bare mock proves only that <em>your code</em> made a particular call. It says nothing about whether that call is one the real callable would accept. Two separate facts — "my code calls it this way" and "this way is valid" — collapse into one, and only the first is checked. The mock is standing in for the real thing but keeping none of its constraints.</p>
+
+<h3>Step 2 — Give the mock the real signature</h3>
+<p><code>create_autospec(fn)</code> builds a mock whose call signature is copied from <code>fn</code>; <code>patch(..., autospec=True)</code> does the same for the patched target. Now the two facts are checked separately: the assertion still proves your call, and the spec proves the call is valid against the real signature. Verified against the CPython docs — an autospec'd mock "will have their arguments checked and will raise a <code>TypeError</code> if they are called with the wrong signature."<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 3 — Reach for it deliberately, not as a blanket refactor</h3>
+<p>Autospec has a real cost: it inspects the target at mock-creation, and it can't see attributes set dynamically at runtime (a signature built from <code>*args, **kwargs</code>, or attributes assigned inside <code>__init__</code> that introspection can't reach). Where a codebase already leans on hand-written mocks, introduce autospec at the mocks that stand in for real callables whose signatures you care about — not as a sweep that rewrites every mock in the suite. Default to it when mocking a real callable; fall back to a bare mock with a specific reason.</p>
+
+<h2>Why it matters</h2>
+
+<p>A mock is only as good as its fidelity to the real thing it replaces. A signature-blind mock gives you a test that passes for the wrong reason: it certifies that two pieces of your own code agree with each other, while the actual contract — does this call match the function that runs in production? — goes unchecked. That is the most expensive kind of test, because it reads as coverage and delivers none where it counts. When the real signature drifts, an honest suite goes red at the mismatch and points at the exact line. The signature-blind suite stays green and ships the break. Autospec converts signature drift from a production surprise into a test failure, which is the whole reason the test exists.</p>
+
+<p>This is the testing edge of the mission's recurring habit. Following the codebase's mocking convention too closely — "we use plain <code>MagicMock</code> here" — inherits its blind spot. The convention is a starting point to interrogate: when the mock stands in for a real callable, matching the convention of not spec'ing it is matching a gap.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A bare mock asserts your code calls it a certain way; it never asserts that way is valid against the real signature. Mock real callables with <code>autospec=True</code> / <code>create_autospec</code> so a mismatched call raises <code>TypeError</code> in the test instead of breaking silently in production.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is trusting a green <code>assert_called_once_with</code> as proof the call is correct. It only proves the call <em>happened</em> the way you wrote it — and you wrote both sides. Against a signature-blind mock, "called with <code>additional_notes</code>" survives even after the real function drops <code>additional_notes</code>. Fidelity to the real signature is the missing half.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What does <code>assert_called_once_with(...)</code> against a bare <code>MagicMock</code> actually prove — and what does it <em>not</em>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It proves your code made that call. It does not prove the call matches the real function's signature — a bare mock accepts any arguments, so the assertion certifies wiring, not correctness against the real contract.</p></details>
+  <p>② You mock a real function and the test is green. Later someone renames one of the function's parameters. What happens to the test, and what would have changed that?</p>
+  <details><summary>show answer</summary>
+  <p class="a">With a bare mock the test stays green while production breaks. With <code>autospec=True</code> / <code>create_autospec</code> the mismatched call raises <code>TypeError</code>, so the test goes red at the drift.</p></details>
+  <p>③ Why introduce autospec deliberately rather than sweeping it across every mock?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It costs introspection at creation and can't see signatures built dynamically (<code>*args/**kwargs</code>, attributes set in <code>__init__</code>). Apply it where the mock stands in for a real callable whose signature matters; fall back to a bare mock with a specific reason.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  The Python <a href="https://docs.python.org/3/library/unittest.mock.html#autospeccing"><code>unittest.mock</code> autospeccing docs</a> — the "Autospeccing" section and <code>create_autospec</code>. It states plainly that autospec'd functions raise <code>TypeError</code> on a wrong-signature call, and lists the known limitations around dynamic attributes.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to convert a real signature-blind test in your suite to <code>autospec</code> and watch it catch a deliberate rename? Ask, and we'll walk one through. Next: the fidelity arc — coding against the real domain object instead of a remembered one.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0007-test-new-behavior.html">← Lesson 7</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0009-constant-near-its-model.html"><em>Next: Lesson 9 — Put a constant next to its model →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): a view test mocked a real render function with a bare <code>MagicMock</code> and asserted the new input was passed, proving wiring rather than a signature-valid call.<br>
+<span id="s1">1.</span> Python docs, <a href="https://docs.python.org/3/library/unittest.mock.html#autospeccing"><code>unittest.mock</code> — Autospeccing</a> and <a href="https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec"><code>create_autospec</code></a>. Verified: an autospec'd callable raises <code>TypeError</code> when called with a signature the real object would reject.</p>
