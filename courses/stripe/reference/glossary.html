@@ -1,0 +1,90 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — How Stripe Works Glossary</title>
+
+<p class="eyebrow">How Stripe Works · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">The shared vocabulary for this course, in plain language, no finance background assumed. Every lesson uses these terms exactly as defined here. Print it; keep it next to you.</p>
+
+<h2>The parties</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Cardholder</strong></td><td>The person who owns the card and is paying. (Lesson 1)</td></tr>
+  <tr><td><strong>Merchant</strong></td><td>Card-industry word for the business being paid. Nothing more to it. (Lesson 1)</td></tr>
+  <tr><td><strong>Issuer / issuing bank</strong></td><td>The <em>customer's</em> bank: the one that issued (gave out) the card in their wallet. Holds the cardholder's money or credit line, and makes the approve/decline decision on every payment. Memory hook: the issuer issued the card. (Lesson 1)</td></tr>
+  <tr><td><strong>Acquirer / acquiring bank</strong></td><td>The <em>business's</em> bank in the card system. Old jargon: it "acquires" the transaction from the merchant — takes the payment claim, routes it through the networks, and receives the money on the business's behalf. Memory hook: the acquirer acquires the money for the seller. Stripe plays this role. (Lesson 1)</td></tr>
+  <tr><td><strong>Card network</strong></td><td>Visa, Mastercard, American Express, Discover. Not banks — they hold nobody's money. Shared rails plus rulebook that connect thousands of acquirers to thousands of issuers, so no bank needs a direct line to any other. Also called a "card scheme". (Lesson 1)</td></tr>
+  <tr><td><strong>Gateway</strong></td><td>The software front door: encrypts card details at checkout and carries them safely into the banking chain. (Lesson 1)</td></tr>
+  <tr><td><strong>Processor</strong></td><td>The message relay: shuttles the authorization request and the answer between merchant, acquirer, and network. Stripe is gateway + processor + acquirer in one provider. (Lesson 1)</td></tr>
+</table>
+
+<h2>The money's states</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Authorization</strong></td><td>The issuer's "yes" to a payment, plus a reservation of the amount. Messages only; no money moves. Runs in seconds. (Lesson 1)</td></tr>
+  <tr><td><strong>Hold</strong></td><td>The reservation itself: the amount is fenced off on the cardholder's account, not taken. Same mechanism as a hotel deposit hold at check-in. Expires if never captured (7 days for most online card payments). (Lesson 1)</td></tr>
+  <tr><td><strong>Capture</strong></td><td>The merchant's instruction to take the held amount for real. Default in Stripe: immediate on confirmation. Can be deferred (authorize now, capture at shipping time); capturing less than authorized releases the rest. (Lesson 1)</td></tr>
+  <tr><td><strong>Settlement</strong></td><td>The actual movement of money between banks: issuer → network → acquirer, batched, days after capture. Lands in the merchant's Stripe balance. (Lesson 1)</td></tr>
+  <tr><td><strong>Stripe balance</strong></td><td>The merchant's money held at Stripe before it reaches their bank account. Two portions: <em>pending</em> (settled but not yet released) and <em>available</em> (ready to pay out). (Lesson 1)</td></tr>
+  <tr><td><strong>Settlement timing (T+X)</strong></td><td>How long captured funds stay pending before becoming available, counted from transaction day T. US default: T+2 business days. (Lesson 1)</td></tr>
+  <tr><td><strong>Payout</strong></td><td>Stripe depositing available balance into the merchant's regular bank account. (Lesson 1)</td></tr>
+  <tr><td><strong>Payout schedule</strong></td><td>How often payouts happen: daily, weekly, monthly, or manual. Independent dial from settlement timing — timing controls when funds become available, schedule controls how often available funds are swept out. (Lesson 1)</td></tr>
+</table>
+
+<h2>The fees</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Interchange</strong></td><td>The slice of the per-transaction fee kept by the <em>issuer</em>, as payment for carrying the credit and fraud risk and running the cardholder's account. (Lesson 1)</td></tr>
+  <tr><td><strong>Scheme fees</strong></td><td>The slice kept by the <em>card network</em> ("scheme" = industry word for network), as payment for the routing, plus extras like cross-border charges. (Lesson 1)</td></tr>
+</table>
+
+<h2>The API machinery</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>PaymentIntent</strong></td><td>Stripe's state-machine object tracking one payment from creation to completion. One per cart or checkout session, surviving failed attempts. Its <code>status</code> field is always one of the lifecycle states. (Lesson 2)</td></tr>
+  <tr><td><strong>Charge</strong></td><td>One payment <em>attempt</em>. A PaymentIntent accumulates a Charge per attempt, so three declines and a success are four Charges under one intent. (Lesson 2)</td></tr>
+  <tr><td><strong>Client secret</strong></td><td>A unique key returned when a PaymentIntent is created. Lets the customer's browser read the intent's safe fields and drive it forward (confirm, complete 3DS) without exposing sensitive data or the merchant's API key. (Lesson 2)</td></tr>
+  <tr><td><strong>Confirmation</strong></td><td>The action that fires a PaymentIntent: starts the actual authorization toward the issuer. Usually done from the browser with the client secret. (Lesson 2)</td></tr>
+  <tr><td><strong>3D Secure (3DS)</strong></td><td>The card industry's protocol for verifying the payer is the real cardholder mid-payment: one-time codes, banking-app approval, biometrics. Branded Visa Secure / Mastercard Identity Check / Amex SafeKey. (Lesson 3)</td></tr>
+  <tr><td><strong>SCA</strong></td><td>Strong Customer Authentication: regulation (PSD2 in the EEA, with UK/India/Japan/Australia equivalents) that can make authentication legally required for card payments. (Lesson 3)</td></tr>
+  <tr><td><strong>ACS</strong></td><td>Access Control Server: the issuer-side system that owns the 3DS decision and picks frictionless vs challenge. (Lesson 3)</td></tr>
+  <tr><td><strong>Frictionless / challenge</strong></td><td>The two 3DS paths. Frictionless: the bank authenticates from background data, customer sees nothing. Challenge: the customer actively proves identity. The issuer chooses. (Lesson 3)</td></tr>
+  <tr><td><strong>Liability shift</strong></td><td>After successful 3DS authentication, liability for <em>fraud</em> disputes moves from merchant to issuer. Has carve-outs; non-fraud disputes unaffected. (Lesson 3)</td></tr>
+  <tr><td><strong>Webhook</strong></td><td>Stripe calling the merchant: an HTTPS POST carrying an Event object to a URL the merchant registered. The only channel for outcomes that happen after the API request ends. (Lesson 4)</td></tr>
+  <tr><td><strong>Event object</strong></td><td>The JSON payload of a webhook: a <code>type</code> naming what happened, a <code>data.object</code> snapshot, and a unique <code>id</code> used for deduplication. (Lesson 4)</td></tr>
+  <tr><td><strong>Signing secret</strong></td><td>Per-endpoint shared secret used to HMAC-sign webhook deliveries (the <code>Stripe-Signature</code> header). Verifying it is what authenticates a webhook as genuinely from Stripe. (Lesson 4)</td></tr>
+  <tr><td><strong>Idempotent</strong></td><td>An operation is idempotent when doing it twice has the same effect as doing it once. (Lesson 5)</td></tr>
+  <tr><td><strong>Idempotency key</strong></td><td>Client-generated unique string on a POST request. Stripe stores the first response under it (~24h) and replays it for retries, so a retry asks "what happened?" instead of acting again. (Lesson 5)</td></tr>
+  <tr><td><strong>Balance transaction</strong></td><td>One ledger entry in the Stripe balance: a credit or debit, net of fees, carrying its own <code>available_on</code> timestamp. The balance is the sum of these entries. (Lesson 6)</td></tr>
+  <tr><td><strong>available_on</strong></td><td>The per-entry timestamp at which a pending balance transaction becomes available, set from the payment method's and country's settlement timing. (Lesson 6)</td></tr>
+  <tr><td><strong>Reserve balance</strong></td><td>Funds Stripe sets aside from a merchant's balance to cover expected refunds or disputes. (Lesson 6)</td></tr>
+  <tr><td><strong>Top-up</strong></td><td>The merchant pushing external money into a Stripe balance (e.g. to fund refunds when the balance is short). (Lesson 6)</td></tr>
+</table>
+
+<h2>Connect</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Platform</strong></td><td>The business running a marketplace or software product whose users get paid through it. Creates and manages connected accounts. (Lesson 7)</td></tr>
+  <tr><td><strong>Connected account</strong></td><td>A full Stripe account (own balance, payouts, verification) representing one seller on a platform. Created via the platform, not by the seller at stripe.com. (Lesson 7)</td></tr>
+  <tr><td><strong>Controller properties</strong></td><td>The modern Connect model: per-account dials assigning each responsibility (onboarding, dashboard, fee collection, losses) to platform or Stripe independently. (Lesson 7)</td></tr>
+  <tr><td><strong>Standard / Express / Custom</strong></td><td>Legacy account types: preset bundles of the controller dials, fixed at account creation. Standard = seller self-serve with full Dashboard; Express = slim dashboard, platform bears risk; Custom = fully white-label, platform does and owns everything. (Lesson 7)</td></tr>
+  <tr><td><strong>Direct charge</strong></td><td>Charge created on the connected account: the seller is the merchant, funds land in the seller's balance, refunds debit the seller. Platform earns an application fee. (Lesson 8)</td></tr>
+  <tr><td><strong>Destination charge</strong></td><td>Charge created on the platform, with a portion forwarded to one connected account in the same operation (<code>transfer_data</code>). Platform pays fees and holds refund/dispute liability. (Lesson 8)</td></tr>
+  <tr><td><strong>Separate charges and transfers</strong></td><td>Charge on the platform now; independent transfer(s) to one or more connected accounts later. Maximum flexibility; platform holds liability and must keep available balance ahead of its transfers. (Lesson 8)</td></tr>
+  <tr><td><strong>Application fee</strong></td><td>The platform's per-charge cut on a direct charge, credited to the platform's balance. (Lesson 8)</td></tr>
+  <tr><td><strong>Transfer</strong></td><td>A movement of funds from the platform's balance to a connected account's balance. The building block of destination charges and separate-charges flows. (Lesson 8)</td></tr>
+</table>
+
+<div class="ask-teacher">
+  Missing a term, or a definition still assumes background you don't have? Flag it and it gets rewritten here — the glossary grows with the course.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../lessons/0001-the-life-of-a-card-payment.html">← Lesson 1</a></span>
+  <span>Reference · Glossary</span>
+</div>

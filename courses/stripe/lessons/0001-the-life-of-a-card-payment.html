@@ -1,0 +1,147 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1: The life of a card payment</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 1</p>
+<h1>The life of a card payment</h1>
+<p class="lede">Stripe's API objects model a process that exists outside Stripe: the path a card payment takes from checkout to the merchant's bank account. This lesson walks that path once, end to end. Every later lesson attaches an API concept to a step you see here.</p>
+
+<h2>The concept</h2>
+
+<p>A customer clicks "Pay $50" and sees a success message about two seconds later. The business's bank account receives money days after that. Those are different events, and the gap between them is where most of the machinery lives.</p>
+
+<p>What happens in the two seconds is an <strong>authorization</strong>: the cardholder's bank approves the payment and places a hold on the funds. No money moves.<sup><a href="#s2">2</a></sup> The money moves later, in two further stages: <strong>settlement</strong>, when funds travel from the cardholder's bank into the merchant's Stripe balance, and <strong>payout</strong>, when Stripe sends that balance to the merchant's bank account.<sup><a href="#s3">3</a></sup></p>
+
+<p>Six parties touch the payment on the way:<sup><a href="#s1">1</a></sup></p>
+
+<table>
+  <tr><th>Party</th><th>Role</th></tr>
+  <tr><td><strong>Cardholder</strong></td><td>The person who owns the card.</td></tr>
+  <tr><td><strong>Merchant</strong></td><td>The business being paid.</td></tr>
+  <tr><td><strong>Issuer</strong> (issuing bank)</td><td>The bank that issued the card. It holds the cardholder's money and makes the approve/decline decision.</td></tr>
+  <tr><td><strong>Acquirer</strong> (acquiring bank)</td><td>A bank that processes card payments on behalf of the merchant and routes them through the card networks.</td></tr>
+  <tr><td><strong>Card network</strong></td><td>Visa, Mastercard, and peers. The rails connecting thousands of acquirers to thousands of issuers, so no bank needs a direct line to any other bank.</td></tr>
+  <tr><td><strong>Gateway / processor</strong></td><td>Software that encrypts card details and relays messages between merchant, acquirer, and network.</td></tr>
+</table>
+
+<p>Historically a merchant assembled the last three roles from separate vendors. Stripe collapses them: it is the gateway, the processor, and the acquirer in one provider, with direct integrations into the card networks.<sup><a href="#s1">1</a></sup> That is the answer to "what is Stripe" at the mechanism level, and it is why one API can span the whole path below.</p>
+
+<div class="figure">
+<pre><code>cardholder ── card details ──▶ merchant checkout page
+                                    │
+                                    ▼
+                            ┌───────────────┐
+                            │    Stripe     │  gateway + processor + acquirer
+                            └───────┬───────┘
+                                    │
+                            ┌───────▼───────┐
+                            │ card network  │  Visa / Mastercard rails
+                            └───────┬───────┘
+                                    │
+                            ┌───────▼───────┐
+                            │    issuer     │  the cardholder's bank
+                            └───────────────┘</code></pre>
+<p class="cap">The chain a payment message travels. Stripe occupies the middle three roles that merchants once bought separately.</p>
+</div>
+
+<h2>The steps</h2>
+
+<p>The full path, checkout to bank deposit. The map first, then each step.</p>
+
+<div class="figure">
+<pre><code>1. Checkout          card details → Stripe          encrypted; never touch the merchant server
+2. Auth request      Stripe → network → issuer      "is this card good for $50?"
+3. Issuer decision   checks funds, fraud, auth      approves and places a HOLD on the funds
+4. Response relay    issuer → network → Stripe      merchant shows "success"  (seconds total)
+   ─────────────────── no money has moved yet ───────────────────
+5. Capture           merchant claims the hold       default: immediately on confirmation
+6. Settlement        issuer → network → acquirer    lands in the Stripe balance (pending → available)
+7. Payout            available balance → bank       on the merchant's payout schedule</code></pre>
+<p class="cap">Steps 1–4 take seconds. Steps 6–7 take days. Step 5 is the hinge between the two.</p>
+</div>
+
+<h3>Step 1 — Checkout: card details go to the gateway</h3>
+<p>The customer types a card number into the checkout page. Those details go to the gateway (Stripe), which encrypts them for transmission to the acquirer and the card networks.<sup><a href="#s1">1</a></sup> In a Stripe integration the card number goes from the customer's browser to Stripe directly, so the merchant's own server never handles it. For this lesson the load-bearing fact is the direction of travel: card data flows to Stripe, and everything after this step is messages between financial institutions.</p>
+
+<h3>Step 2 — The authorization request</h3>
+<p>Stripe, acting as the acquirer, routes an authorization request through the card network to the issuer.<sup><a href="#s1">1</a></sup> The network's job is pure routing: it reads the card number, identifies the issuing bank among thousands, and delivers the question "will you approve $50 on this card?"</p>
+
+<h3>Step 3 — The issuer decides</h3>
+<p>The issuer checks that the account is real, has funds or credit available, and passes its fraud checks. It may also demand extra verification from the cardholder first, such as a 3D Secure challenge.<sup><a href="#s1">1</a></sup> If it approves, it places a <strong>hold</strong> for the amount on the cardholder's account. The money is now reserved and guaranteed to the merchant, and still sitting at the issuer.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 4 — The response relays back</h3>
+<p>The approve-or-decline decision travels back along the same chain: issuer to network to Stripe to the merchant's checkout page, which shows the customer a confirmation.<sup><a href="#s1">1</a></sup> Total elapsed time for steps 1 through 4 is a couple of seconds. Everything the customer ever sees of the payment is now over, and zero dollars have moved.</p>
+
+<h3>Step 5 — Capture: claiming the hold</h3>
+<p>An authorization is a reservation, and reservations expire. <strong>Capture</strong> is the merchant's instruction to finalize the payment and take the held funds. By default Stripe captures immediately when the payment is confirmed, so steps 3 and 5 feel like one event. They are separable: a merchant can authorize now and capture later (a hotel holding a deposit, a store waiting to ship), in which case the hold stays valid for a fixed window, 7 days for most card-not-present payments.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>authorize ──────────────── 7-day validity window ────────────────▶ expiry
+    │                                                                │
+    ├── capture (full or partial) → payment proceeds to settlement   │
+    │        (partial capture releases the rest of the hold)         │
+    │                                                                │
+    └── never captured ──────────────▶ hold released, payment CANCELED</code></pre>
+<p class="cap">Most card payments allow exactly one capture per authorization. Capturing less than the authorized amount releases the remainder back to the cardholder.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Step 6 — Settlement: the money actually moves</h3>
+<p>After capture, funds move from the issuer, across the network, to the acquirer. Because Stripe is the acquirer, they land in the merchant's <strong>Stripe balance</strong>, and they land in its <em>pending</em> portion. Pending funds become <em>available</em> after the settlement timing for the merchant's country, written as T+X: in the United States, T+2 business days after the transaction.<sup><a href="#s3">3</a></sup> During that window the money exists, is the merchant's, and cannot yet be paid out.</p>
+
+<h3>Step 7 — Payout: balance to bank account</h3>
+<p>Stripe sends the available balance to the merchant's bank account on a <strong>payout schedule</strong>: daily, weekly, monthly, or manual. The schedule is a separate dial from settlement timing. Settlement timing controls when funds become available; the schedule controls how often available funds are swept to the bank.<sup><a href="#s3">3</a></sup> A US merchant on daily payouts therefore receives, each day, the funds from transactions captured two business days earlier. One exception to the rhythm: a new account's first payout is delayed 7 to 14 days after its first successful payment.<sup><a href="#s3">3</a></sup></p>
+
+<h2>Why this shape</h2>
+
+<p>The path runs on three clocks. Authorization runs in seconds because it is only messages: a question and an answer, with a hold as a side effect. Settlement runs in days because it is interbank money movement, batched between institutions. Payout runs on a schedule because it is a business preference, not a network constraint.</p>
+
+<p>The split also explains who gets paid along the way. Of the fee a merchant pays per transaction, <strong>interchange</strong> goes to the issuer, for taking the credit risk and running the cardholder's account, and <strong>scheme fees</strong> go to the card network, for the routing.<sup><a href="#s1">1</a></sup> Each party in the chain charges for the leg it carries.</p>
+
+<p>Every Stripe concept this course covers lives on one of the three clocks. Authorization, confirmation, and 3D Secure live on the seconds clock. Balances and settlement live on the days clock. Payout schedules live on the calendar clock. When an API object confuses you, the first useful question is which clock it belongs to.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Authorization reserves the money in seconds, settlement moves it in days, payout deposits it on a schedule. Three clocks, one payment."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow model says the customer's money goes to the business at the moment of payment. It does not. At "payment successful" the issuer has placed a hold and nothing has moved; capture claims the hold, settlement moves the funds into a Stripe balance days later, and the business's bank sees the money only at payout. An answer that puts the money in the right place at each step is the deep one.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① The customer just saw "payment successful." Where is the money, physically?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Still at the issuer, in the cardholder's account, under a hold for the payment amount. Authorization is an approval plus a reservation; no funds have moved.</p></details>
+  <p>② What does capture do, and what happens to an authorization that is never captured?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Capture finalizes the payment and claims the held funds, sending them toward settlement. An uncaptured authorization expires at the end of its validity window (7 days for most card-not-present payments); the hold is released and the payment is canceled.</p></details>
+  <p>③ Name the parties between the cardholder and the merchant, and the three roles Stripe plays.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Issuer (the cardholder's bank), card network (Visa/Mastercard routing), acquirer (processes card payments for the merchant), plus the gateway/processor software layer. Stripe is gateway, processor, and acquirer in one.</p></details>
+  <p>④ Settlement timing vs payout schedule: what does each control?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Settlement timing (T+2 business days in the US) controls when captured funds turn from pending to available in the Stripe balance. The payout schedule controls how often available funds are sent to the bank account. They are independent settings.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://stripe.com/guides/introduction-to-online-payments">Stripe — Introduction to online payments</a>. Stripe's own walkthrough of the parties, the transaction flow, and the fee structure. One read makes the diagrams above concrete.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Curious why authorization holds expire at all, what a network actually transmits, or how declines differ from failed authentication? Ask. Next lesson: the PaymentIntent, the API object that tracks steps 1 through 5 as a state machine.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-the-paymentintent-state-machine.html"><em>Next: Lesson 2 — the PaymentIntent state machine →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Parties, transaction flow, Stripe's combined role, interchange and scheme fees — <a href="https://stripe.com/guides/introduction-to-online-payments">Stripe guide: Introduction to online payments</a>.<br>
+<span id="s2">2.</span> Authorization holds, capture, validity windows, expiry and cancellation, partial capture — <a href="https://docs.stripe.com/payments/place-a-hold-on-a-payment-method">Stripe docs: Place a hold on a payment method</a>.<br>
+<span id="s3">3.</span> Pending vs available balance, settlement timing (T+2 US), payout schedules, first-payout delay — <a href="https://docs.stripe.com/payouts">Stripe docs: Receive payouts</a>.
+</p>

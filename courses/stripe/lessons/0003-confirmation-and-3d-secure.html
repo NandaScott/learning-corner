@@ -1,0 +1,103 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3: Confirmation and 3D Secure</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 3</p>
+<h1>Confirmation and 3D Secure</h1>
+<p class="lede">Lesson 2 left one state as a black box: <code>requires_action</code>, where the machine pauses for the customer. This lesson opens it. What confirmation starts, why the issuer sometimes interrupts it, and what the 3D Secure detour actually does.</p>
+
+<h2>The concept</h2>
+
+<p>Confirming a PaymentIntent starts the authorization conversation from Lesson 1: Stripe asks the network, the network asks the issuer. In Lesson 1's version, the issuer answered from data it already had: account status, available funds, its own fraud models. Online, one input is missing that an in-person payment gets for free: proof that the person typing the card number is the person who owns the card.</p>
+
+<p><strong>3D Secure (3DS)</strong> is the card industry's protocol for getting that proof. It is "an authentication protocol that adds an additional security layer to card transactions" by "verifying that the person making a purchase is the legitimate cardholder."<sup><a href="#s1">1</a></sup> The customer-visible forms are familiar: a one-time code texted to a phone, a banking-app fingerprint prompt, a password. Card networks brand it Visa Secure, Mastercard Identity Check, American Express SafeKey.<sup><a href="#s1">1</a></sup></p>
+
+<p>Two forces decide whether it runs. Regulation: Strong Customer Authentication (SCA), part of PSD2 in the European Economic Area with similar rules in the UK, India, Japan, and Australia, can make authentication legally required for card payments; elsewhere 3DS is optional fraud tooling.<sup><a href="#s1">1</a></sup> And the issuer: whatever the merchant requests, "the issuer determines the ultimate authentication flow."<sup><a href="#s2">2</a></sup> The bank that carries the fraud risk gets the final say on how much proof it wants.</p>
+
+<h2>The steps</h2>
+
+<p>What happens between "confirm" and an answer, when 3DS is in play.</p>
+
+<div class="figure">
+<pre><code>1. Confirm            client confirms the intent        authorization begins
+2. 3DS data sent      Stripe → issuer's ACS             device, session, transaction data
+3. Issuer assesses    ACS scores the risk               picks a path:
+        ├── frictionless ── background check suffices ── no customer input
+        └── challenge ───── proof demanded ──────────── intent → requires_action
+4. Customer acts      completes code / biometric        (challenge path only)
+5. Outcome            authenticated → processing → succeeded / requires_capture
+                      failed        → requires_payment_method
+6. Liability shift    fraud-dispute liability moves to the issuer (rules below)</code></pre>
+<p class="cap">The frictionless path adds nothing visible. The challenge path is Lesson 2's <code>requires_action</code> state, lived from the inside.</p>
+</div>
+
+<h3>Step 1 — Confirmation kicks off authorization</h3>
+<p>The client confirms the PaymentIntent (Lesson 2's client secret at work), and Stripe opens the authorization request toward the issuer. Up to here, identical to any card payment.</p>
+
+<h3>Step 2 — The 3DS data exchange</h3>
+<p>Alongside the payment details, 3DS carries a bundle of contextual data to the issuer's <strong>Access Control Server (ACS)</strong>, the bank-side system that owns the authentication decision. When Stripe already holds all the required 3DS data elements, its 3DS server can attempt to complete the authentication during confirmation itself.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 3 — The issuer picks: frictionless or challenge</h3>
+<p>The ACS scores the transaction and chooses. In the <strong>frictionless flow</strong>, "the customer's bank assesses the transaction and can complete 3D Secure at this step": the background data was proof enough, and the customer sees at most a brief loading state.<sup><a href="#s2">2</a></sup> In the <strong>challenge flow</strong>, the bank wants active proof. A merchant can state a preference (<code>request_three_d_secure</code>), and the issuer can overrule it either direction.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 4 — The challenge: requires_action from the inside</h3>
+<p>On the challenge path the intent parks at <code>requires_action</code>, and its <code>next_action</code> field carries what to do, such as a <code>redirect_to_url</code> pointing at the authentication page with a <code>return_url</code> back to the merchant.<sup><a href="#s2">2</a></sup> The customer enters the code, approves in their banking app, or passes the biometric check. The exact challenge UI belongs to the issuer.</p>
+
+<h3>Step 5 — The outcome routes the state machine</h3>
+<p>Authentication succeeded: authorization proceeds, and the intent moves through <code>processing</code> to <code>succeeded</code>, or to <code>requires_capture</code> under manual capture. Authentication failed: the intent returns to <code>requires_payment_method</code>, Lesson 2's rewind, and the customer can try again or pay differently.<sup><a href="#s2">2</a></sup> The actual flow that ran is recorded on the charge, in <code>three_d_secure.authentication_flow</code>.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 6 — Liability shift</h3>
+<p>The economic payoff. When a payment was successfully authenticated with 3DS and the cardholder later disputes it as fraud, "the liability typically shifts from you to the card issuer."<sup><a href="#s2">2</a></sup> The issuer verified the cardholder, so the issuer owns the consequences of being wrong. The same shift generally applies to payments authenticated with equivalent cryptograms, such as Apple Pay and Google Pay.<sup><a href="#s2">2</a></sup></p>
+
+<p>The shift has edges. It covers <em>fraud</em> disputes; a "product not received" dispute follows the standard process regardless of 3DS. If the card or issuer does not support 3DS and authentication never happened, liability generally stays with the merchant, though when the network <em>mandates</em> 3DS and the issuer's side fails, the shift can still apply. Merchants in fraud-monitoring programs can lose the shift, and ignoring an inquiry on a 3DS-authenticated charge can invalidate it through a "no-reply" chargeback.<sup><a href="#s2">2</a></sup></p>
+
+<h2>Why the detour exists</h2>
+
+<p>Every piece of Lesson 1 and 2 machinery meets here. The issuer's decision (Lesson 1, step 3) is the step being augmented: the bank pauses its yes/no to collect cardholder proof. The state machine (Lesson 2) exists in large part because this pause can happen: a synchronous charge call has no way to say "stopped, waiting for the customer's bank app." And the liability shift explains the economics: authentication is the issuer trading friction for fraud risk, which is why the issuer, never the merchant, decides how much friction to apply.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "3D Secure is the issuer collecting proof of the cardholder mid-authorization. Frictionless means the data was proof enough; a challenge parks the intent at <code>requires_action</code>; success moves the fraud liability onto the issuer."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Two shallow readings. First: 3DS is not "an extra password step the merchant adds." The merchant can request it; the issuer decides, including deciding invisibly (frictionless), and most 3DS runs involve no customer interaction at all. Second: liability shift is not blanket protection. It covers fraud disputes on successfully authenticated payments, and it has carve-outs: non-fraud disputes, failed or unavailable authentication, fraud-program enrollment, unanswered inquiries.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① A 3DS challenge is required. What status is the PaymentIntent in, and which field says what to do next?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>requires_action</code>, with <code>next_action</code> describing the step, for example <code>redirect_to_url</code> with the authentication URL and a return URL.</p></details>
+  <p>② Frictionless vs challenge: who chooses, and what is the difference?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The issuer (its ACS) chooses, whatever the merchant requested. Frictionless: the bank authenticates from the background 3DS data, no customer input. Challenge: the customer must actively prove identity (code, biometric, app approval).</p></details>
+  <p>③ What exactly does liability shift move, and what triggers it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Liability for <em>fraudulent-payment disputes</em> moves from the merchant to the issuer, triggered by successful 3DS authentication (or an equivalent cryptogram, e.g. Apple Pay). Non-fraud disputes are untouched.</p></details>
+  <p>④ The customer fails the 3DS challenge. Where does the state machine go?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Back to <code>requires_payment_method</code>: the standard rewind. The cart can still be paid, so the intent survives.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/payments/3d-secure/authentication-flow">Stripe docs — How 3D Secure works: authentication flow</a>. The frictionless/challenge split, the API state mapping, and the full liability-shift rules with their exceptions.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Curious about SCA exemptions (low-value, transaction-risk-analysis), what the ACS data bundle contains, or how Radar interacts with 3DS triggering? Ask. Next lesson: the payment finished after the customer left. Webhooks, and why the API response was never the source of truth.
+</div>
+
+<div class="course-nav">
+  <span><a href="0002-the-paymentintent-state-machine.html">← Lesson 2</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-webhooks-the-source-of-truth.html"><em>Next: Lesson 4 — webhooks →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> What 3DS is, SCA/PSD2 scope, authentication methods, network branding — <a href="https://docs.stripe.com/payments/3d-secure">Stripe docs: 3D Secure authentication</a>.<br>
+<span id="s2">2.</span> Frictionless vs challenge, ACS, API state mapping, <code>request_three_d_secure</code>, liability shift rules and exceptions — <a href="https://docs.stripe.com/payments/3d-secure/authentication-flow">Stripe docs: How 3D Secure works</a>.
+</p>

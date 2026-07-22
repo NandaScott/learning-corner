@@ -1,0 +1,89 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>How Stripe Works — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>How Stripe Works</h1>
+<p class="lede">A mechanism-level model of moving money: the card-network path under the API, then the objects Stripe builds on top of it (PaymentIntents, confirmation, webhooks, idempotency, balances and payouts), and finally how Connect routes funds between parties. Sourced from Stripe's own documentation, exclusively.</p>
+
+<div class="home-group">
+  <p class="label">Part 1 · The rails</p>
+  <p class="blurb">What a card payment physically is, before any Stripe object enters the picture.</p>
+
+  <a class="lesson-card" href="lessons/0001-the-life-of-a-card-payment.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>The life of a card payment</strong><span>Cardholder → issuer → network → acquirer. Authorization holds, capture, settlement into the Stripe balance, payout. Three clocks, one payment.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 2 · The payment machine</p>
+  <p class="blurb">The objects that track a payment along the rails, and what interrupts them.</p>
+
+  <a class="lesson-card" href="lessons/0002-the-paymentintent-state-machine.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>The PaymentIntent state machine</strong><span>One intent per cart, one Charge per attempt. Every status and transition — why declines rewind instead of failing, and what <code>succeeded</code> does and doesn't mean.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0003-confirmation-and-3d-secure.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Confirmation and 3D Secure</strong><span>Inside <code>requires_action</code>: frictionless vs challenge, who really decides (the issuer), and the liability shift with its carve-outs.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 3 · The reliability machinery</p>
+  <p class="blurb">How truth travels both directions over an unreliable network.</p>
+
+  <a class="lesson-card" href="lessons/0004-webhooks-the-source-of-truth.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Webhooks, the source of truth</strong><span>Event objects, the 2xx-fast rule, 3-day backoff retries, HMAC signatures, and why order and uniqueness are your problem.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0005-idempotency.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>Idempotency, or how retries become safe</strong><span>The Idempotency-Key header as stored-response replay: what Stripe saves, what it replays (errors included), and the 24-hour window.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 4 · The money at rest</p>
+  <p class="blurb">Where funds live between capture and the bank.</p>
+
+  <a class="lesson-card" href="lessons/0006-balance-and-payouts.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>The balance and payouts</strong><span>A ledger, not a vault: net-of-fee entries, per-transaction <code>available_on</code> ripening, payout sweeps, and what happens below zero.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 5 · Many parties: Connect</p>
+  <p class="blurb">One payment, several businesses — the account model, then the money flows.</p>
+
+  <a class="lesson-card" href="lessons/0007-connect-accounts.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Connect: platforms and connected accounts</strong><span>A full Stripe account per seller, and the four dials — onboarding, dashboard, fees, losses — that Standard/Express/Custom preset.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0008-connect-charge-types.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>Connect charge types</strong><span>Direct, destination, separate charges &amp; transfers. Whose customer is it, how many recipients — and how refunds and disputes follow the charge.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 6 · Review &amp; reference</p>
+  <p class="blurb">Where it turns from "I followed it" into "I can explain it cold."</p>
+
+  <a class="quiz-cta" href="lessons/0009-interleaved-review.html">
+    <span class="icon">🧠</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>25 questions across all 8 lessons, shuffled, with near-miss distractors. Run it cold, then again days later.</span></span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/glossary.html">📖 Glossary — plain-language canonical vocabulary</a>
+  </div>
+</div>

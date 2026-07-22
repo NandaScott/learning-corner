@@ -1,0 +1,101 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8: Connect charge types — three ways to route one payment</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 8</p>
+<h1>Connect charge types: three ways to route one payment</h1>
+<p class="lede">Lesson 7 set up the accounts; this lesson moves the money between them. One customer payment, a platform, and one or more sellers: Stripe offers exactly three routing patterns, and the choice decides who pays the fees and who holds the liability.</p>
+
+<h2>The concept</h2>
+
+<p>Every Connect payment answers the same question: the customer paid once, so how do the funds end up split between the platform and its connected account(s)? The three answers are <strong>direct charges</strong>, <strong>destination charges</strong>, and <strong>separate charges and transfers</strong>.<sup><a href="#s1">1</a></sup></p>
+
+<p>The differences all follow from one primitive: <em>which account the charge is created on</em>. The charge's account is where the funds land first (that account's Lesson 6 ledger), whose balance refunds are debited from, and who the dispute machinery bills. Everything in the comparison table falls out of that single placement decision, plus one follow-up: whether funds move onward in the same operation or a separate one.</p>
+
+<div class="figure">
+<pre><code>direct           customer ──▶ CONNECTED ACCOUNT balance
+                                   │ application fee ──▶ platform balance
+
+destination      customer ──▶ PLATFORM balance
+                                   │ transfer (same operation, minus cut) ──▶ connected account
+
+separate         customer ──▶ PLATFORM balance
+charges &                          │ transfer #1 (later, any amount) ──▶ connected account A
+transfers                          └ transfer #2 ──────────────────────▶ connected account B</code></pre>
+<p class="cap">Three placements of one payment. Read each arrow as a balance-transaction entry from Lesson 6.</p>
+</div>
+
+<h2>The steps</h2>
+
+<h3>Pattern 1 — Direct charges: the seller is the merchant</h3>
+<p>The charge is created <em>on the connected account</em>. The customer is doing business with the seller; the platform is software in the background. Funds land in the connected account's balance and "always settle in the country of the connected account."<sup><a href="#s1">1</a></sup> The platform takes its cut as an <strong>application fee</strong> that credits the platform's balance per charge.<sup><a href="#s1">1</a></sup> Consequences of the placement: refunds debit the connected account's balance directly, and dispute fees can bill either party depending on the account's configuration.<sup><a href="#s1">1</a></sup> Stripe's processing fees can likewise be debited from the connected account or from the platform.<sup><a href="#s1">1</a></sup> The canonical fit is SaaS platforms whose sellers transact with their own customers, Stripe's examples being Shopify-style stores.<sup><a href="#s1">1</a></sup> Note the Lesson 7 echo: this is the natural partner of Standard accounts, where the seller already bears their own risk.</p>
+
+<h3>Pattern 2 — Destination charges: the platform is the merchant</h3>
+<p>The charge is created <em>on the platform account</em>: "you create a charge on your platform, so the payment appears in your platform's balance. A portion of the funds immediately transfers to the connected account's balance."<sup><a href="#s1">1</a></sup> The customer is doing business with the platform (a rideshare passenger pays the app, not the driver), and the onward transfer is part of the same operation, specified via <code>transfer_data</code>. The platform's cut is whatever it does not forward.<sup><a href="#s1">1</a></sup> Placement consequences: Stripe debits its fees from the platform's balance, refunds debit the platform's balance, and a dispute automatically debits the platform for the amount and the fee.<sup><a href="#s1">1</a></sup> One connected account per charge, known at charge time.</p>
+
+<h3>Pattern 3 — Separate charges and transfers: decoupled</h3>
+<p>Again the charge lands on the platform, but the onward movement is its own operation: "create a charge on your platform's account first. Create a separate transfer to move funds to your connected account."<sup><a href="#s1">1</a></sup> Decoupling buys three freedoms: transfer to <em>multiple</em> connected accounts from one charge, transfer before the destination is known, or transfer at a different time entirely.<sup><a href="#s1">1</a></sup> Stripe's example is a delivery platform splitting one customer payment between a store and a courier.<sup><a href="#s1">1</a></sup> Liability matches destination charges: fees, refunds, and disputes all hit the platform.<sup><a href="#s1">1</a></sup> The freedom has a price in bookkeeping: transfers draw on the platform's available balance, so "you must monitor your account balance carefully to make sure it has enough available funds to cover the transfer amount"<sup><a href="#s1">1</a></sup>, and Lesson 6 says why: the charge that funded the transfer may still be pending when the transfer wants to leave.</p>
+
+<h3>The decision</h3>
+<p>Two questions pick the pattern. <em>Whose customer is it?</em> If the seller's, direct charges; if the platform's, one of the other two. <em>How many recipients, known when?</em> One recipient, known at charge time: destination charges. Multiple recipients, or unknown, or later: separate charges and transfers.<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>                      direct        destination     separate ch. & transfers
+charge lands on       connected     platform        platform
+recipients            1 (implicit)  1               many, or decided later
+Stripe fees paid by   flexible      platform        platform
+platform's cut        app fee       kept portion    kept difference
+refund debits         connected     platform        platform
+dispute debits        configurable  platform        platform</code></pre>
+<p class="cap">Every row is a consequence of the first one.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h2>Why the placement is the whole game</h2>
+
+<p>Strip the API names away and the three patterns are answers to a question this course has been circling since Lesson 1: <em>who is the merchant?</em> The charge's account is, economically. That account's country decides where funds settle, that account's balance absorbs refunds, that account faces the dispute process, and that account's relationship with Stripe covers the processing fees by default. Direct charges say the seller is the merchant and the platform is a toll booth. The other two say the platform is the merchant and the sellers are payees. Choosing a charge type is choosing which business the customer is legally and financially dealing with, and every operational detail follows from that choice.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Ask whose customer it is and how many sellers get paid. Direct puts the charge on the seller's account; destination charges the platform and forwards one cut; separate charges and transfers decouples getting paid from paying out. Refunds and disputes follow the charge."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow reading treats the three types as API ergonomics: three syntaxes for the same thing. They are three assignments of merchant-of-record economics. The tell of a deep answer is tracing liability: name where the refund is debited and who the dispute bills under each type, and note the separate-charges footgun that transfers draw on available balance, which the funding charge may not have reached yet.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Which charge type creates the charge on the connected account, and what does that mean when the customer wants a refund?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Direct charges. The refund is debited from the connected account's balance directly; the seller's ledger, not the platform's, takes the hit.</p></details>
+  <p>② In a destination charge, where does the customer's money land, and how does the platform keep its cut?</p>
+  <details><summary>show answer</summary>
+  <p class="a">In the platform's balance; a portion transfers immediately to the connected account (via <code>transfer_data</code>), and the platform's cut is the portion it keeps.</p></details>
+  <p>③ Name the situations that force separate charges and transfers.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Splitting one payment across multiple connected accounts, not knowing the recipient at charge time, or needing to transfer later than the charge.</p></details>
+  <p>④ What must a platform using separate charges and transfers watch, and why (in Lesson 6 terms)?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Its available balance: transfers draw on available funds, and the charge that funded them may still be pending on its <code>available_on</code> clock, so a transfer can outrun its own funding.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/connect/charges">Stripe docs — Create a charge (Connect)</a>. The three types side by side, with the decision guidance and the fee/refund/dispute consequences of each.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want <code>on_behalf_of</code> (making a destination charge settle as if the connected account were the merchant), transfer reversals, or how application fees are refunded? Ask. Next: the synthesis quiz, one payment traced through all eight lessons.
+</div>
+
+<div class="course-nav">
+  <span><a href="0007-connect-accounts.html">← Lesson 7</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0009-interleaved-review.html"><em>Next: the interleaved review quiz →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> All three charge types, settlement country, fee and refund and dispute placement, application fees, <code>transfer_data</code>, multi-account transfers, balance-monitoring caveat, decision guidance — <a href="https://docs.stripe.com/connect/charges">Stripe docs: Create a charge</a>.
+</p>

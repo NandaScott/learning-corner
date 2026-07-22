@@ -1,0 +1,284 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 9: Interleaved review</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 9 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading feels like learning but mostly builds <em>fluency</em>, the illusion of mastery. Retrieving from memory, cold, with topics shuffled, is what builds <em>storage strength</em>.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all eight lessons and <strong>shuffled</strong> every run, by design. Interleaving (mixing topics rather than blocking them) is harder than reviewing one lesson at a time, and that difficulty is what makes it stick.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <em>near-miss</em>: the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em> and run it again in a few days. That spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag which one; it is worth re-explaining a different way, or drilling just that concept. Clearing this cold, two sessions apart, means you can trace a payment from checkout to payout, and through a platform split, without notes.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0008-connect-charge-types.html">← Lesson 8</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST is correct; the SECOND is a deliberate
+// "near-miss" (right idea, subtly wrong) to force precise discrimination.
+// The engine shuffles option order on render, so position is never a clue.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "The customer just saw \"payment successful.\" Where is the money?",
+    options: [
+      "Still at the issuer, reserved under a hold",
+      "In the merchant's Stripe balance, as pending funds",
+      "In transit through the card network to the acquirer",
+      "Deposited in the merchant's bank account"
+    ], answer: 0,
+    explain: "Authorization is approval plus a hold — no funds move. The pending balance only gets an entry after capture, and the bank deposit waits for the payout. (<a href='0001-the-life-of-a-card-payment.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "An authorization reaches the end of its validity window uncaptured. What happens?",
+    options: [
+      "The hold is released and the payment is canceled",
+      "Stripe captures it automatically at the deadline",
+      "The hold renews for another 7-day window",
+      "The funds convert to pending balance at a penalty fee"
+    ], answer: 0,
+    explain: "Expiry releases the funds and the payment status becomes canceled. Auto-capture at the deadline is the near-miss — capture only happens when instructed. (<a href='0001-the-life-of-a-card-payment.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Settlement timing vs payout schedule — what does each control?",
+    options: [
+      "Timing: when funds become available. Schedule: how often available funds go to the bank",
+      "Timing: when the bank deposit arrives. Schedule: when funds become available",
+      "They are two names for the same payout setting",
+      "Timing is set by the merchant; the schedule is set by the card network"
+    ], answer: 0,
+    explain: "Two independent dials. T+2 (US) ripens funds to available; the schedule sweeps whatever is available to the bank. The near-miss swaps them. (<a href='0001-the-life-of-a-card-payment.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Interchange — the largest slice of card fees — is kept by whom, for what?",
+    options: [
+      "The issuer, for carrying the credit and fraud risk",
+      "The card network, for routing the transaction",
+      "The acquirer, for processing on the merchant's behalf",
+      "Stripe, as the gateway margin"
+    ], answer: 0,
+    explain: "Interchange pays the issuer. The network's slice is the scheme fee — that's the near-miss distinction. (<a href='0001-the-life-of-a-card-payment.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A customer's card is declined. The PaymentIntent's status is now…",
+    options: [
+      "requires_payment_method",
+      "canceled",
+      "failed",
+      "requires_confirmation"
+    ], answer: 0,
+    explain: "A decline rewinds the intent to the start — the cart can still be paid. <code>canceled</code> is the near-miss: that's a terminal invalidation, not a failed attempt. There is no <code>failed</code> status. (<a href='0002-the-paymentintent-state-machine.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "The relationship between PaymentIntents and Charges is…",
+    options: [
+      "one intent per cart; one Charge per payment attempt",
+      "one intent per attempt; one Charge per successful payment",
+      "two names for the same underlying object",
+      "one intent per customer; one Charge per cart"
+    ], answer: 0,
+    explain: "The intent models the session and survives declines; each attempt (including failed ones) is a Charge under it. (<a href='0002-the-paymentintent-state-machine.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A PaymentIntent reads succeeded. What does that guarantee?",
+    options: [
+      "Capture completed; the funds belong to the Stripe balance",
+      "The funds have been deposited in the merchant's bank account",
+      "Authorization approved; the hold is in place awaiting capture",
+      "The customer passed 3D Secure authentication"
+    ], answer: 0,
+    explain: "<code>succeeded</code> ends the seconds clock. The days clock (settlement) and calendar clock (payout) still run — the bank deposit is the near-miss. (<a href='0002-the-paymentintent-state-machine.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Who ultimately decides whether a 3DS run is frictionless or a challenge?",
+    options: [
+      "The issuer, via its Access Control Server",
+      "The merchant, via request_three_d_secure",
+      "Stripe's fraud models",
+      "The card network's SCA rules engine"
+    ], answer: 0,
+    explain: "The merchant's setting is a <em>preference</em>; the issuer determines the ultimate flow, because the issuer carries the fraud risk. (<a href='0003-confirmation-and-3d-secure.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Liability shift after successful 3DS authentication covers…",
+    options: [
+      "fraud disputes — they shift to the issuer",
+      "all disputes on the payment, including product-not-received",
+      "every payment where 3DS was attempted, pass or fail",
+      "any card payment made inside an SCA region"
+    ], answer: 0,
+    explain: "Only fraud disputes shift, and only after <em>successful</em> authentication. Non-fraud disputes follow the standard process — that's the near-miss. (<a href='0003-confirmation-and-3d-secure.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A 3DS challenge is required mid-payment. How does the API surface it?",
+    options: [
+      "Status requires_action, with next_action describing the step",
+      "Status processing, with a pending-challenge flag on the charge",
+      "Status requires_confirmation, with the redirect URL as metadata",
+      "No status change — a webhook event is the only signal"
+    ], answer: 0,
+    explain: "The machine parks at <code>requires_action</code> and <code>next_action</code> (e.g. <code>redirect_to_url</code>) says what must happen. (<a href='0003-confirmation-and-3d-secure.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Your webhook endpoint returns 500s during an outage. Stripe…",
+    options: [
+      "retries with exponential backoff for up to 3 days (live mode)",
+      "retries with exponential backoff for up to 24 hours",
+      "retries hourly until acknowledged, indefinitely",
+      "does not retry; missed events must be replayed manually"
+    ], answer: 0,
+    explain: "Three days of backed-off retries in live mode (a sandbox: 3 tries over a few hours). The 24-hour figure is the near-miss — that's idempotency-key retention. (<a href='0004-webhooks-the-source-of-truth.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Webhook signature verification works by…",
+    options: [
+      "recomputing HMAC-SHA256 over \"timestamp.body\" with the endpoint's signing secret",
+      "recomputing HMAC-SHA256 over the body alone with your API secret key",
+      "validating Stripe's certificate chain on the TLS connection",
+      "checking the request came from Stripe's published IP ranges"
+    ], answer: 0,
+    explain: "Endpoint-specific signing secret, timestamp prepended (anti-replay), constant-time compare. Wrong key and no timestamp is the near-miss. (<a href='0004-webhooks-the-source-of-truth.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Which two delivery guarantees does Stripe explicitly NOT make?",
+    options: [
+      "Ordered delivery, and single (non-duplicate) delivery",
+      "Ordered delivery, and any retry after a failure",
+      "Authenticated payloads, and encrypted transport",
+      "Delivery within 5 minutes, and typed event payloads"
+    ], answer: 0,
+    explain: "Events can arrive out of order and more than once — hence sequence-independent handlers and dedupe by event id. Retries ARE guaranteed for 3 days, so the near-miss is wrong. (<a href='0004-webhooks-the-source-of-truth.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "The rule for responding to a webhook delivery is…",
+    options: [
+      "return 2xx quickly, before running any heavy logic",
+      "return 2xx only after fulfillment completes, so failures get retried",
+      "return 202 specifically, to signal asynchronous processing",
+      "respond any time within the 3-day retry window"
+    ], answer: 0,
+    explain: "Ack first, work after. The near-miss sounds prudent but causes timeouts — which count as failures and trigger duplicate deliveries of work you already did. (<a href='0004-webhooks-the-source-of-truth.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "A payment-creating POST times out. The safe move is…",
+    options: [
+      "retry with the same idempotency key — a stored result replays instead of re-executing",
+      "retry with the same key — Stripe compares parameters and merges duplicates",
+      "retry with a fresh key so the stale one doesn't block the request",
+      "query recent charges by amount and customer before retrying"
+    ], answer: 0,
+    explain: "The mechanism is stored-response replay, keyed on your key — not parameter matching. A fresh key is exactly how you double-charge. (<a href='0005-idempotency.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What does Stripe store under an idempotency key, and when does it store nothing?",
+    options: [
+      "First status code + body (success or failure); nothing if validation rejected it or it conflicted with a concurrent request",
+      "First response, but only when the request succeeded",
+      "The full request and response, retained for 90 days",
+      "Only the created object's id, until that object is deleted"
+    ], answer: 0,
+    explain: "Errors are stored and replayed too — including 500s. The only unstored cases are requests whose execution never began. (<a href='0005-idempotency.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "How long does idempotency-key protection last?",
+    options: [
+      "Keys can be removed once at least 24 hours old; reuse after that is a new request",
+      "Keys are permanent for the life of the account",
+      "Until the associated PaymentIntent reaches a terminal state",
+      "5 minutes, matching the signature timestamp tolerance"
+    ], answer: 0,
+    explain: "A 24-hour window, sized for retry storms — not an eternal ledger. The 5-minute figure belongs to webhook signatures. (<a href='0005-idempotency.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A customer pays $100 by card (US). What appears in the merchant's balance?",
+    options: [
+      "$100 minus Stripe's fee, pending, available at that entry's available_on (T+2)",
+      "$100 gross, pending, with fees debited in a monthly bill",
+      "$100 available immediately, reversed later if settlement fails",
+      "$100 minus fee, held in the reserve balance until payout"
+    ], answer: 0,
+    explain: "Entries are born net — no gross-then-fee moment. Ripening is per-entry via <code>available_on</code>. (<a href='0006-balance-and-payouts.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "What moves funds from pending to available?",
+    options: [
+      "Each balance transaction's own available_on timestamp arriving",
+      "A nightly account-wide batch that settles everything older than the T+X window",
+      "The next payout executing",
+      "A manual release from the Dashboard"
+    ], answer: 0,
+    explain: "Per-transaction clocks, not one account timer — a card sale and an ACH debit booked together ripen on different schedules. (<a href='0006-balance-and-payouts.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Can a Stripe balance go negative?",
+    options: [
+      "Yes — refunds, disputes, and fees debit past zero; reserves, minimum balances, and top-ups exist for this",
+      "No — Stripe blocks debits at zero and queues refunds until funds arrive",
+      "No — payouts are automatically recalled from the bank to cover shortfalls",
+      "Only for Connect platforms, never for regular accounts"
+    ], answer: 0,
+    explain: "Debits don't stop at zero. Stripe may impose a reserve; merchants can set a minimum balance and top up externally. (<a href='0006-balance-and-payouts.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Structurally, a connected account is…",
+    options: [
+      "a full Stripe account (own balance, payouts, verification) created via the platform",
+      "a sub-wallet inside the platform's own Stripe account",
+      "a Customer object with bank details attached",
+      "a shared login to the platform's Dashboard"
+    ], answer: 0,
+    explain: "Each seller gets a real account with its own Lesson-6 ledger. The sub-wallet picture is the classic near-miss. (<a href='0007-connect-accounts.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "A platform's sellers must never learn Stripe is involved. Which legacy type, at what cost?",
+    options: [
+      "Custom — platform builds onboarding, handles all seller contact, and is liable for negative balances",
+      "Custom — platform builds onboarding, but sellers keep an Express dashboard for payouts",
+      "Express — Stripe onboards invisibly and the platform carries no liability",
+      "Standard — with the Dashboard disabled by a controller property"
+    ], answer: 0,
+    explain: "Custom means no dashboard and no Stripe contact at all — full white-label, full responsibility. Any dashboard breaks the invisibility. (<a href='0007-connect-accounts.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Under direct charges, a customer refund is debited from…",
+    options: [
+      "the connected account's balance, directly",
+      "the platform's balance, then recovered from the seller",
+      "both balances, split pro-rata with the application fee",
+      "Stripe's own funds, recouped via processing fees"
+    ], answer: 0,
+    explain: "Refunds follow the charge, and a direct charge lives on the connected account. No platform intermediation. (<a href='0008-connect-charge-types.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "In a destination charge, the money flows…",
+    options: [
+      "into the platform's balance; a portion transfers immediately to the connected account, and the kept portion is the platform's cut",
+      "into the connected account's balance, with an automatic application fee back to the platform",
+      "through two separate charges, one per party",
+      "from the card network directly into the seller's bank account"
+    ], answer: 0,
+    explain: "Charge on the platform, immediate onward transfer via <code>transfer_data</code>. The near-miss describes a direct charge with an application fee. (<a href='0008-connect-charge-types.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Which situations force separate charges and transfers?",
+    options: [
+      "Multiple recipients, recipient unknown at charge time, or transferring later than the charge",
+      "Any time the platform wants to pay Stripe's fees itself",
+      "Cross-border payments between platform and seller countries",
+      "Charges above a network-defined amount threshold"
+    ], answer: 0,
+    explain: "Decoupling is for splits, unknowns, and delays. Platform-paid fees also happen under destination charges, so the near-miss doesn't force anything. (<a href='0008-connect-charge-types.html'>L8</a>)" }
+]);
+</script>

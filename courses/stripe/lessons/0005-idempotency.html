@@ -1,0 +1,100 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5: Idempotency, or how retries become safe</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 5</p>
+<h1>Idempotency, or how retries become safe</h1>
+<p class="lede">Lesson 4 covered Stripe retrying deliveries to the merchant. This lesson is the mirror image: the merchant retrying requests to Stripe, and the mechanism that makes retrying a money-moving request safe instead of terrifying.</p>
+
+<h2>The concept</h2>
+
+<p>Networks fail in an inconvenient place: after the request was sent, before the response came back. A merchant's server POSTs a payment request, the connection drops, and now the state of the world is unknowable from where it sits. Maybe Stripe never got the request. Maybe Stripe executed it fully and the confirmation died in transit. With most APIs the safe move is unclear: not retrying risks an unpaid order, retrying risks charging the customer twice.</p>
+
+<p>An operation is <strong>idempotent</strong> when performing it twice has the same effect as performing it once. Stripe's API makes its POST requests idempotent through the <strong>Idempotency-Key header</strong>: a unique string the client generates and attaches to a request. The mechanism behind it is storage, not deduplication magic: Stripe saves "the resulting status code and body of the first request made for any given idempotency key, regardless of whether it succeeds or fails," and "subsequent requests with the same key return the same result."<sup><a href="#s1">1</a></sup></p>
+
+<p>A retry with the same key is therefore not a second attempt. It is a question: <em>what happened the first time?</em></p>
+
+<h2>The steps</h2>
+
+<p>One payment request surviving a network failure.</p>
+
+<div class="figure">
+<pre><code>1. Generate key      client mints UUID v4              one key per logical operation
+2. Send              POST + Idempotency-Key header     (POST only; GET/DELETE need none)
+3. First arrival     Stripe executes the request       saves {status, body} under the key
+4. Failure           response lost in transit          client cannot know the outcome
+5. Retry, same key   Stripe finds the key              REPLAYS the saved response
+                                                       nothing re-executes
+6. Expiry            keys removable after 24h          same key later = brand-new request</code></pre>
+<p class="cap">The stored response is the whole trick. Steps 3 and 5 are the same HTTP exchange from the client's view; only Stripe knows one executed and one replayed.</p>
+</div>
+
+<h3>Step 1 — One key per logical operation</h3>
+<p>The client generates the key, and its scope is the thing to get right: one key per <em>operation the business means to happen once</em>, not per HTTP attempt. Stripe suggests "V4 UUIDs, or another random string with enough entropy to avoid collisions," up to 255 characters, and warns against building keys from sensitive data like email addresses.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 2 — POST only</h3>
+<p>Keys go on POST requests. "Don't send idempotency keys in GET and DELETE requests because it has no effect. These requests are idempotent by definition"<sup><a href="#s1">1</a></sup>: reading a resource twice reads it twice; deleting a deleted thing is still deleted. POST is the verb that creates and mutates, so POST is where "twice" differs from "once."</p>
+
+<h3>Step 3 — First execution, and what gets saved</h3>
+<p>The first time a key arrives, Stripe runs the request and records the outcome. One boundary matters: "we save results only after the execution of an endpoint begins. If incoming parameters fail validation, or the request conflicts with another request that's executing concurrently, we don't save the idempotent result."<sup><a href="#s1">1</a></sup> Rejected-at-the-door requests leave no record, and can be retried freely.</p>
+
+<h3>Step 4 — The unknowable failure</h3>
+<p>The timeout hits. From the client's seat, outcomes "executed" and "never arrived" are indistinguishable. This is the exact situation the mechanism exists for, and the client's move is mechanical: retry, same key.</p>
+
+<h3>Step 5 — The replay</h3>
+<p>Stripe sees a key it knows and returns the stored status code and body. If the first request created a payment, the retry returns that same payment, not a second one. And the replay is faithful to a fault: a stored error is replayed too, "including 500 errors."<sup><a href="#s1">1</a></sup> The key answers "what happened," and what happened may be a failure; a genuinely new attempt at the operation needs a new key.</p>
+
+<h3>Step 6 — Keys expire</h3>
+<p>Stripe can remove keys "after they're at least 24 hours old," and reusing a key after removal "is treated as a new request."<sup><a href="#s1">1</a></sup> The protection is a 24-hour window, sized for retry storms and queue backlogs, not an eternal ledger.</p>
+
+<h2>Why this completes the reliability picture</h2>
+
+<p>Set this lesson next to Lesson 4 and the symmetry is exact. Stripe-to-merchant: deliveries retry for days, so the merchant deduplicates by event id. Merchant-to-Stripe: requests retry on failure, so Stripe deduplicates by idempotency key. Both directions accept duplicate <em>attempts</em> as inevitable and make duplicate <em>effects</em> impossible, each side keeping a record keyed by an identifier the sender controls.</p>
+
+<p>It also closes a loop from Lesson 2. Stripe's docs list "no double charges" among the reasons PaymentIntents exist: one intent per cart is idempotency lifted to the object level. The header protects a single API call; the intent's design protects the whole checkout session, because re-confirming an already-succeeded intent has nowhere bad to go in the state machine.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "An idempotency key turns a retry from 'do it again' into 'tell me what happened the first time.' Stripe stores the first response under the key for 24 hours and replays it verbatim, errors included."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow phrasing says keys "prevent duplicate requests." They prevent nothing; the duplicate request arrives and gets answered, with the recorded outcome instead of a re-execution. The deep answer knows the edges of the guarantee: stored errors replay as-is (a new attempt needs a new key), nothing is stored when validation rejects the request, and the record lives 24 hours, after which the same key silently becomes a fresh request.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Your POST creating a payment times out. What do you do, and what makes it safe?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Retry with the same idempotency key. If the first request executed, Stripe replays its stored response and nothing runs twice; if it never arrived, the retry simply executes first.</p></details>
+  <p>② What exactly does Stripe store under a key, and name a case where nothing is stored.</p>
+  <details><summary>show answer</summary>
+  <p class="a">The first request's status code and response body, success or failure. Nothing is stored when execution never began: parameter-validation failures, or a conflict with a concurrently executing request.</p></details>
+  <p>③ The first request returned a 500 and it was stored. What does a same-key retry get, and what should a new attempt use?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The same stored 500, replayed. A deliberate new attempt at the operation needs a fresh key.</p></details>
+  <p>④ Why are idempotency keys pointless on GET and DELETE?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Those verbs are idempotent by definition: repeated reads and repeated deletes already have the same effect as one. Only POST creates or mutates in a way where twice differs from once.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/api/idempotent_requests">Stripe API reference — Idempotent requests</a>. One page, and it is the complete contract: what is stored, when, for how long, and the key-generation guidance.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Curious what happens when the same key is reused with different parameters, or how idempotency interacts with Stripe's automatic retries in the official SDKs? Ask. Next lesson: the money itself. Where captured funds sit, and how they leave.
+</div>
+
+<div class="course-nav">
+  <span><a href="0004-webhooks-the-source-of-truth.html">← Lesson 4</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-balance-and-payouts.html"><em>Next: Lesson 6 — the balance and payouts →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Storage semantics, replay including errors, 24-hour retention, POST-only scope, key generation — <a href="https://docs.stripe.com/api/idempotent_requests">Stripe API reference: Idempotent requests</a>.
+</p>

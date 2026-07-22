@@ -1,0 +1,112 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4: Webhooks, the source of truth</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 4</p>
+<h1>Webhooks, the source of truth</h1>
+<p class="lede">The last two lessons built a state machine that keeps moving after the API call returns and after the customer leaves. This lesson covers how a merchant's server finds out what happened: the Event object, the delivery contract, and why the signature check is not optional.</p>
+
+<h2>The concept</h2>
+
+<p>Most of the interesting transitions in this course happen when nobody is on the line. A bank debit confirms days after checkout. A customer disputes a charge weeks later. A 3DS challenge completes on the issuer's page, not the merchant's. A subscription renews at 3 a.m. Stripe's docs put it directly: webhooks exist so you can "respond to asynchronous events, such as when a customer's bank confirms a payment, a customer disputes a charge, or a recurring payment succeeds."<sup><a href="#s1">1</a></sup> The request-response cycle cannot deliver these outcomes, because there is no open request when they occur.</p>
+
+<p>The mechanism inverts the arrow. Instead of the merchant polling Stripe, Stripe calls the merchant: an HTTPS POST to a URL the merchant registered, carrying an <strong>Event object</strong> as JSON. An Event has a <code>type</code> naming what happened (<code>payment_intent.succeeded</code>, <code>charge.dispute.created</code>), a <code>data.object</code> snapshot of the affected resource, and a unique <code>id</code>.<sup><a href="#s1">1</a></sup></p>
+
+<p>That inversion has a consequence worth sitting with: the webhook endpoint is a door on the public internet that accepts POSTs from anyone. The whole delivery contract below exists to make that door safe and reliable.</p>
+
+<h2>The steps</h2>
+
+<p>One event, from state change to safely processed.</p>
+
+<div class="figure">
+<pre><code>1. State changes      intent hits succeeded            Stripe creates Event (unique id)
+2. Delivery           Stripe POSTs JSON → endpoint     HTTPS, Stripe-Signature header
+3. Verify             HMAC check on the signature      reject anything that fails
+4. Acknowledge        return 2xx FAST                  before any heavy logic
+5. (no 2xx?)          exponential-backoff retries      for up to 3 days (live mode)
+6. Process            dedupe by event id               assume no ordering</code></pre>
+<p class="cap">Steps 3, 4, and 6 are the merchant's obligations. Getting any of them wrong produces a specific, classic bug.</p>
+</div>
+
+<h3>Step 1 — A state change mints an Event</h3>
+<p>Every consequential change in the account produces an Event object. The Lesson 2 machine is the main producer here: transitions like reaching <code>succeeded</code> or rewinding to <code>requires_payment_method</code> each have a corresponding event type, which is how the machine reports its moves to the outside world.</p>
+
+<h3>Step 2 — Stripe POSTs to the registered endpoint</h3>
+<p>Stripe sends the Event as a JSON payload over HTTPS to each endpoint registered for that event type.<sup><a href="#s1">1</a></sup> Endpoints subscribe to the types they care about; everything else is noise they never receive.</p>
+
+<h3>Step 3 — Verify the signature before believing anything</h3>
+<p>Because the endpoint is publicly reachable, the payload alone proves nothing. "Without verification, an attacker could send fake webhook events to your endpoint to trigger actions like fulfilling orders, granting account access, or modifying records."<sup><a href="#s1">1</a></sup> The proof of origin rides in the <code>Stripe-Signature</code> header:</p>
+
+<div class="figure">
+<pre><code>Stripe-Signature:  t=1492774577, v1=5257a869e7ecebe...
+
+verification:
+  signed_payload = t + "." + raw_request_body
+  expected       = HMAC-SHA256(endpoint_signing_secret, signed_payload)
+  compare(expected, v1)          ← constant-time comparison
+  check |now - t| within tolerance  (default 5 minutes)</code></pre>
+<p class="cap">The signing secret is shared between Stripe and this one endpoint. Only a holder of the secret can produce a valid <code>v1</code>, and the timestamp inside the signed payload blocks replaying old captures.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<p>The official libraries wrap this in one call (<code>construct_event</code>), which is the recommended path; the mechanism above is what that call does.</p>
+
+<h3>Step 4 — Return 2xx before doing the work</h3>
+<p>The endpoint "must quickly return a successful status code (2xx) prior to any complex logic that could cause a timeout."<sup><a href="#s1">1</a></sup> Acknowledge first, then fulfill the order, send the email, update the records. A handler that does the slow work first risks timing out, and a timeout is a failed delivery.</p>
+
+<h3>Step 5 — Failed deliveries retry for three days</h3>
+<p>Any non-2xx response, or no response, and Stripe re-attempts delivery "for up to three days with an exponential back off" in live mode (a sandbox retries three times over a few hours).<sup><a href="#s1">1</a></sup> This is the reliability half of the contract: a deploy, a crash, or an outage does not lose the event, it delays it. It also means every handler must expect to see the same event more than once, because a timeout after successful processing still triggers a retry.</p>
+
+<h3>Step 6 — No ordering, no uniqueness: handle both</h3>
+<p>"Stripe doesn't guarantee the delivery of events in the order that they're generated."<sup><a href="#s1">1</a></sup> One action often mints several events (a subscription payment produces invoice and charge events together), and they can land in any order. The docs' prescriptions: build handlers that do not depend on sequence, and "guard against duplicated event receipts by logging the event IDs you've processed" and skipping ones already seen.<sup><a href="#s1">1</a></sup></p>
+
+<h2>Why webhooks are the source of truth</h2>
+
+<p>Put the three clocks from Lesson 1 next to this machinery. The API response from confirming a payment reports the seconds clock, and only as far as it ran while the request was open. Everything on the days clock, and every seconds-clock outcome that completed after the customer left, arrives by webhook or not at all. That is why fulfillment keyed off the synchronous response is fragile, and fulfillment keyed off <code>payment_intent.succeeded</code>, verified and deduplicated, is the pattern Stripe's docs push throughout.</p>
+
+<p>Each obligation maps to an attack or a failure. Skip verification: forged events, free goods. Work before acknowledging: timeouts read as failures, and retries double-process. Assume order or uniqueness: bugs that appear only under retry and concurrency, which is to say, only in production.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "The API response tells you what happened while you waited. Webhooks tell you what happened after you stopped waiting: verify the signature, ack fast, dedupe by event id, assume no order."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow model treats webhooks as optional notifications layered over a complete API. For asynchronous outcomes they are the only channel; the API response ends at the end of the request. The deep answer also names the security inversion: a webhook endpoint is unauthenticated inbound HTTP, so the HMAC signature check is the authentication, and processing an unverified payload means an attacker can mint <code>payment_intent.succeeded</code> at will.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Why can't the API response to a confirm call be the source of truth for payment outcomes?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because outcomes keep happening after the request closes: async payment methods confirm days later, 3DS completes off-site, disputes arrive weeks on. No open request exists when they occur, so Stripe must push them: webhooks.</p></details>
+  <p>② An endpoint returns 500. What does Stripe do, and for how long?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Retries delivery with exponential backoff for up to three days in live mode. Sandbox: three retries over a few hours.</p></details>
+  <p>③ How does signature verification actually work, and what attack does it stop?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Stripe sends <code>Stripe-Signature: t=…, v1=…</code> where v1 = HMAC-SHA256 of "timestamp.body" under the endpoint's signing secret. The server recomputes and compares constant-time, and checks the timestamp (5-minute default tolerance) against replay. It stops forged events from anyone who found the public URL.</p></details>
+  <p>④ Two guarantees Stripe does NOT make about delivery, and the countermeasure for each?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No ordering (write handlers that don't depend on sequence) and no single delivery (log processed event ids, skip duplicates).</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/webhooks">Stripe docs — Receive Stripe events in your webhook endpoint</a>. The delivery contract, retry schedule, and signature scheme, with the verification code in every language.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the event-type catalog for a payments integration, thin vs snapshot payloads, or how to replay missed events after an outage? Ask. Next lesson: the other half of surviving retries: idempotency, for the requests you send <em>to</em> Stripe.
+</div>
+
+<div class="course-nav">
+  <span><a href="0003-confirmation-and-3d-secure.html">← Lesson 3</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-idempotency.html"><em>Next: Lesson 5 — idempotency →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Event object, delivery and 2xx requirement, retry schedule, ordering, deduplication, signature scheme and verification — <a href="https://docs.stripe.com/webhooks">Stripe docs: Webhooks</a>.
+</p>

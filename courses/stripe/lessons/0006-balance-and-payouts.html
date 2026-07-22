@@ -1,0 +1,101 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6: The balance and payouts</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 6</p>
+<h1>The balance and payouts</h1>
+<p class="lede">Lesson 1 ended with money "landing in the Stripe balance" and Lesson 2's <code>succeeded</code> handed it off there. This lesson opens the balance itself: what kind of object it is, how funds ripen inside it, and how they leave.</p>
+
+<h2>The concept</h2>
+
+<p>Between capture and the bank deposit, the merchant's money lives at Stripe. The natural mental image is a vault with a number on it. The actual object is a <strong>ledger</strong>: a running list of <strong>balance transactions</strong>, each one a credit or debit with its own timestamp for when it counts. The "balance" is what the ledger sums to, split into two states you have met before:<sup><a href="#s1">1</a></sup></p>
+
+<p><strong>Pending</strong>: "funds in the pending state represent incoming transactions that haven't settled into your balance... You can't withdraw or spend these funds until they're available."<sup><a href="#s1">1</a></sup> <strong>Available</strong>: settled funds, usable "for payouts to bank accounts, refunds, transfers, or any other debit transaction."<sup><a href="#s1">1</a></sup></p>
+
+<p>One detail changes how every number reads: fees are netted at entry. When a customer pays $100, "the charge amount (minus Stripe's fee) appears in your pending balance."<sup><a href="#s1">1</a></sup> There is no moment when the gross amount sits in the balance waiting for a fee to be pulled out; the ledger entry is born net.</p>
+
+<h2>The steps</h2>
+
+<p>One $100 US card payment, from capture to bank account.</p>
+
+<div class="figure">
+<pre><code>1. Capture books an entry     +$100 − fee → PENDING        (net at entry)
+2. Settlement clock runs      each entry has available_on   T+2 business days (US)
+3. Funds ripen                pending → AVAILABLE           at available_on, per entry
+4. Debits draw on available   refunds · disputes · transfers
+5. Payout sweeps              available → bank account      on the payout schedule
+6. Below zero                 refunds/disputes can overdraw  reserves · minimum balance · top-ups</code></pre>
+<p class="cap">Steps 1–3 are the days clock from Lesson 1, now with its actual mechanism: a per-transaction ripening timestamp, not one account-wide timer.</p>
+</div>
+
+<h3>Step 1 — Capture books a net entry into pending</h3>
+<p>The captured charge becomes a balance transaction: amount minus Stripe's fee, state pending.<sup><a href="#s1">1</a></sup> Pending is not a review queue and not suspicion; it is the normal state of money that the banking system (Lesson 1, step 6) is still physically delivering.</p>
+
+<h3>Step 2 — Every entry carries its own available_on</h3>
+<p>"Funds in a Balance transition from pending to available at the corresponding <code>available_on</code> time for each balance transaction."<sup><a href="#s1">1</a></sup> The settlement timing from Lesson 1 (T+2 business days in the US, T+3 in much of Europe, method-dependent: 4 business days for ACH debits, 6 for SEPA) is applied per transaction at booking time.<sup><a href="#s1">1</a></sup> Monday's sale ripens Wednesday; Tuesday's ripens Thursday; the balance is a conveyor, not a batch.</p>
+
+<h3>Step 3 — Pending becomes available</h3>
+<p>At <code>available_on</code>, the entry counts toward the available balance. Nothing else changes; no event in the customer's world corresponds to this moment. The <code>balance.available</code> webhook event (Lesson 4's machinery) is how a server can hear it happen.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 4 — Available funds do all the work</h3>
+<p>Every debit draws on the available balance: refunds to customers, dispute debits, transfers, and payouts.<sup><a href="#s1">1</a></sup> This ordering matters for young businesses: a refund needs available funds to draw on, and a merchant whose entire balance is still pending is a merchant who cannot yet refund from revenue.</p>
+
+<h3>Step 5 — The payout sweep</h3>
+<p>On the payout schedule (daily, weekly, monthly, or manual, from Lesson 1), Stripe sends the available balance to the merchant's bank account.<sup><a href="#s3">3</a></sup> Schedule and settlement remain independent dials: with US daily payouts, each day's payout carries the funds captured two business days earlier. And a new account's first payout waits 7 to 14 days after its first successful payment.<sup><a href="#s3">3</a></sup></p>
+
+<h3>Step 6 — When the ledger goes below zero</h3>
+<p>Debits do not stop at zero. A wave of refunds, disputes, or fees can push the balance negative, and Stripe protects itself accordingly: it "might create a reserve balance on your behalf to ensure that your Stripe account can cover any expected incoming refunds or disputes," and it recommends configuring a <strong>minimum balance</strong> to avoid "paused payouts and automatic debits to your external accounts."<sup><a href="#s1">1</a></sup> Merchants can also push money the other way, funding a dedicated refunds-and-disputes balance with an external top-up.<sup><a href="#s1">1</a></sup></p>
+
+<h2>Why a ledger, not a vault</h2>
+
+<p>The ledger design is what lets one object serve every constituency honestly. The merchant sees a truthful "what can I use right now" number (available) next to a truthful "what is coming" number (pending). Stripe gets per-transaction settlement control: a card sale and an ACH debit booked the same hour ripen on different schedules because each entry carries its own clock. And the audit trail is free, because the balance was never a number that gets overwritten; it is the sum of entries that never change.</p>
+
+<p>This lesson also closes the three-clock story from Lesson 1. The seconds clock ended at <code>succeeded</code> (Lesson 2). The days clock is <code>available_on</code>. The calendar clock is the payout schedule. All three were visible in that first diagram; now each has its mechanism.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "The Stripe balance is a ledger, not a vault: every charge books a net-of-fee entry that ripens from pending to available on its own settlement clock, and payouts sweep whatever has ripened."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Two shallow readings. First: pending does not mean flagged, held, or under review; it is the ordinary state of funds the banking system is still delivering, on a known schedule. Second: the balance is not gross revenue minus a monthly fee bill; every entry is net at booking, so no fee ever "comes out of" the balance later. The deep answer adds the floor: debits can overdraw the balance, which is why reserves, minimum balances, and top-ups exist.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① A customer pays $100 by card in the US on Monday. What exactly appears in the balance, in which state, and when does it change?</p>
+  <details><summary>show answer</summary>
+  <p class="a">$100 minus Stripe's fee appears as a pending balance transaction immediately; it becomes available at that entry's <code>available_on</code>, T+2 business days, so Wednesday.</p></details>
+  <p>② What moves funds from pending to available: one account-wide timer or something else?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Per-transaction: each balance transaction carries its own <code>available_on</code> timestamp, set from the settlement timing of that payment's method and country.</p></details>
+  <p>③ Name the operations that draw on the available balance.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Payouts, refunds, dispute debits, and transfers: every debit transaction. Pending funds can back none of them.</p></details>
+  <p>④ How does a balance go negative, and what are the three mechanisms around it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Refunds, disputes, and fees keep debiting past zero. Stripe may impose a reserve balance; the merchant can configure a minimum balance to avoid paused payouts and automatic bank debits; and top-ups can fund the balance externally.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/payments/balances">Stripe docs — Balances and settlement time</a>. Pending vs available, <code>available_on</code>, settlement timings by method and country, and the negative-balance machinery.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want Instant Payouts, how currency conversion books into the ledger, or what a balance transaction's <code>reporting_category</code> taxonomy looks like? Ask. Next lesson: what happens when the account holding the balance is not yours. Connect, part one.
+</div>
+
+<div class="course-nav">
+  <span><a href="0005-idempotency.html">← Lesson 5</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-connect-accounts.html"><em>Next: Lesson 7 — Connect: platforms and connected accounts →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Pending/available semantics, net-of-fee booking, <code>available_on</code>, settlement timings, reserves, minimum balance, top-ups — <a href="https://docs.stripe.com/payments/balances">Stripe docs: Balances and settlement time</a>.<br>
+<span id="s2">2.</span> Balance object and <code>balance.available</code> event — <a href="https://docs.stripe.com/api/balance">Stripe API reference: Balance</a>.<br>
+<span id="s3">3.</span> Payout schedules, settlement-vs-schedule distinction, first-payout delay — <a href="https://docs.stripe.com/payouts">Stripe docs: Receive payouts</a>.
+</p>

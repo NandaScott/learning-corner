@@ -1,0 +1,98 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 7: Connect — platforms and connected accounts</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 7</p>
+<h1>Connect: platforms and connected accounts</h1>
+<p class="lede">Everything so far assumed one business getting paid. Marketplaces and software platforms break that assumption: one payment has several parties who each need a cut, an identity, and a balance. Connect is Stripe's machinery for that, and this lesson covers its account model.</p>
+
+<h2>The concept</h2>
+
+<p>Connect is "Stripe's solution for multi-party businesses, such as marketplace or software platforms, to route payments between sellers, customers, and other recipients."<sup><a href="#s1">1</a></sup> The party running the show is the <strong>platform</strong> (the marketplace, the SaaS product). For "each business or individual that signs up to access your platform's services," the platform creates a <strong>connected account</strong>: "a person or business accepting payments or receiving payouts on a Connect platform."<sup><a href="#s1">1</a></sup></p>
+
+<p>The load-bearing fact: a connected account is a real Stripe account. It has its own balance with pending and available funds (Lesson 6's ledger, one per seller), its own payout schedule, its own relationship to the machinery in this course. It is created and managed <em>by the platform</em> rather than by the seller walking up to stripe.com, and that raises the questions this lesson is actually about: for each seller, who does the paperwork, who sees the controls, who collects the fees, and who eats the losses?</p>
+
+<p>Stripe's modern answer is <strong>controller properties</strong>: per-account settings that assign each of those responsibilities to the platform or to Stripe, independently.<sup><a href="#s1">1</a></sup> The older answer, still everywhere in practice and in documentation, is three preset bundles called <strong>account types</strong>: Standard, Express, and Custom. Stripe now recommends controller properties over the types,<sup><a href="#s1">1</a></sup> and the types are best understood as fixed combinations of the same dials.</p>
+
+<h2>The steps</h2>
+
+<p>The four dials, then the presets. Every Connect integration is some setting of these.</p>
+
+<div class="figure">
+<pre><code>                         platform-owned ◀──────────────▶ Stripe-owned
+1. Onboarding            platform builds the KYC flow  |  Stripe hosts it
+2. Dashboard             none (platform builds UI)     |  Express dash  |  full Dashboard
+3. Fee collection        platform collects from seller |  Stripe charges the seller
+4. Losses                platform covers negatives     |  connected account covers them
+
+presets (legacy "account types"):
+  Standard = Stripe onboards · full Dashboard · account bears risk
+  Express  = Stripe onboards · Express dashboard · platform bears risk
+  Custom   = platform onboards · no dashboard · platform bears risk, owns ALL contact</code></pre>
+<p class="cap">Controller properties set the four dials independently. The three types are preset bundles, fixed at account creation.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h3>Dial 1 — Who onboards the seller</h3>
+<p>Taking payments requires identity verification and banking details from every seller. With Stripe-owned onboarding, sellers pass through flows Stripe hosts and keeps current with regulation. Platform-owned onboarding (the Custom pattern) means the platform builds those forms and carries the compliance burden itself.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Dial 2 — Who gives the seller controls</h3>
+<p>Three answers, cleanly visible in the legacy types. Standard: the seller gets the full Stripe Dashboard, the same one any direct Stripe merchant has. Express: a slimmed dashboard Stripe hosts for payouts and account basics, with the platform running the rest. Custom: no dashboard at all; "Custom connected account holders don't have access to the Dashboard, and Stripe doesn't contact them directly... You—the platform—are responsible for all interactions with your connected accounts."<sup><a href="#s1">1</a></sup> The seller on a Custom platform may never learn Stripe is involved.</p>
+
+<h3>Dial 3 — Who collects the fees</h3>
+<p>Someone charges the seller for payment processing, and the controller model makes it explicit: either Stripe bills the connected account directly, or the platform pays Stripe and charges its sellers whatever it likes on top. The second arrangement is where platform business models live, and Lesson 8 covers the mechanics of taking that cut per payment.</p>
+
+<h3>Dial 4 — Who eats the losses</h3>
+<p>Lesson 6 ended with balances going negative through refunds, disputes, and fees. On a platform, some seller's balance eventually goes negative and stays there, and this dial decides who covers it. Standard accounts bear their own risk; with Express and Custom, the platform is liable for negative balances.<sup><a href="#s1">1</a></sup> This single dial drives most of the platform's fraud incentives: a platform that eats seller losses screens its sellers.</p>
+
+<h3>The presets, and their immutability</h3>
+<p>Read the three types against the dials and each is one column of choices, trading integration effort against control: Standard is the least work and the least control, Custom is the most of both, Express sits between.<sup><a href="#s1">1</a></sup> One operational fact matters at creation time: "After you create a connected account, you can't change its type."<sup><a href="#s1">1</a></sup> Choosing the preset is a commitment; the migration path off the types entirely is controller properties (or the newer Accounts v2 API).<sup><a href="#s1">1</a></sup></p>
+
+<h2>Why the model is shaped this way</h2>
+
+<p>Every dial is one regulatory or economic obligation that someone must hold; Connect just makes the assignment explicit. Somebody has to verify the seller's identity. Somebody has to give the seller operational controls. Somebody pays Stripe. Somebody covers losses when a seller account goes under. A solo merchant holds all four by default; a platform splits them, and the split is the product decision. A marketplace of casual individual sellers cannot ask each one to pass full merchant onboarding (so: Express or Custom, platform holds risk), while a SaaS serving established businesses can hand each one a full Stripe relationship (Standard) and keep its own liability near zero.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A connected account is a full Stripe account the platform creates per seller. The account 'types' are preset answers to four questions: who onboards, who gets a dashboard, who collects fees, who eats losses."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  The shallow model pictures connected accounts as sub-wallets inside the platform's Stripe account. They are separate, complete accounts, each with its own Lesson 6 ledger and payout schedule. The second-order miss: treating Standard/Express/Custom as the fundamental model. The fundamental model is controller properties, the independent dials; the types are legacy presets over them, frozen at account creation.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What is a connected account, structurally?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A real, complete Stripe account (own balance, payouts, verification) representing one seller, created and managed through a platform rather than opened directly by the seller.</p></details>
+  <p>② Name the four responsibilities that controller properties assign.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Onboarding (who runs KYC), dashboard access (full, Express, or none), fee collection (Stripe bills the account vs the platform), and losses (who covers negative balances).</p></details>
+  <p>③ A seller must never know Stripe exists. Which legacy type, and what does the platform take on?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Custom: no dashboard, no contact from Stripe. The platform builds onboarding, handles all seller interaction and support, and is liable for negative balances.</p></details>
+  <p>④ Can an account's type be changed later?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. Type is fixed at creation; moving beyond the types means migrating the integration to controller properties or the Accounts v2 API.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/connect/accounts">Stripe docs — Connected account types</a>. The account model, the controller-properties recommendation, and the Standard/Express/Custom comparison this lesson's table condenses.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Curious what KYC actually collects, how Express onboarding hands off between platform and Stripe, or what Accounts v2 changes? Ask. Next lesson: the money. Three ways a platform can route one customer payment, and who holds the bag in each.
+</div>
+
+<div class="course-nav">
+  <span><a href="0006-balance-and-payouts.html">← Lesson 6</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0008-connect-charge-types.html"><em>Next: Lesson 8 — Connect charge types →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Connect definition, connected accounts, controller properties, account-type comparison, Custom obligations, type immutability — <a href="https://docs.stripe.com/connect/accounts">Stripe docs: Connected account types</a>.
+</p>

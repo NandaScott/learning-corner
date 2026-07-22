@@ -1,0 +1,120 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2: The PaymentIntent state machine</title>
+
+<p class="eyebrow">How Stripe Works · Lesson 2</p>
+<h1>The PaymentIntent state machine</h1>
+<p class="lede">Lesson 1 walked the path a card payment takes through the banking system. The PaymentIntent is Stripe's API object for tracking one payment's progress along that path. It is a state machine, and this lesson walks every state and every transition.</p>
+
+<h2>The concept</h2>
+
+<p>Getting paid used to look like one synchronous API call: send card details, get back a charge or an error. That model breaks the moment the path from Lesson 1 needs a detour. The issuer may demand cardholder authentication mid-payment. Some payment methods take days to confirm. A declined attempt may be retried with a different card. None of that fits in one request-response.</p>
+
+<p>Stripe's answer is to represent the payment as an object with a <strong>status</strong> that changes over its lifecycle: the <strong>PaymentIntent</strong>. It "tracks a payment from creation through checkout, and triggers additional authentication steps when required."<sup><a href="#s1">1</a></sup> Two design facts define how it is used:</p>
+
+<p><strong>One PaymentIntent per cart, not per attempt.</strong> "Each PaymentIntent typically correlates with a single shopping cart or customer session."<sup><a href="#s1">1</a></sup> If checkout is interrupted, the integration reuses the same PaymentIntent rather than creating a new one, so the object accumulates the history of failed attempts for that cart.</p>
+
+<p><strong>Attempts are Charge objects hanging off the intent.</strong> "A PaymentIntent might have more than one Charge object associated with it if there were multiple payment attempts."<sup><a href="#s1">1</a></sup> The intent is the goal ("collect $50 for this cart"); each charge is one try at reaching it.</p>
+
+<p>Using it takes two actions: the server <strong>creates</strong> the PaymentIntent (with amount and currency), then the payment is <strong>confirmed</strong>, which starts the actual authorization from Lesson 1. Confirmation usually happens from the customer's browser, using a <strong>client secret</strong>: a unique key returned at creation that lets the client read the intent's safe fields (status, amount) and drive it forward, without exposing sensitive ones.<sup><a href="#s1">1</a></sup></p>
+
+<h2>The states</h2>
+
+<p>The full machine. Statuses are exact API strings; every PaymentIntent you ever inspect is at exactly one of them.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>          create (server, amount + currency)
+                      │
+                      ▼
+      ┌── requires_payment_method ◀───────────────┐
+      │               │  payment method attached  │
+      │               ▼                           │  attempt fails:
+      │    requires_confirmation                  │  back to the start
+      │               │  confirm                  │
+      │               ▼                           │
+      │      requires_action ── (only if the      │
+      │               │          issuer demands   │
+      │               │          e.g. 3D Secure)  │
+      │               ▼                           │
+      │          processing ──────────────────────┘
+      │               │
+      │               ├──▶ requires_capture ──▶ succeeded   (manual capture)
+      │               └──▶ succeeded                        (default)
+      │
+      └──▶ canceled   (terminal; reachable from the non-terminal states)</code></pre>
+<p class="cap">The happy path runs down the middle in seconds. The loop on the left is what makes the object worth having.</p>
+</div>
+
+<h3>requires_payment_method — the starting state</h3>
+<p>A freshly created PaymentIntent knows the amount and currency and nothing about how it will be paid. It sits at <code>requires_payment_method</code> until payment details are attached.<sup><a href="#s2">2</a></sup> This is also the state a <em>failed</em> attempt returns to: a decline does not kill the intent, it rewinds it, ready for the customer to try another card.</p>
+
+<h3>requires_confirmation — details attached, not yet fired</h3>
+<p>With a payment method attached, the intent is ready to be confirmed. Most integrations never observe this state because they attach and confirm in one step; it exists for flows that separate "customer picked a card" from "run the payment now."<sup><a href="#s2">2</a></sup></p>
+
+<h3>requires_action — the machine pauses for the customer</h3>
+<p>Confirmation starts the authorization request from Lesson 1 (Stripe to network to issuer). If the issuer demands cardholder authentication before answering, such as a 3D Secure challenge, the intent parks at <code>requires_action</code> and its <code>next_action</code> field says what has to happen, for example a redirect URL for the customer to complete.<sup><a href="#s2">2</a></sup> Skipped entirely when no authentication is demanded. Lesson 3 is about what happens inside this state.</p>
+
+<h3>processing — Stripe is working</h3>
+<p>Required actions are done and Stripe is executing the payment. For cards this state passes in moments. For asynchronous payment methods, such as bank debits, an intent can sit at <code>processing</code> for days while the money network does its slow work.<sup><a href="#s2">2</a></sup></p>
+
+<h3>requires_capture — the hold from Lesson 1, as a status</h3>
+<p>An integration using manual capture lands here after authorization succeeds: the issuer's hold is in place and the intent waits for the capture instruction.<sup><a href="#s2">2</a></sup> This status is the API surface of Lesson 1's authorize-now-capture-later window. If the hold expires uncaptured, the funds release and the intent moves to <code>canceled</code>.</p>
+
+<h3>succeeded — the payment is complete</h3>
+<p>Capture happened; "the funds are in your account."<sup><a href="#s2">2</a></sup> Terminal. Read that phrase with Lesson 1 precision: the funds are in (or on their way into) the <em>Stripe balance</em>, on the days clock. <code>succeeded</code> says nothing about the bank account.</p>
+
+<h3>canceled — the other terminal state</h3>
+<p>The intent was invalidated: canceled explicitly before completion, or automatically, for instance when an uncaptured authorization expired. A canceled intent cannot be used for further attempts.<sup><a href="#s2">2</a></sup></p>
+
+<h2>Why a state machine</h2>
+
+<p>Lay the two lessons side by side and the mapping is one-to-one. <code>requires_action</code> and <code>processing</code> cover Lesson 1's steps 2 through 4, the authorization conversation. <code>requires_capture</code> is the gap between steps 4 and 5, the standing hold. <code>succeeded</code> is step 5 complete, with settlement and payout still ahead of it. The PaymentIntent models the seconds clock and hands off to the balance for the days clock.</p>
+
+<p>The failure loop is the part the old one-call model could not express. Because a decline rewinds to <code>requires_payment_method</code> instead of ending anything, one object carries a whole checkout session: three declined cards and a fourth that worked are four Charge attempts under one intent, and the merchant's records hold one payment, not four.<sup><a href="#s1">1</a></sup></p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A PaymentIntent is the state machine for one cart getting paid; charges are its attempts. Declines rewind it, actions pause it, and <code>succeeded</code> means the balance, not the bank."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Two shallow readings. First: <code>succeeded</code> does not mean money reached the bank account; it means capture completed and the funds belong to the Stripe balance, with settlement timing and payout still to run. Second: a failed payment does not put the intent into a "failed" status; there is no such status. It returns to <code>requires_payment_method</code>, because the intent models the cart, and the cart can still be paid.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① A customer's card is declined. What status is the PaymentIntent in now, and why that one?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>requires_payment_method</code>, the starting state. A decline rewinds the intent rather than terminating it, because the intent represents the cart, which can still be paid with another method.</p></details>
+  <p>② What is the relationship between a PaymentIntent and Charge objects?</p>
+  <details><summary>show answer</summary>
+  <p class="a">One intent per cart or checkout session; one Charge per payment attempt. Retries create multiple Charges under the same intent.</p></details>
+  <p>③ Which status corresponds to Lesson 1's standing authorization hold, and how does an intent get there?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>requires_capture</code>. A manual-capture integration lands there when authorization succeeds; the intent waits for the capture call, and moves to <code>canceled</code> if the hold expires first.</p></details>
+  <p>④ The API says <code>succeeded</code>. Where is the money?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Captured and headed into the merchant's Stripe balance (pending, then available on the T+X settlement clock). Not yet in the bank account; that takes the payout.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://docs.stripe.com/payments/paymentintents/lifecycle">Stripe docs — PaymentIntent lifecycle</a>. The status-by-status walkthrough this lesson is built from, with the canonical diagram. Ten minutes, and every status name in the API stops being a mystery.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the SetupIntent (the sibling object for saving a card without charging it), or why the client secret is safe to expose to a browser? Ask. Next lesson: what actually happens inside <code>requires_action</code>: confirmation and 3D Secure.
+</div>
+
+<div class="course-nav">
+  <span><a href="0001-the-life-of-a-card-payment.html">← Lesson 1</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-confirmation-and-3d-secure.html"><em>Next: Lesson 3 — confirmation and 3D Secure →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Purpose of the object, create-then-confirm, client secret, one intent per cart, multiple Charges — <a href="https://docs.stripe.com/payments/payment-intents">Stripe docs: Payment Intents</a>.<br>
+<span id="s2">2.</span> Status definitions and transitions — <a href="https://docs.stripe.com/payments/paymentintents/lifecycle">Stripe docs: PaymentIntent lifecycle</a>.
+</p>
