@@ -1,0 +1,106 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4 — Prefer the minimal, explicit change</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 2 · Lesson 4</p>
+<h1>Prefer the minimal, explicit change</h1>
+<p class="lede">Four catches with one shape: the change was bigger, cleverer, or more hand-built than the problem required. Each smaller alternative was already available.</p>
+
+<h2>The mistake</h2>
+
+<p>Four moves on the PR reached past the smallest change that would work:</p>
+
+<ul>
+  <li>An entire validation function was rewritten, when pulling <code>['.html', '.txt']</code> out and optionally appending would have done the job.</li>
+  <li>A field&#8594;validator map was hand-built (and defined in two places) where Django already hands you the validators.</li>
+  <li>A <code>SimpleNamespace</code> was used where a plain <code>dict</code> fit.</li>
+  <li>A single brittle validator branched internally where two explicit, named validators would read clearer.</li>
+</ul>
+
+<p>None is a bug. Each expands the diff, the review surface, and the number of things that can drift, in exchange for nothing the problem asked for.</p>
+
+<h2>How to catch it — three questions before you restructure</h2>
+
+<div class="figure">
+<pre><code>1. Smallest-diff question   what is the smallest change that solves this?
+                            justify any rewrite bigger than that.
+2. Framework question       am I building a lookup the framework already gives me?
+                            (Model._meta.get_field(...), field.validators, ...)
+3. Explicit question        would two named things read clearer than one that branches?
+                            prefer explicit over clever.</code></pre>
+<p class="cap">Run them before restructuring, not after. The default is the smallest change; anything larger needs a reason.</p>
+</div>
+
+<h3>Step 1 — Ask for the smallest diff that works</h3>
+<p>The validation function did not need rewriting. It needed one list pulled out and optionally extended. A larger-than-necessary rewrite hides the actual change inside churn, so a reviewer cannot see what really moved, and it takes on risk the task never required. Before restructuring anything, state the smallest change that solves the problem, and justify any rewrite bigger than that against it.</p>
+
+<h3>Step 2 — Use the framework's own accessor</h3>
+<p>The hand-built field&#8594;validator map is the sharp one, because Django already holds that mapping. A model field's validators are reachable directly:</p>
+
+<div class="figure">
+<pre><code># hand-rolled, and defined in two places → drifts
+FIELD_VALIDATORS = {
+    "document": [FileExtensionValidator(["pdf"])],
+    ...
+}
+
+# the framework already knows — one source, no map to maintain
+field = MyModel._meta.get_field("document")
+field.validators        # == [*default_validators, *_validators]</code></pre>
+<p class="cap">Verified in Django 6.0: <code>Options.get_field(name)</code> returns the field; <code>Field.validators</code> is <code>[*default_validators, *_validators]</code>: the validators you attached, already collected.</p>
+</div>
+
+<p>A duplicated definition is two things to keep in sync, and they will not stay in sync. When you catch yourself building a lookup table the framework can already produce, stop and use the accessor. The framework is the single source of truth for its own metadata.</p>
+
+<h3>Step 3 — Prefer explicit over clever</h3>
+<p>Two of the catches are the same instinct in different clothes. <code>SimpleNamespace</code> over <code>dict</code> reached for a richer type where the plain one carried the data fine. One branching validator over two named ones folded two ideas into one that has to decide which it is at runtime. Two explicit validators say what they each check in their names; one that branches makes the reader trace the branch. Explicit is better than implicit, and it is the first line of the language's own guidance.</p>
+
+<h2>Why it matters</h2>
+
+<p>This is the recurring habit the mission calls out from the other side: following conventions too closely also means reaching for the impressive-looking construct because it looks like what "real" code does. The smallest change looks too small to be the answer. It usually is the answer. A reviewer can hold a small, explicit diff in their head and verify it; a rewrite, a hand-built map, and a clever type each cost them the effort of proving nothing else changed.</p>
+
+<p>Note the boundary against Lesson 6, which is coming: that lesson is about not building for requirements that do not exist yet. This one is about the size and clarity of the change in front of you. They rhyme but are distinct: one is diff size and legibility, the other is design horizon.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Make the smallest change that solves the problem, and justify any rewrite bigger than that. If you're building a lookup the framework already gives you (<code>_meta.get_field().validators</code>), stop and use it. Prefer two explicit named things over one that branches.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "explicit means more code, and more code is safer to review." Not here. Two named validators are more <em>lines</em> than one that branches, but each states its single check in its name, so the reader verifies them at a glance. The hand-built map is also "more code" and is worse, because it duplicates what the framework owns. Explicit is about legibility per unit, not volume.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What's the default size of a change, and what needs justifying?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The default is the smallest change that solves the problem. Any rewrite bigger than that needs a reason justified against the smallest version.</p></details>
+  <p>② You're about to hand-build a <code>{field: validators}</code> map on a Django model. What stops you?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The framework already holds it: <code>Model._meta.get_field(name).validators</code>. Hand-building duplicates framework metadata and the copies drift. Use the accessor.</p></details>
+  <p>③ One validator that branches, or two named validators: which, and why?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Two named ones. Each states its single check in its name; the branching one hides two ideas behind a runtime decision. Explicit over clever.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://peps.python.org/pep-0020/">PEP 20: The Zen of Python</a>. "Explicit is better than implicit. Simple is better than complex." For the framework accessor, the Django <a href="https://docs.djangoproject.com/en/stable/ref/models/meta/">Model <code>_meta</code> API</a> (<code>get_field</code>).
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to see the two-explicit-validators version written out against the branching one, or trace what <code>field.validators</code> actually returns for a <code>FileField</code>? Ask. Lesson 5 shifts from change-size to a coupling smell.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0003-names-and-docstrings.html">← Lesson 3</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-temporal-coupling.html"><em>Next: Lesson 5 — Co-locate what's always called together →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): a whole-function rewrite where a small edit sufficed; a hand-built validator map vs <code>Model._meta.get_field()</code>; <code>SimpleNamespace</code> where a <code>dict</code> fit; two explicit validators over one that branches.<br>
+Framework fact — verified against Django 6.0.6 source: <code>django/db/models/options.py</code> (<code>get_field</code>), <code>django/db/models/fields/__init__.py</code> (<code>validators</code> = <code>[*default_validators, *_validators]</code>).<br>
+Principle — <a href="https://peps.python.org/pep-0020/">PEP 20</a> (explicit &gt; implicit, simple &gt; complex).</p>

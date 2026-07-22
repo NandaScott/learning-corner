@@ -1,0 +1,96 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5 — Co-locate what is always called together</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 3 · Lesson 5</p>
+<h1>Co-locate what is always called together</h1>
+<p class="lede">A coupling smell that surfaced looking at the PR from the call-site side, rather than a single line in the diff. When B always runs right after A, splitting them into two functions leaks an ordering contract into every caller.</p>
+
+<h2>The mistake</h2>
+
+<p>The shape: two functions, where one is always invoked immediately after the other, with nothing in between. On the surface the split reads as clean separation: two small functions, each doing one thing. Underneath it is <strong>temporal coupling</strong>: the two are bound by the requirement that A must run before B, every time, and that requirement lives nowhere except in the head of whoever wrote the call site.</p>
+
+<div class="figure">
+<pre><code>every caller, forever:
+
+    result = step_a(x)
+    finalize_b(result)     ← must come right after, always, with nothing between
+
+the ordering contract "A then B" is not in the code.
+it's re-implemented, correctly, at each call site — until one caller forgets B.
+</code></pre>
+<p class="cap">Two functions that must always run together are one responsibility wearing two hats.</p>
+</div>
+
+<h2>How to find it — examine reverse dependencies</h2>
+
+<p>You do not find temporal coupling by reading a function. You find it by reading its callers.</p>
+
+<div class="figure">
+<pre><code>1. Find the call sites    who calls A? (reverse dependency, not forward)
+2. Read what surrounds     what do they call right before and after A?
+3. Spot the invariant      does every caller run A then B, nothing between?
+4. Merge                    fold B into A, or expose one call that runs both.</code></pre>
+<p class="cap">The signal is in the neighbours of the call, not in A's body. Make reverse-dependency examination a habit when reviewing coupling.</p>
+</div>
+
+<h3>Step 1 — Look up from the function to its callers</h3>
+<p>Reading A top to bottom tells you what A does, not how A is used. Coupling is a property of use. List the places that call A and look at each. The habit is reverse-dependency examination: instead of "what does this call," ask "who calls this, and what do they call around it."</p>
+
+<h3>Step 2 — Read the neighbours of each call</h3>
+<p>For each call site, look at the line before and the line after. Temporal coupling shows up as a recurring pair: the same B appears right after A at call site after call site, with nothing meaningful in between.</p>
+
+<h3>Step 3 — Confirm the invariant holds everywhere</h3>
+<p>The merge is only safe if <em>every</em> caller runs A then B. If some callers run A alone, the two are genuinely separate and the split is correct. The test is universality: A then B, with nothing in between, at all call sites.</p>
+
+<h3>Step 4 — Fold them into one call</h3>
+<p>Once the invariant is confirmed, pair them. Fold B into A, or expose a single function that runs both. Either way, the ordering contract moves out of the callers and into one place that cannot be gotten wrong. No caller can now run A and forget B, because there is no longer a way to call A alone.</p>
+
+<h2>Why it matters</h2>
+
+<p>Two functions that must always run together are not two responsibilities; they are one, split. Separating them does not buy modularity, it leaks an ordering requirement into every caller and creates a standing invitation for the bug where someone calls A and forgets B. That bug is invisible until the one path that forgot B is exercised, and it is the kind of thing tests often miss because the happy path always remembered.</p>
+
+<p>The deeper point is about where you look. Most of the earlier lessons catch things by reading the diff. This one is only visible by reading outward from the change to everything that touches it. Coupling does not live in a line; it lives in the relationships between lines, and you have to go look at the relationships.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  If B is always called right after A with nothing between, they're one responsibility split in two. Find it by reverse-dependency examination (read the callers, not the function) and fold them into a single call so no caller can run A and forget B.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating "two small functions" as automatically better than one. Small is not the goal; <em>correct boundaries</em> are. A split that forces every caller to remember an ordering is worse than one function that guarantees it. Only merge when the invariant is universal, though: if any caller legitimately runs A alone, they really are separate.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Where do you look to find temporal coupling: in the function, or somewhere else?</p>
+  <details><summary>show answer</summary>
+  <p class="a">In the callers, via reverse-dependency examination. Read who calls the function and what they call right before and after it. Coupling is a property of use, not of the body.</p></details>
+  <p>② What exact condition makes it safe to merge A and B?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Every caller runs A then B with nothing in between: the invariant is universal. If any caller runs A alone, they're genuinely separate; don't merge.</p></details>
+  <p>③ What bug does the split invite that the merge eliminates?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A caller runs A and forgets B. Merging removes the ability to call A alone, so the ordering contract can't be gotten wrong.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Fowler, <em>Refactoring</em>: the "Temporal Coupling" smell and the c2 wiki entry <a href="https://wiki.c2.com/?TemporalCoupling">Temporal Coupling</a>. The canonical framing of "these must be called in order, and nothing enforces it."
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to walk a real reverse-dependency pass on a function in the codebase and decide merge-or-keep? Ask. Lesson 6 turns to the opposite failure: building structure for callers that don't exist yet.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0004-minimal-explicit-change.html">← Lesson 4</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-write-for-current-design.html"><em>Next: Lesson 6 — Write for the current design →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Pattern — reverse-dependency examination of coupling issues surfaced by the review (outside its inline comments).<br>
+Principle — Fowler, <em>Refactoring</em> (Temporal Coupling); <a href="https://wiki.c2.com/?TemporalCoupling">c2 wiki: Temporal Coupling</a>.</p>

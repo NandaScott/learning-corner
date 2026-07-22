@@ -1,0 +1,92 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6 — Write for the current design, not an imagined future</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 3 · Lesson 6</p>
+<h1>Write for the current design, not an imagined future</h1>
+<p class="lede">The recurring habit named in the mission, in the learner's own words: "stuck constantly trying to prepare and write for future code when I should be writing for the current design." This lesson is the counter-habit.</p>
+
+<h2>The mistake</h2>
+
+<p>The shape is speculative generality: an extra parameter, a hook, an abstraction layer, added because "we might need this later." No current caller uses it. It is built against a requirement that does not exist yet, in anticipation of one that might. This is YAGNI's target: <em>You Aren't Gonna Need It</em>.</p>
+
+<div class="figure">
+<pre><code>speculative:  def build(x, mode="default", adapter=None, *, future_hook=None):
+                  # mode, adapter, future_hook: no caller passes them.
+                  # added "for when we support the other case."
+
+current:      def build(x):
+                  # the one case that exists. add the rest when a real
+                  # second caller arrives — and it'll want a different shape.
+</code></pre>
+<p class="cap">The parameters you add for later are untested against any real need, and usually the wrong shape when the need lands.</p>
+</div>
+
+<h2>How to catch it — one question at the point of adding</h2>
+
+<div class="figure">
+<pre><code>you catch yourself adding a param / hook / layer "for later":
+
+  1. Ask     does any CURRENT caller need this?
+  2a. No  →  cut it. revisit when a real second use lands.
+  2b. Yes →  keep it — it's not speculative, it's used.</code></pre>
+<p class="cap">The whole test is "current caller, yes or no." Anticipated callers don't count.</p>
+</div>
+
+<h3>Step 1 — Notice the "for later" thought</h3>
+<p>The habit fires at a specific moment: you are adding a parameter, a config flag, a base class, or an indirection, and the justification in your head is "we might need this later" or "this makes it easy to extend." That phrasing is the trigger. It means the thing is not driven by the code in front of you.</p>
+
+<h3>Step 2 — Ask whether a current caller needs it</h3>
+<p>Only one question decides it: does anything that exists today use this? Not "could something," not "would it be nice if." Does a real current caller pass this argument, hit this hook, subclass this layer. If no caller needs it now, it is speculative, and it goes.</p>
+
+<h3>Step 3 — Add abstraction when the second real use appears</h3>
+<p>The right time to generalise is when a second concrete use arrives, because only then do you know the shape the abstraction must take. Built in advance, the future case is a guess, and the guess is usually wrong: the real second requirement, when it lands, wants a different seam than the one you pre-carved. So you pay the abstraction cost now and rework it later anyway.</p>
+
+<h2>Why it matters</h2>
+
+<p>Speculative code has three costs and no benefit until the future arrives, if it ever does. It is untested against a real need, so you do not even know it works for the case it was built for. It adds surface that every future reader and maintainer has to carry. And it usually guesses the wrong shape, so it gets reworked when the real requirement lands, meaning you paid twice. Worse, it buries the current design under machinery nothing uses, so the code that <em>is</em> exercised is harder to find.</p>
+
+<p>This is the mirror of Lesson 5. There, the fault was splitting things that belong together. Here it is joining in flexibility that nothing asked for. Both come from designing against an imagined use rather than the real one. And it is worth separating from Lesson 4: that lesson was about the size of the change to solve the current problem; this is about not solving problems you do not have yet. A change can be minimal and still speculative if the thing it minimally adds is for a caller that does not exist.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Design for the requirements in front of you; add abstraction when a second real use appears, not in anticipation of one. When you catch yourself adding a hook "for later," ask if any current caller needs it. If no, cut it.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "but adding the hook now is cheap, and retrofitting it later is expensive." It reverses the real economics. The speculative hook is cheap to <em>type</em> and expensive to <em>carry</em>: untested, wrong-shaped, and in everyone's way until the future proves it right. Retrofitting when a second real use lands is when you finally know the correct shape, so it's the cheap moment, not the expensive one.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① You're adding a parameter "for when we support the other case." What's the one question?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Does any current caller need it? Anticipated callers don't count. If no real caller uses it today, cut it.</p></details>
+  <p>② When is the right time to add the abstraction, and why then?</p>
+  <details><summary>show answer</summary>
+  <p class="a">When a second real use appears, because only then do you know the shape the abstraction must take. Built in advance, the guess is usually wrong and gets reworked.</p></details>
+  <p>③ Why isn't "the hook is cheap to add now" a good reason?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It's cheap to type but expensive to carry: untested, likely wrong-shaped, and in the way until proven needed. The cheap moment to add it is when a real second use lands and reveals the correct shape.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Fowler, <a href="https://martinfowler.com/bliki/Yagni.html">Yagni</a>. The canonical writeup. It distinguishes the cost of building a speculative feature from the cost of the carrying and rework it causes, which is the exact economics this lesson turns on.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to pressure-test a real "we might need this" call in current work: is it speculative, or is there a genuine current caller? Ask. Lesson 7 closes the arc: proving the behaviour you did build actually works.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0005-temporal-coupling.html">← Lesson 5</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-test-new-behavior.html"><em>Next: Lesson 7 — Test the new behaviour →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Pattern — a self-identified recurring habit: "stuck constantly trying to prepare and write for future code when I should be writing for the current design."<br>
+Principle — Fowler, <a href="https://martinfowler.com/bliki/Yagni.html">Yagni</a>.</p>

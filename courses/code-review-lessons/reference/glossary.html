@@ -1,0 +1,40 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Code Review Lessons Glossary</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">The shared vocabulary for this course. Every lesson uses these terms exactly as defined here. Print it; keep it next to the diff.</p>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Copied code fits its origin, not its destination</strong></td><td>A pasted block was written to satisfy the context it came from. Assumptions true there (multi-currency, a shared cache key) may be false where it's pasted. (Lesson 1)</td></tr>
+  <tr><td><strong>Annotate-before-paste</strong></td><td>The habit of writing "why does this belong here?" against each copied line, then cutting any line whose only answer is "it was in the original." (Lesson 1)</td></tr>
+  <tr><td><strong>Single source of truth</strong></td><td>Each piece of behaviour has one authoritative definition. If a block is genuinely shared, factor it out and call it from both sites rather than copying. Copies drift. (Lesson 1, DRY)</td></tr>
+  <tr><td><strong>Transacting vs display currency</strong></td><td>The currency money changed hands in vs the currency to render. In the review they were conflated; carried into a USD-only quote with no BigCommerce display currency, the copied currency handling was dead logic. (Lesson 1)</td></tr>
+  <tr><td><strong>Shared cache key</strong></td><td>Reusing one cache key across two concerns couples them through the cache: one path can serve the other's cached bytes. A copied key is a copied identity. (Lesson 1)</td></tr>
+  <tr><td><strong>The layer that owns it</strong></td><td>The layer responsible for a kind of responsibility. Domain behaviour → model. Presentation / template-context assembly → view. Place logic by responsibility, not by which object was nearest. (Lesson 2)</td></tr>
+  <tr><td><strong>Split concern (spatial tell)</strong></td><td>One responsibility whose halves live on different objects. The tell: output produced in one layer and consumed only in another (context on the model, render at the view). (Lesson 2)</td></tr>
+  <tr><td><strong>Subject ≠ owner</strong></td><td>The noun a method's data is <em>about</em> (the cart) is not the layer that <em>owns</em> the behaviour (presentation). "It's about the cart, so it goes on <code>Cart</code>" is the wrong placement test. (Lesson 2)</td></tr>
+  <tr><td><strong>Intention-revealing name</strong></td><td>A name that states what the thing holds or does without a comment. If an inline comment names a variable better than its identifier, the comment is the rename. (Lesson 3)</td></tr>
+  <tr><td><strong>Scope-change pass</strong></td><td>When a change broadens what a function covers, re-read its name and docstring in that same change and update both, as the last edit before commit. (Lesson 3)</td></tr>
+  <tr><td><strong>Stale docstring</strong></td><td>A docstring accurate when written but not since. It misinforms worse than none because the reader trusts it, and it hides behind its former truth. (Lesson 3)</td></tr>
+  <tr><td><strong>Smallest-diff question</strong></td><td>"What is the smallest change that solves this?" The default change size; any rewrite larger than that must be justified against it. (Lesson 4)</td></tr>
+  <tr><td><strong>Framework accessor</strong></td><td>The framework's own way to retrieve metadata it already holds, used instead of a hand-built duplicate. Django: <code>Model._meta.get_field(name).validators</code>. (Lesson 4)</td></tr>
+  <tr><td><strong><code>Field.validators</code></strong></td><td>Django field property = <code>[*default_validators, *_validators]</code>: the validators you attached, already collected. Verified in Django 6.0. Removes any need to hand-build a field→validator map. (Lesson 4)</td></tr>
+  <tr><td><strong>Explicit over clever</strong></td><td>Two named validators that each state one check beat one that branches at runtime; a plain <code>dict</code> beats a <code>SimpleNamespace</code> where the data is plain. Legibility per unit, not volume. (Lesson 4, PEP 20)</td></tr>
+  <tr><td><strong>Temporal coupling</strong></td><td>Two functions bound by "A must run before B, every time," where nothing enforces the order: the contract lives only in each caller's head. (Lesson 5)</td></tr>
+  <tr><td><strong>Reverse-dependency examination</strong></td><td>Reading a function from its callers: who calls it and what they call right before and after. How coupling (a property of use, not of the body) is found. (Lesson 5)</td></tr>
+  <tr><td><strong>Universal invariant (merge test)</strong></td><td>Merge A and B only if <em>every</em> caller runs A then B with nothing between. If any caller runs A alone, they're genuinely separate. (Lesson 5)</td></tr>
+  <tr><td><strong>Speculative generality</strong></td><td>Structure (a param, hook, layer, abstraction) added for a requirement that doesn't exist yet. Untested, usually the wrong shape when the real need lands. (Lesson 6)</td></tr>
+  <tr><td><strong>YAGNI</strong></td><td><em>You Aren't Gonna Need It.</em> Add abstraction when a second real use appears, not in anticipation. The deciding question: does any current caller need this? (Lesson 6)</td></tr>
+  <tr><td><strong>Cheap to type, expensive to carry</strong></td><td>The real economics of a speculative hook: trivial to add, but untested, wrong-shaped, and in everyone's way until proven needed. The cheap moment to add it is when a real second use reveals its shape. (Lesson 6)</td></tr>
+  <tr><td><strong>Observable contract</strong></td><td>What an outside caller can see of a new action: feature gating, auth/ownership, missing/invalid cases, response status and content type, and that the input reaches the output. What action-level tests assert. (Lesson 7)</td></tr>
+  <tr><td><strong>Input-reaches-output assertion</strong></td><td>The test proving the new input (e.g. <code>additional_notes</code>) actually appears in the rendered response: the one thing the PR's review couldn't confirm. (Lesson 7)</td></tr>
+  <tr><td><strong>Boy Scout rule</strong></td><td>Leave the code cleaner than you found it. Absent tests on adjacent legacy code are the reason to write the first test, not permission to skip. (Lesson 7)</td></tr>
+  <tr><td><strong>Following conventions too closely</strong></td><td>The mission's recurring habit: matching what the codebase already does (a context shape, a missing test, an impressive construct) instead of interrogating whether it fits. A convention is a starting point to question, not a rule to satisfy. (Lessons 1, 4, 7)</td></tr>
+</table>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="self-review-checklist.html">Self-review checklist ↗</a></span>
+</div>

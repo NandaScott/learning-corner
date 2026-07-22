@@ -1,0 +1,102 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 7 — Test the new behaviour, even when neighbours lack tests</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 4 · Lesson 7</p>
+<h1>Test the new behaviour, even when neighbours lack tests</h1>
+<p class="lede">The catch that closes the loop. New behaviour shipped without coverage, on the reasoning that the adjacent legacy code had none either. The tests went in afterward, in a later commit.</p>
+
+<h2>The mistake</h2>
+
+<p>The new <code>sales_quote</code> view action and the <code>additional_notes</code> path had no tests. Only the model helper was exercised at all. The reasoning, stated plainly at the time, was: "there are no tests for <code>order_receipt</code> either, so I didn't write any." An automated check flagged the missing view test; a reviewer noted the helper was untested and could not confirm the notes even reached the context. The tests were added in a later commit.</p>
+
+<p>The gap that matters is the last one. Without a test, there was no proof that <code>additional_notes</code>, the actual new input, made it through to the output. The contract was asserted by nobody.</p>
+
+<div class="figure">
+<pre><code>"order_receipt has no tests, so I skipped tests for sales_quote"
+
+        propagates the gap  ──────────────►  instead of closing it
+
+what went unproven:
+   • feature gating works
+   • auth / ownership is enforced
+   • missing-case handling
+   • response content type is right
+   • additional_notes actually reaches the output   ← the new input, unverified
+</code></pre>
+<p class="cap">"The old code isn't tested" is a description of a gap, not a licence to add another.</p>
+</div>
+
+<h2>How to catch it — cover the observable contract</h2>
+
+<p>When you add an endpoint or action, write action-level tests as part of the same PR, whatever the neighbours have. Cover what an outside caller can observe.</p>
+
+<div class="figure">
+<pre><code>the observable contract of a new action:
+
+  1. Feature gating     off when the flag/condition says off
+  2. Auth / ownership   the wrong user can't reach it
+  3. Missing cases      absent/invalid input fails as intended
+  4. Response shape     correct status and content type
+  5. Input → output     the new input (additional_notes) reaches the result
+</code></pre>
+<p class="cap">Point 5 is the one the review specifically could not confirm. It's the reason the test exists.</p>
+</div>
+
+<h3>Step 1 — Test the contract, not the implementation</h3>
+<p>Action-level tests assert what a caller observes: given this request, this response. Feature gating, auth and ownership, missing and invalid cases, the response content type. These are the promises the endpoint makes to the outside, and they are what a test is for.</p>
+
+<h3>Step 2 — Assert the input reaches the output</h3>
+<p>The specific catch on the PR was that nobody could confirm <code>additional_notes</code> reached the context. That is the single most important assertion for this change, because it is the change: pass notes in, prove they appear in the rendered output. Untested new behaviour means no proof the contract holds, and this contract was the whole point of the endpoint.</p>
+
+<h3>Step 3 — Treat "nothing to copy" as a reason to write the first test</h3>
+<p>The reasoning to disarm is "there's no existing test to copy from." The Boy Scout rule cuts the other way: leave the code cleaner than you found it. Absence of tests on adjacent legacy code is not permission to skip; it is the reason to write the first one. Copying conventions too closely includes copying the convention of not testing, and that convention should not be matched.</p>
+
+<h2>Why it matters</h2>
+
+<p>"The old code isn't tested" propagates a gap forward instead of closing it. Every new untested action makes the next "well, this one isn't tested either" easier to justify, and the coverage hole grows by inheritance. More concretely: without the test, the endpoint might not do the one thing it was built to do, and no one would know until a customer saw a quote with the notes missing. The reviewer said it exactly: they could not confirm the notes reached the context. The test is what converts "probably works" into "provably works."</p>
+
+<p>This is the last face of the mission's recurring habit. Following conventions too closely, here, meant inheriting the neighbour's missing tests. The counter-move is the same as it has been all course: the convention is a thing to interrogate, not a rule to satisfy. When the convention is "we didn't test this," you break it.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Absence of tests on adjacent legacy code is not a licence to skip. Cover the new behaviour's observable contract (gating, auth, missing cases, response shape, and that the input actually reaches the output) in the same PR, and treat "nothing to copy" as the reason to write the first test.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is testing that the <em>helper</em> runs, and calling it covered. In the review, the model helper was the one thing exercised, and it still left the real question open, because "the helper returns a dict" doesn't prove the notes reach the <em>rendered response</em>. Test the observable contract end to end, not the internal function that happens to be easiest to call.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① "There are no tests for the adjacent code either." Does that justify skipping tests for your new action?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. It propagates the gap instead of closing it (Boy Scout rule). Absence of neighbouring tests is the reason to write the first one, not permission to skip.</p></details>
+  <p>② For a new endpoint, name the parts of the observable contract worth covering.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Feature gating, auth/ownership, missing/invalid cases, response status and content type, and that the new input reaches the output. The last one was what the reviewer couldn't confirm on the PR.</p></details>
+  <p>③ Why isn't "the model helper is tested" enough here?</p>
+  <details><summary>show answer</summary>
+  <p class="a">"The helper returns a dict" doesn't prove the input reaches the rendered response. Test the observable contract end to end, not just the easiest internal function to call.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Martin, <em>Clean Code</em>, Ch.9 (Unit Tests) for what to assert, and Ch.1's Boy Scout rule for why neighbour coverage doesn't excuse your own. Test the contract, and leave the module with more coverage than you found.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to draft the action-level test for a <code>sales_quote</code>-style endpoint: the gating, ownership, and input-reaches-output assertions in your test framework? Ask. Or move to the review quiz, which interleaves all seven lessons cold.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0006-write-for-current-design.html">← Lesson 6</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0008-interleaved-review.html"><em>Next: Lesson 8 — Interleaved review quiz →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): no test for the new view action; the notes-to-context path unverified; tests added in a later commit.<br>
+Principle — Martin, <em>Clean Code</em>, Ch.9 (Unit Tests) and Ch.1 (the Boy Scout rule).</p>

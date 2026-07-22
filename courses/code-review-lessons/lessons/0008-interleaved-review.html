@@ -1,0 +1,185 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 8 — Interleaved review</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Lesson 8 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading the lessons builds <em>fluency</em>, the feeling of knowing. Retrieving each judgment cold, with the seven shuffled together, builds <em>storage strength</em>: the reflex that actually fires at self-review time.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all seven lessons and <strong>shuffled</strong> every run, by design. Interleaving the principles, rather than reviewing one lesson at a time, is harder, and that difficulty is what makes them stick.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <strong>near-miss</strong>, the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em>, and run it again in a few days. The spacing is the second half of durable memory. These are habits, not facts, so what you are really drilling is which check to run at the moment the mistake would happen.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag which one. It's worth re-explaining a different way, or drilling just that check. The real test isn't this quiz, it's the next PR: run the <a href="../reference/self-review-checklist.html">self-review checklist</a> on your own diff and see which of the seven habits actually fired.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0007-test-new-behavior.html">← Lesson 7</a></span>
+  <span><a href="../reference/self-review-checklist.html">Checklist ↗</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; research summaries at <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a>.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// 4 options each. options[0] is correct; options[1] is a deliberate near-miss
+// (right idea, subtly wrong). The engine shuffles option order on render, so
+// position never leaks the answer.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "You're pasting an existing method into a new endpoint. What's the per-line check?",
+    options: [
+      "Annotate each line with why it belongs here; cut lines that only fit the origin",
+      "Rename the copied symbols to match the new endpoint's naming style",
+      "Keep the block intact so it stays consistent with the source method",
+      "Add a comment crediting the method you copied it from"
+    ], answer: 0,
+    explain: "The near-miss (renaming to match style) is cosmetic consistency; the real check is whether each line's <em>logic</em> belongs. Cut what only made sense at the origin. (<a href='0001-copy-paste-fit.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Copying the donor's cache key into the new path was the dangerous part because…",
+    options: [
+      "A shared key couples two concerns through the cache — one path can serve the other's bytes",
+      "The cache key was too long and could exceed the backend's key-size limit",
+      "The new path is slower, so it shouldn't be cached at all",
+      "Cache keys must always include a version number to be valid"
+    ], answer: 0,
+    explain: "It runs fine and passes tests, which is why it hides: a quote and a receipt are different concerns and must not answer to one key. (<a href='0001-copy-paste-fit.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A model method exists only to build a dict for a template. Where does it belong?",
+    options: [
+      "At the view — building a template's context is presentation, which the view owns",
+      "On the model, but renamed to make clear it's for a template",
+      "In a shared utils module so any layer can call it",
+      "On the model — it operates on the cart, so the cart should own it"
+    ], answer: 0,
+    explain: "The near-miss keeps it on the model with a better name; placement, not naming, is the issue. If rendering is view-level, its context generation is too. (<a href='0002-layer-that-owns-it.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "What's the spatial tell that one concern has been split across two layers?",
+    options: [
+      "The output is produced in one layer and consumed only in another",
+      "The two layers import each other, creating a circular dependency",
+      "The method is longer than the view function that calls it",
+      "The same variable name appears in both the model and the view"
+    ], answer: 0,
+    explain: "Producer and sole consumer belong in the same layer. Context on the model, render at the view = split concern. (<a href='0002-layer-that-owns-it.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Your inline comment describes a variable better than its name does. Do what?",
+    options: [
+      "Rename the variable to the comment, then delete the comment",
+      "Keep both — the comment adds helpful detail the name can't carry",
+      "Expand the comment into a fuller docstring above the block",
+      "Leave it; renaming risks touching unrelated call sites"
+    ], answer: 0,
+    explain: "A name that needs a comment hasn't revealed intent. The comment IS the rename. (<a href='0003-names-and-docstrings.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "You broadened a function's scope beyond what its docstring describes. When do you fix the docstring?",
+    options: [
+      "In the same change that broadened the scope, as the last edit before commit",
+      "In a follow-up cleanup PR once the feature has settled",
+      "Only if a reviewer asks — docstrings aren't part of the behaviour",
+      "Never; the code is the source of truth, so the docstring is optional"
+    ], answer: 0,
+    explain: "A stale docstring misinforms worse than none, and it hides behind its former truth. Update name and docstring in the same change. (<a href='0003-names-and-docstrings.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "You're about to hand-build a {field: validators} map on a Django model. What stops you?",
+    options: [
+      "The framework already holds it: Model._meta.get_field(name).validators",
+      "Building the map is fine, but it must be defined in exactly one module",
+      "You should use a dataclass instead of a dict for the map",
+      "Maps are slower than if/elif chains for validator lookup"
+    ], answer: 0,
+    explain: "The near-miss (define it once) still duplicates framework metadata. <code>field.validators</code> is <code>[*default_validators, *_validators]</code> — the framework is the single source. (<a href='0004-minimal-explicit-change.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "One validator that branches internally, or two explicit named validators?",
+    options: [
+      "Two named ones — each states its single check; the branch hides two ideas",
+      "One that branches — fewer objects means a smaller, simpler diff",
+      "One, but split into two methods on the same validator class",
+      "Whichever matches the pattern the surrounding code already uses"
+    ], answer: 0,
+    explain: "Explicit over clever. Two named validators are more lines but verifiable at a glance; the last option (match convention) is the exact pull to resist. (<a href='0004-minimal-explicit-change.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Where do you look to find temporal coupling?",
+    options: [
+      "In the callers — reverse-dependency examination of who calls it and what surrounds the call",
+      "In the function body — trace its internal ordering of statements",
+      "In the test suite — look for tests that fail intermittently",
+      "In the type signatures — mismatched types reveal the coupling"
+    ], answer: 0,
+    explain: "Coupling is a property of use, not of the body. Read the callers and the lines around each call. (<a href='0005-temporal-coupling.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What condition makes it safe to merge functions A and B?",
+    options: [
+      "Every caller runs A then B with nothing in between — the invariant is universal",
+      "Most callers run A then B, and the exceptions can be refactored later",
+      "A and B are both short enough to fit in one function",
+      "A and B live in the same file and share a helper"
+    ], answer: 0,
+    explain: "Universality is the test. If any caller legitimately runs A alone, they're genuinely separate — don't merge. (<a href='0005-temporal-coupling.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "You're adding a parameter 'for when we support the other case.' The deciding question is…",
+    options: [
+      "Does any current caller need it? If no real caller uses it today, cut it",
+      "Is it likely we'll need it within the next quarter or two?",
+      "Does adding it now cost less than retrofitting it later?",
+      "Does it keep the function's interface symmetric with its sibling?"
+    ], answer: 0,
+    explain: "Anticipated callers don't count. The near-miss (cheaper now than later) reverses the economics — the speculative param is cheap to type, expensive to carry. (<a href='0006-write-for-current-design.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "When is the right time to add the abstraction?",
+    options: [
+      "When a second real use appears — only then do you know the shape it needs",
+      "As soon as you suspect a second use is coming, to stay ahead of it",
+      "At the start, when the design is still flexible and cheap to change",
+      "Whenever the current function exceeds a set line count"
+    ], answer: 0,
+    explain: "Built in advance, the future case is a guess and usually the wrong shape, so it gets reworked anyway. Wait for the concrete second use. (<a href='0006-write-for-current-design.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "The adjacent legacy code has no tests. Does that justify skipping tests for your new action?",
+    options: [
+      "No — that propagates the gap; absent neighbour tests are the reason to write the first one",
+      "Yes, for consistency — mixing tested and untested code in one module is confusing",
+      "Yes, if the new action closely mirrors the untested legacy one",
+      "Only if you add a TODO to backfill tests for both later"
+    ], answer: 0,
+    explain: "Boy Scout rule: leave it cleaner. 'Following the convention' of not testing is the exact habit to break. (<a href='0007-test-new-behavior.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "The model helper is tested and returns the right dict. Why isn't that enough?",
+    options: [
+      "It doesn't prove the input reaches the rendered response — test the contract end to end",
+      "Helpers should never be tested directly, only through the view",
+      "The dict might be right but in the wrong key order",
+      "Unit tests don't count; only integration tests do"
+    ], answer: 0,
+    explain: "The reviewer couldn't confirm <code>additional_notes</code> reached the context. Testing the easiest internal function to call isn't testing the observable contract. (<a href='0007-test-new-behavior.html'>L7</a>)" },
+
+  { lesson: "Lessons 1 &amp; 6",
+    q: "A copied block fits its origin but not its destination; a hook is added for a caller that doesn't exist. What single pull produces both?",
+    options: [
+      "Designing against something other than the real case in front of you (a convention, or an imagined future)",
+      "Writing changes that are too large to review comfortably",
+      "Failing to run the framework's own accessors instead of hand-rolling",
+      "Not reading the callers before changing a function"
+    ], answer: 0,
+    explain: "L1 copies to satisfy a convention; L6 builds for an imagined future. Both design against something that isn't the current real requirement. (<a href='0001-copy-paste-fit.html'>L1</a>, <a href='0006-write-for-current-design.html'>L6</a>)" }
+]);
+</script>

@@ -1,0 +1,104 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3 — Names &amp; docstrings reveal intent and track scope</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 2 · Lesson 3</p>
+<h1>Names &amp; docstrings reveal intent and track scope</h1>
+<p class="lede">Three separate naming catches on one PR. The through-line: a name or docstring that was accurate once, then stopped being, and nobody updated it in the same change.</p>
+
+<h2>The mistake</h2>
+
+<p>Three instances, same root:</p>
+
+<ul>
+  <li>A variable was named vaguely when <code>required_file_types</code> was the accurate name, and the code's own inline comment already said as much.</li>
+  <li>A function's scope broadened beyond email, but its docstring stayed email-specific, so it now described a narrower thing than the function did.</li>
+  <li>A validator was named with reference to "API," with no clear relationship between that word and what the validator actually checked.</li>
+</ul>
+
+<p>None of these break the code. They break the reader. A name is the first interface anyone hits, and a stale one does worse than say nothing: it actively misinforms.</p>
+
+<div class="figure">
+<pre><code>the comment already knew the name:
+
+    # the file types this endpoint requires
+    x = [...]                    →   required_file_types = [...]
+
+the docstring outlived its scope:
+
+    def build(...):
+        """Assemble the email payload."""   ← function no longer email-only
+        ...                                   the docstring now lies
+</code></pre>
+<p class="cap">When your own comment names the variable better than the variable does, the comment is the rename.</p>
+</div>
+
+<h2>How to catch it — read names as the last edit</h2>
+
+<p>Naming is not a first-draft act; it is a last-pass check. Two habits, run just before commit.</p>
+
+<div class="figure">
+<pre><code>1. Comment-vs-name pass   does an inline comment describe a variable
+                          better than its name? Rename to the comment.
+2. Scope-change pass      did this change broaden what a function covers?
+                          Re-read its name AND docstring; update both now.</code></pre>
+<p class="cap">Both passes happen after the logic is right, as the final edit before the diff goes up.</p>
+</div>
+
+<h3>Step 1 — If a comment out-names the name, rename</h3>
+<p>An inline comment that explains what a variable holds is a confession that the name failed. The comment said "the file types this endpoint requires"; the accurate name was <code>required_file_types</code>. When the comment describes the thing better than its identifier does, promote the comment into the name and delete the comment. A name that needs a comment to be understood is not revealing intent.</p>
+
+<h3>Step 2 — When scope changes, update the name and docstring in the same change</h3>
+<p>The email docstring was correct when written. The function then grew to cover more than email, and the docstring was left behind, so it now describes a function that no longer exists. The rule is mechanical: when a change alters what a function covers, re-read its name and docstring as part of that same change and update both. A stale docstring is not neutral; the next reader trusts it and is misled.</p>
+
+<h3>Step 3 — A name must relate to what the thing does</h3>
+<p>The "API" validator carried a word with no traceable link to what it validated. A reader cannot recover intent from it, so they have to open the body and reverse-engineer the purpose, which is the exact work a good name saves. Name the validator for what it checks. If you cannot state the relationship between the name and the behaviour in a phrase, the name is not earning its place.</p>
+
+<h2>Why it matters</h2>
+
+<p>Every one of these is already covered by the naming rules in the Clean Code canon, which makes the lesson not "learn naming" but "apply it under change." The pull here is subtle: the name was right once. The cost lands later, on a reader who trusts the docstring or the identifier and builds a wrong model from it. A missing name makes a reader look; a wrong name makes a reader believe. The second is more expensive.</p>
+
+<p>The scope-change case is the one worth wiring in as a habit, because it is invisible at the moment of the edit. You broadened the function to do its new job and moved on; the docstring did not change on its own. Nothing in the diff flags it. Only a deliberate re-read of name-and-docstring, triggered by "I changed what this covers," catches it.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A name that needs a comment isn't revealing intent, and a docstring that outlived its scope misinforms worse than none. When a change broadens what a function covers, re-read its name and docstring as the last edit before you commit.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The trap is the <strong>scope-broadening</strong> case, not the vague-name case. A vague name is visible on sight in review. A docstring that was accurate when written and is now stale passes every eye that assumes "the docstring was surely updated with the code," because usually it wasn't. The lie hides behind its own former truth.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Your inline comment describes a variable better than its name does. What's the move?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Rename the variable to the comment, then delete the comment. A name needing a comment to be understood has failed to reveal intent.</p></details>
+  <p>② You broadened a function's scope this change. What two things do you re-read, and when?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Its name and its docstring, as the last edit before committing, in the same change that broadened the scope. A stale docstring misleads the next reader.</p></details>
+  <p>③ Why is a wrong name more costly than a missing one?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A missing name makes the reader look at the body; a wrong name makes them believe a false model without looking. Misinformation beats absence of information for cost.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Martin, <em>Clean Code</em>, Ch.2 (Meaningful Names): "use intention-revealing names," "if a name requires a comment, then the name does not reveal its intent." The scope-tracking corollary is this course's addition, now recorded as a naming rule in the project's CLAUDE.md.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to name the <code>required_file_types</code> validator itself, a case where naming and the "use the framework's accessor" question meet? That is where Lesson 4 goes. Ask, or read on.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-layer-that-owns-it.html">← Lesson 2</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-minimal-explicit-change.html"><em>Next: Lesson 4 — Minimal, explicit change →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): a vaguely-named variable that <code>required_file_types</code> fit; a docstring left email-specific after the scope broadened; an unclear "API" validator name.<br>
+Principle — Martin, <em>Clean Code</em>, Ch.2 (Meaningful Names).</p>

@@ -1,0 +1,64 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Pre-PR Self-Review Checklist</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Reference</p>
+<h1>Pre-PR self-review checklist</h1>
+<p class="lede">The compressed payoff of the seven lessons: the checks to run on your own diff before it goes up. Each is phrased as the question to ask, the tell that answers it, and the move. Print it; run it cold on the next PR.</p>
+
+<table>
+  <tr><th>#</th><th>Ask</th><th>Tell → move</th></tr>
+
+  <tr>
+    <td><strong>1</strong></td>
+    <td>Did I paste any existing block? For each copied line: <em>why does this belong here?</em></td>
+    <td>A line's only answer is "it was in the original" → cut it. The whole block is shared behaviour → factor to one source, don't copy. Never reuse a cache key across two concerns. <a href="../lessons/0001-copy-paste-fit.html">L1</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>2</strong></td>
+    <td>For each new method: <em>which layer owns this responsibility?</em></td>
+    <td>The output is produced in one layer and consumed only in another (context on the model, render at the view) → move it to the consuming layer. A model method that only builds a template dict belongs at the view. <a href="../lessons/0002-layer-that-owns-it.html">L2</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>3</strong></td>
+    <td>Do my names reveal intent? Did any function's scope broaden this change?</td>
+    <td>An inline comment out-names the variable → rename to the comment, delete it. Scope broadened → re-read name <em>and</em> docstring, update both, as the last edit before commit. <a href="../lessons/0003-names-and-docstrings.html">L3</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>4</strong></td>
+    <td>Is this the smallest change that works? Am I hand-rolling what the framework holds?</td>
+    <td>A rewrite bigger than the change needs → justify it or shrink it. Hand-built <code>{field: validators}</code> map → use <code>Model._meta.get_field(name).validators</code>. Prefer two named validators over one that branches; a <code>dict</code> over <code>SimpleNamespace</code>. <a href="../lessons/0004-minimal-explicit-change.html">L4</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>5</strong></td>
+    <td>Did I split a function? Read its callers: does B always run right after A?</td>
+    <td>Every caller runs A then B, nothing between → merge them (fold B into A, or one call that runs both). If any caller runs A alone, leave them separate. Use reverse-dependency examination. <a href="../lessons/0005-temporal-coupling.html">L5</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>6</strong></td>
+    <td>Did I add a param / hook / layer "for later"? <em>Does any current caller need it?</em></td>
+    <td>No real caller uses it today → cut it. Add the abstraction when a second concrete use lands and reveals its shape. Minimal ≠ non-speculative: a small addition for a nonexistent caller still goes. <a href="../lessons/0006-write-for-current-design.html">L6</a></td>
+  </tr>
+
+  <tr>
+    <td><strong>7</strong></td>
+    <td>Did I test the new behaviour's observable contract, regardless of neighbour coverage?</td>
+    <td>Cover gating, auth/ownership, missing cases, response status/content type, and that the input reaches the output. "No adjacent test to copy" → write the first one. Testing the helper ≠ testing the contract. <a href="../lessons/0007-test-new-behavior.html">L7</a></td>
+  </tr>
+</table>
+
+<h2>The one line under all seven</h2>
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A convention is a starting point to interrogate, not a rule to satisfy. Every catch on the PR came from matching what was already there (a context shape, a missing test, an impressive construct, an imagined future) instead of asking whether it fit the case in front of you.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="glossary.html">Glossary ↗</a></span>
+  <span><a href="../lessons/0008-interleaved-review.html">Review quiz ↗</a></span>
+</div>

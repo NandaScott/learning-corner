@@ -1,0 +1,80 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>Code Review Lessons — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>Code Review Lessons</h1>
+<p class="lede">Seven judgment lessons distilled from a real code review of a sales-quote PDF endpoint, turned into checks you run on your own diff. Not "learn Clean Code." Learn the tell that catches the mistake at self-review time. Seven lessons, an interleaved quiz, a glossary, and a printable checklist.</p>
+
+<div class="home-group">
+  <p class="label">Arc 1 · Adapting existing code</p>
+  <p class="blurb">The PR's core sin: reusing what was already there without asking whether it fit.</p>
+
+  <a class="lesson-card" href="lessons/0001-copy-paste-fit.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>Copy a pattern only after checking it fits</strong><span>Annotate every pasted line with why it belongs; cut what fit the origin. The shared cache-key trap.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-layer-that-owns-it.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>Put logic at the layer that owns it</strong><span>Template-context on the model, rendering at the view: one concern split across two layers.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 2 · Clarity</p>
+  <p class="blurb">Names, docstrings, and the size of the change.</p>
+
+  <a class="lesson-card" href="lessons/0003-names-and-docstrings.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Names &amp; docstrings track scope</strong><span>When a comment out-names the variable, and when a docstring outlives the function's scope.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0004-minimal-explicit-change.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Prefer the minimal, explicit change</strong><span>Smallest diff that works; the framework's own accessor over a hand-built map; explicit over clever.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 3 · Coupling &amp; horizon</p>
+  <p class="blurb">Two mirror-image faults: splitting what belongs together, and joining in flexibility nothing asked for.</p>
+
+  <a class="lesson-card" href="lessons/0005-temporal-coupling.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>Co-locate what's always called together</strong><span>Temporal coupling, found by reading the callers, not the function.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0006-write-for-current-design.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>Write for the current design</strong><span>YAGNI. Cut any hook added for a caller that doesn't exist yet.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 4 · Proof</p>
+  <p class="blurb">Show the behaviour you built actually works.</p>
+
+  <a class="lesson-card" href="lessons/0007-test-new-behavior.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Test the new behaviour</strong><span>Cover the observable contract even when the adjacent legacy code has no tests.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Review &amp; reference</p>
+  <p class="blurb">Drill the seven cold, then keep the checklist by the diff.</p>
+
+  <a class="lesson-card" href="lessons/0008-interleaved-review.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>All seven shuffled, auto-graded, each answer against its near-miss.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/self-review-checklist.html">🗺️ Pre-PR self-review checklist — the printable payoff</a>
+    <a href="reference/glossary.html">📖 Glossary — canonical vocabulary</a>
+  </div>
+</div>

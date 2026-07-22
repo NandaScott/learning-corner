@@ -1,0 +1,94 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — Copy a pattern only after checking it fits</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">Code Review Lessons</a> · Arc 1 · Lesson 1</p>
+<h1>Copy a pattern only after checking it fits</h1>
+<p class="lede">The most-cited catch on the PR. An existing method was reused wholesale into a new endpoint, and it carried assumptions that were true at the origin and false at the destination.</p>
+
+<h2>The mistake</h2>
+
+<p>The quote endpoint needed a template context, and an obvious donor was already in the codebase: <code>Order.order_receipt_context</code>. It got reused wholesale, down to the same cache key, and its currency handling came along with it.</p>
+
+<p>Two of those decisions did not survive contact with the new use. The app only supports USD, and BigCommerce exposes no display currency, so the currency-formatting logic had nothing to do. And the cache key belonged to the receipt concern; sharing it across a quote and a receipt lets one path serve another path's cached bytes. One review comment made the point directly: when you copy code, ask whether it still makes sense for the new use before you keep it.</p>
+
+<div class="figure">
+<pre><code>order_receipt_context           reused as-is for the quote
+─────────────────────           ──────────────────────────
+build context dict        →     build context dict          ✓ shared behaviour
+format transacting currency →   format currency (USD-only)  ✗ dead logic here
+cache under receipt key    →    cache under receipt key     ✗ two concerns, one key</code></pre>
+<p class="cap">The copied block fit its origin. Only the first line fit the destination.</p>
+</div>
+
+<h2>How to catch it — annotate before you paste</h2>
+
+<p>The habit that prevents this runs at review-of-your-own-diff time, one copied block at a time.</p>
+
+<div class="figure">
+<pre><code>1. Read the donor      understand what each line does at its origin
+2. Annotate each line  write "why does this belong here?" against every line
+3. Cut the origin-only lines  drop anything that only made sense where it came from
+4. Factor the shared part     if the whole block is shared, extract it — don't copy it</code></pre>
+<p class="cap">The output is either a smaller, justified block, or a single shared function both call sites use.</p>
+</div>
+
+<h3>Step 1 — Read the donor</h3>
+<p>Before pasting, read the source method as if you were reviewing it. An old codebase carries decisions made by many hands, for contexts that may no longer hold. The currency handling in <code>order_receipt_context</code> was written for a reason that applied to receipts; nothing guarantees it applies to a quote.</p>
+
+<h3>Step 2 — Annotate each line with why it belongs</h3>
+<p>Go line by line and answer one question against each: why does this belong in the new use? The answer for the context-building lines was "a quote needs a context too." The answer for the currency formatting was "…it doesn't, we're USD-only." That silence is the signal.</p>
+
+<h3>Step 3 — Cut the origin-only lines</h3>
+<p>Any line whose only justification is "it was in the original" gets removed. Copied code encodes someone else's assumptions into your feature; the currency logic encoded a multi-currency assumption the quote path does not have. Cutting it is not tidying. It removes behaviour that was never wanted here.</p>
+
+<h3>Step 4 — Factor shared behaviour instead of duplicating it</h3>
+<p>If the block genuinely is shared behaviour, the fix is not a cleaner copy but a single source of truth both paths call. Two copies mean two places to fix the next time the behaviour changes, and they drift. The cache key is the sharp version of this: reusing the receipt's key across two concerns couples them through the cache. A quote and a receipt are different concerns and must not answer to the same key.</p>
+
+<h2>Why it matters</h2>
+
+<p>The underlying confusion on the PR was between two things a currency value can mean: the <em>transacting</em> currency (what money changed hands in) and the <em>display</em> currency (what to render). The copied code blurred them, because at the origin they happened to coincide and the distinction never had to be drawn. Carried into a USD-only quote with no BigCommerce display currency, the copied handling was answering a question nobody asked.</p>
+
+<p>This is the recurring habit the mission names: following conventions too closely. The codebase's convention was "contexts look like <code>order_receipt_context</code>," and matching it felt safe. Matching a convention is not the same as fitting the use. The convention is a starting point to interrogate, not a template to satisfy.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Copied code fits its origin, not its destination. Annotate every pasted line with why it belongs here; if a line only made sense where it came from, cut it, and if the whole block is shared behaviour, factor it out instead of duplicating it.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The trap is reusing the <strong>cache key</strong>. Dropping a stray line of dead currency code is cheap to spot in review. Sharing a cache key across two concerns looks harmless (the code runs, the tests pass) until a quote serves a receipt's cached bytes or vice versa. A copied key is a copied identity: it silently declares two different things to be the same thing.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What one question do you write against each copied line?</p>
+  <details><summary>show answer</summary>
+  <p class="a">"Why does this belong <em>here</em>?" If the only answer is "it was in the original," cut the line. Lines that only made sense at the origin do not survive the move.</p></details>
+  <p>② The block is genuinely shared behaviour between both call sites. Copy it cleanly, or do something else?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Something else: extract it to a single source of truth both sites call. A clean copy is still two places to fix later, and copies drift.</p></details>
+  <p>③ Why was reusing the receipt's cache key the dangerous part, more than the dead currency code?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A shared key couples two different concerns through the cache: one path can serve the other's cached bytes. It passes tests and runs fine, so it hides. Dead code is visible; a shared identity is not.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Hunt &amp; Thomas, <a href="https://pragprog.com/tips/">The Pragmatic Programmer</a>, Tip 15 (DRY): "Every piece of knowledge must have a single, unambiguous, authoritative representation." The single-source-of-truth argument for factoring over copying, stated at its root.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to work through where the shared context should have lived: a function both the receipt and the quote import, and what its right home is? That is exactly Lesson 2's question. Ask, or read on.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-layer-that-owns-it.html"><em>Next: Lesson 2 — Put logic at the layer that owns it →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+Mistake — from a real code review (identifying details removed for this public repo): a cache key reused across two concerns, and USD-only currency handling copied into a path that did not need it.<br>
+Principle — Hunt &amp; Thomas, <a href="https://pragprog.com/tips/">The Pragmatic Programmer</a>, DRY (Tip 15).</p>
