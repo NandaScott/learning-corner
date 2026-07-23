@@ -1,0 +1,175 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4: Pricing</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 4</p>
+<h1>Pricing</h1>
+<p class="lede">Lesson 3 froze a <code>list_price</code> onto a line item without asking where that number came from. This lesson answers it. In BigCommerce a price is not a stored field — it is the output of an ordered <strong>stack of overrides</strong>: catalog price, sale price, variant price, price lists, customer-group discounts, bulk breaks, modifier adjustments, and finally tax. Understanding the order is understanding the price.</p>
+
+<h2>The concept</h2>
+
+<p>In a real store, "the price" of a thing is rarely one number. The same product costs less on sale, less again at quantity, maybe less for a wholesale account, more once tax is added, and different amounts in different currencies. A store that stored a single price per product could not express any of that.</p>
+
+<p>So a catalog does not store the final price — it stores the <em>inputs</em>, and computes the price a given shopper sees at a given moment. The design question is only: when two rules both want to set the price, which one wins? That ordering — the priority of overrides — is the whole model.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>BigCommerce documents this literally, as a "price order of operations": a table "read from top to bottom, with the default price having the lowest weight and the tax having the highest weight when calculating price."<sup><a href="#s1">1</a></sup> Each layer can override the ones above it. The full table has sixteen rows; these are the load-bearing ones:</p>
+
+<div class="figure">
+<pre><code>  PRICE ORDER OF OPERATIONS   (top = lowest weight; each layer can override those above)
+
+   1  default product price          ── the catalog floor
+   2  product sale_price             ── overrides the default
+   3  variant price                  ── overrides the product's sale price
+   4  variant sale_price             ── overrides the variant price
+   ─────────────────────────────────────────────────────────────────────
+   5  PRICE LIST variant price       ── overrides ALL of the above;
+                                          also excludes the SKU from product bulk pricing
+   6-8  price-list sale / bulk / pick list
+   ─────────────────────────────────────────────────────────────────────
+  10  product MODIFIER adjuster      ── adds on top (+$5 insurance, +10%)   [Lesson 2]
+  11  customer-group discount        ── overrides variant sale price
+                                          …but does NOT apply on price-list prices
+  12  product bulk pricing           ── quantity breaks; skipped for price-list SKUs
+   ─────────────────────────────────────────────────────────────────────
+  14  discounts                      ]  cart / promotion layer  [Lessons 5-6]
+  15  coupons                        ]
+  16  TAX                            ── always last, after shipping and promotions
+
+        the resolved result of running this stack  ==  calculated_price (read-only)</code></pre>
+<p class="cap">Price is the output of this pipeline, not a field. <code>calculated_price</code> is where the resolved number lands.</p>
+</div>
+
+<h3>① Price is a stack, not a field</h3>
+<p>The number a shopper pays is computed by walking the layers, each overriding the last. The resolved result is exposed as <code>calculated_price</code>, a read-only field: "the price of the variant as seen on the storefront. This price takes into account <code>sale_price</code> and any price adjustment rules that are applicable to this variant."<sup><a href="#s2">2</a></sup> This is the field people misread — see the trap. Everything below is just "which layer sets the price before <code>calculated_price</code> reports it."</p>
+
+<h3>② The catalog base — price, sale, variant</h3>
+<p>The bottom four layers all live on the catalog objects from Lesson 2. A product has a default <code>price</code>; a <code>sale_price</code> overrides it; a variant's own <code>price</code> overrides the product's; a variant <code>sale_price</code> overrides that.<sup><a href="#s1">1</a></sup> A variant's <code>price</code> is override-or-inherit: "if this value is <code>null</code>, the product's default price… will be used as the base price."<sup><a href="#s2">2</a></sup> So a plain product with one base variant simply uses the product price — the Lesson 2 base-variant rule paying off again.</p>
+
+<h3>③ Price lists — per-variant overrides for a channel or group</h3>
+<p>A price list is "a collection of price records," and "a price record is a price override for a particular variant… at a minimum, it contains a variant ID, a price, and a currency."<sup><a href="#s3">3</a></sup> Two facts make price lists the sharp edge of the model. First, they are <strong>variant-level only</strong>: "the prices are specified exclusively at the variant level. If an active price list doesn't contain prices for a variant, then the catalog pricing will be used."<sup><a href="#s3">3</a></sup> Second, they <strong>attach to an audience</strong>: "you can assign a price list to a specific sales channel, customer group, or customer group on a specific sales channel."<sup><a href="#s3">3</a></sup> This is how one product carries a retail price and a wholesale price at once — different price lists for different customer groups.</p>
+
+<h3>④ Customer groups and bulk pricing</h3>
+<p>Two more layers sit above the base. A <strong>customer-group discount</strong> overrides the variant sale price — but "customer group discounts do not apply to price list prices."<sup><a href="#s1">1</a></sup> And <strong>product bulk pricing</strong> gives quantity breaks (a <code>type</code> of <code>price</code>, <code>percent</code>, or <code>fixed</code> across a <code>quantity_min</code>/<code>quantity_max</code> band),<sup><a href="#s4">4</a></sup> but "will not apply for SKUs that have price list prices."<sup><a href="#s1">1</a></sup> Notice the pattern: a price-list price doesn't just win its own row — it switches off two later layers for that SKU.</p>
+
+<h3>⑤ Modifiers add on top; tax comes last</h3>
+<p>Lesson 2's modifier adjusters land here as a pricing layer: fixed or percentage amounts "added or removed from the total product price."<sup><a href="#s1">1</a></sup> They <em>add on</em> rather than override — a $5 engraving fee stacks onto whatever the base resolved to. Then, after discounts, coupons, and shipping, tax is applied last.<sup><a href="#s1">1</a></sup> Tax is where <strong>tax-inclusive vs tax-exclusive</strong> lives: the resolved price carries an <code>entered_inclusive</code> flag — "determines whether the <code>as_entered</code> price is inclusive or exclusive of tax" — alongside computed <code>tax_inclusive</code> and <code>tax_exclusive</code> values.<sup><a href="#s5">5</a></sup></p>
+
+<h2>Where it surfaces in the API</h2>
+
+<p>The inputs live on catalog objects; a dedicated batch endpoint resolves the whole stack for a given audience.</p>
+
+<ul>
+<li><strong>Catalog</strong> — <code>/v3/catalog/products</code> and <code>/variants</code> carry <code>price</code>, <code>sale_price</code>, <code>retail_price</code>, <code>cost_price</code>, read-only <code>calculated_price</code>, and <code>bulk_pricing_rules</code>.<sup><a href="#s2">2</a></sup></li>
+<li><strong>Price Lists</strong> — <code>/v3/pricelists</code>, records at <code>/v3/pricelists/{id}/records</code>, and <strong>assignments</strong> at <code>/v3/pricelists/assignments</code> (tying a list to <code>customer_group_id</code> and/or <code>channel_id</code>).<sup><a href="#s3">3</a></sup></li>
+<li><strong>Customer Groups</strong> — the v2 Customer Groups API; a group attaches a price list via a <code>discount_rules</code> entry of type <code>price_list</code>.<sup><a href="#s3">3</a></sup></li>
+<li><strong>Pricing API (batch)</strong> — <code>POST /v3/pricing/products</code> resolves the full order-of-operations for a channel + currency + customer group, returning <code>calculated_price</code> with tax variants.<sup><a href="#s5">5</a></sup></li>
+</ul>
+
+<div class="figure">
+<pre><code>// CATALOG price fields — the inputs (product + one variant), scrubbed
+{
+  "price": 100.00,
+  "sale_price": 79.99,          // overrides price
+  "retail_price": 120.00,       // "compare at" / MSRP display only
+  "cost_price": 40.00,          // never exposed to the storefront
+  "calculated_price": 79.99,    // read-only: the RESOLVED number
+  "bulk_pricing_rules": [
+    { "quantity_min": 10, "quantity_max": 50, "type": "percent", "amount": 10 }
+  ],
+  "variants": [
+    { "price": null,            // null → inherit the product price
+      "sale_price": null,
+      "calculated_price": 79.99 }
+  ]
+}</code></pre>
+<p class="cap">The catalog stores inputs. <code>calculated_price</code> is the read-only output — never set it directly.</p>
+</div>
+
+<div class="figure">
+<pre><code>// PRICE LIST RECORD — a per-variant override for one currency
+// PUT /v3/pricelists/{id}/records
+{
+  "variant_id": 3121,           // records target a VARIANT, never a product
+  "price": 10.00,
+  "sale_price": 8.00,
+  "currency": "EUR",
+  "calculated_price": 8.00      // read-only
+}
+
+// …and how it reaches an audience:
+// POST /v3/pricelists/assignments
+{ "price_list_id": 7, "customer_group_id": 2, "channel_id": 1 }</code></pre>
+<p class="cap">A record overrides one variant's price in one currency; an assignment points the whole list at a customer group and/or channel.</p>
+</div>
+
+<div class="figure">
+<pre><code>// BATCH PRICING API — resolve the stack for a specific shopper context
+// POST /v3/pricing/products   body: { channel_id, currency_code, customer_group_id, items:[…] }
+// one returned item — every price is a TAX object:
+{
+  "product_id": 111,
+  "variant_id": 222,
+  "price":            { "as_entered": 79.99, "entered_inclusive": false,
+                        "tax_exclusive": 79.99, "tax_inclusive": 87.99 },
+  "calculated_price": { "as_entered": 79.99, "entered_inclusive": false,
+                        "tax_exclusive": 79.99, "tax_inclusive": 87.99 }
+}</code></pre>
+<p class="cap">This is the endpoint that answers "what does <em>this</em> shopper pay for <em>this</em> config in <em>this</em> channel?" — the whole stack, resolved, with tax computed both ways.</p>
+</div>
+
+<h2>Why an override stack</h2>
+
+<p>The layered model exists so one product can serve every pricing situation without duplicating the product. Sales, wholesale tiers, per-channel prices, quantity breaks, and per-currency lists are all just different layers of the same stack, and the fixed weight order makes the outcome deterministic: given a shopper, a channel, and a cart quantity, exactly one layer wins each decision, and <code>calculated_price</code> reports the result. This is also where Lesson 3's frozen <code>list_price</code> comes from — the line item captures whatever the stack resolved to at add-time, which is why a later sale or price-list change never rewrites an existing cart. The catalog computes; the line item remembers.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A BigCommerce price is not a field — it's the output of an ordered override stack: default → sale → variant → price list → customer-group discount / bulk → modifiers → tax, read top to bottom with tax last. <code>calculated_price</code> is the read-only resolved result, and price lists are variant-level overrides aimed at a customer group or channel."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Two shallow readings. First: <code>calculated_price</code> is <em>not</em> "price minus a discount" — it is the resolved shopper price after sale prices and adjustment rules, a read-only output you never set. Second: the layers do <em>not</em> all stack. A price-list price overrides everything before it <em>and</em> switches off two later layers for that SKU — product bulk pricing is skipped, and customer-group discounts do not apply on top of price-list prices. Assuming "every discount adds up" will overstate the shopper's savings and misprice the cart.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Is <code>calculated_price</code> something you set, or something BigCommerce computes? What does it represent?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Computed — it's read-only. It's the resolved shopper price after the override stack runs (sale price + variant + price list + adjustment rules), not "price minus a discount."</p></details>
+  <p>② At what level does a price list set prices — product or variant — and what happens if it has no entry for a variant?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Variant level only (a price record targets a <code>variant_id</code>). If a variant isn't in the active price list, catalog pricing is used as the fallback.</p></details>
+  <p>③ A SKU has a price-list price. Do product bulk-pricing quantity breaks and customer-group discounts still apply to it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No to both. Price-list prices exclude the SKU from product bulk pricing, and customer-group discounts do not apply on top of price-list prices.</p></details>
+  <p>④ Where in the stack does tax sit, and which field says whether the entered price already included it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Tax is last, after shipping and promotions. <code>entered_inclusive</code> flags whether the <code>as_entered</code> price was tax-inclusive; the API also returns computed <code>tax_inclusive</code> and <code>tax_exclusive</code>.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/store-management/catalog/pricing">BigCommerce Developer Center — Pricing: order of operations</a>. The whole model is one table: default → sale → variant → price list → modifiers → customer group → bulk → discounts/coupons → tax. Pair it with the Price Lists overview for the variant-level and assignment rules.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the price-list assignment resolution order (channel + group vs group-only vs channel-only), or how <code>retail_price</code> drives the "compare at" strike-through display? Ask. Next lesson: the discounts landscape — sale price vs cart discount vs coupon vs automatic promotion, and why BigCommerce has two different coupon systems.
+</div>
+
+<div class="course-nav">
+  <span><a href="0003-line-items.html">← Lesson 3</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-discounts-landscape.html"><em>Next: Lesson 5 — the discounts landscape →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Price order of operations (top=lowest weight, tax last), sale/variant overrides, modifier adjusters as a layer, price-list prices excluding bulk pricing, customer-group discounts not applying to price-list prices — <a href="https://developer.bigcommerce.com/docs/store-management/catalog/pricing">BigCommerce Developer Center: Pricing calculations (order of operations)</a>.<br>
+<span id="s2">2.</span> Product/variant price fields, variant <code>price</code> null-inherits the product price, <code>calculated_price</code> definition (read-only resolved price), <code>cost_price</code> not affected by price lists — <a href="https://developer.bigcommerce.com/docs/rest-catalog/products">BigCommerce Developer Center: Catalog Products (create-product schema)</a>.<br>
+<span id="s3">3.</span> Price list / price record definitions, variant-level with catalog fallback, assignment to channel / customer group — <a href="https://developer.bigcommerce.com/docs/store-management/catalog/pricing/price-lists">BigCommerce Developer Center: Price Lists</a>.<br>
+<span id="s4">4.</span> Bulk pricing rule <code>type</code> enum (<code>price</code>/<code>percent</code>/<code>fixed</code>) and quantity bands — <a href="https://developer.bigcommerce.com/docs/rest-catalog/products/bulk-pricing-rules">BigCommerce Developer Center: Bulk Pricing Rules</a>.<br>
+<span id="s5">5.</span> Batch Pricing API (<code>POST /v3/pricing/products</code>), <code>calculated_price</code> incl. modifier/option rules, tax objects (<code>as_entered</code>, <code>entered_inclusive</code>, <code>tax_inclusive</code>, <code>tax_exclusive</code>) — <a href="https://developer.bigcommerce.com/docs/rest-management/pricing">BigCommerce Developer Center: Pricing API (Get Prices)</a>.
+</p>

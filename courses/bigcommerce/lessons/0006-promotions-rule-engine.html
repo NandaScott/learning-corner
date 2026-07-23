@@ -1,0 +1,158 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6: The promotions rule engine</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 6</p>
+<h1>The promotions rule engine</h1>
+<p class="lede">Lesson 5 placed automatic and coupon promotions on the map and said the discount logic "lives in the promotion." This lesson opens that box. A BigCommerce promotion is a small rule engine — an ordered list of <strong>rules</strong>, each an <strong>action</strong> guarded by a <strong>condition</strong> — plus a set of controls for how promotions stack. Learn the vocabulary and every real-world offer becomes expressible.</p>
+
+<h2>The concept</h2>
+
+<p>Every promotion is fundamentally "if the cart looks like this, do that." To express real offers — spend $50 for free shipping, buy one get one free, 20% off the cheapest item, wholesale gets a fixed price — you need two small languages: one for describing <em>when</em> an offer applies (the condition) and one for describing <em>what it does</em> (the action). And once a store runs several promotions at once, you need rules for which ones combine and which one wins.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>A promotion holds an ordered list of rules. The documentation is precise about how they run: the <code>rules</code> field is "an ordered list of rules to be executed until the first applicable one applies a discount successfully and the rest will be skipped."<sup><a href="#s1">1</a></sup> Each rule is one action plus an optional condition:</p>
+
+<div class="figure">
+<pre><code>  PROMOTION
+   ├─ redemption_type: AUTOMATIC | COUPON      (Lesson 5 — gates the whole thing)
+   ├─ rules: [                                 ordered; FIRST applicable rule wins,
+   │    {                                        the rest are SKIPPED
+   │      condition: { … }   ── WHEN            cart / and / or / not
+   │      action:    { … }   ── WHAT            cart_value | cart_items | gift_item
+   │      apply_once, stop                                | shipping | fixed_price_set
+   │    }, … ]
+   ├─ can_be_used_with_other_promotions        ]  how it STACKS with
+   ├─ stop                                      ]  OTHER promotions
+   └─ status, max_uses, start/end_date, channels[], customer{group_ids}
+
+              condition matches?  ──yes──▶  apply action  ──▶  discount lands in
+                                                                cart discounts[] / coupons[]
+                                                                (Lesson 5)</code></pre>
+<p class="cap">A promotion is a tiny rule DSL: ordered rules, each a guarded action, wrapped in stacking controls.</p>
+</div>
+
+<h3>① Rules run in order; the first that applies wins</h3>
+<p>This is the mechanical heart. The rules array is evaluated top to bottom, and evaluation stops at "the first applicable one" that "applies a discount successfully."<sup><a href="#s1">1</a></sup> The rest are skipped. So a promotion's rule list is not "apply everything that matches" — it is "find the first match and stop." A rule with no condition applies unconditionally, which is how a storewide offer is written.</p>
+
+<h3>② Conditions — describing when</h3>
+<p>A condition is built from one of four types: a <code>cart</code> condition that "uses the cart contents," and the logical wrappers <code>and</code>, <code>or</code>, and <code>not</code>.<sup><a href="#s2">2</a></sup> A <code>cart</code> condition can require a <code>minimum_spend</code> or a <code>minimum_quantity</code>, and can target specific items through a matcher that accepts <code>products</code>, <code>variants</code>, <code>brands</code>, <code>categories</code>, a <code>product_option</code>, or a <code>product_custom_field</code>.<sup><a href="#s2">2</a></sup> The boolean wrappers let you compose: "brand X <em>and</em> at least 2 items," "category A <em>or</em> category B."</p>
+
+<h3>③ Actions — describing what</h3>
+<p>There are five action types, each a differently-shaped discount.<sup><a href="#s2">2</a></sup> <code>cart_value</code> discounts the whole cart. <code>cart_items</code> discounts eligible line items and carries the sharp options — a <code>strategy</code> of <code>LEAST_EXPENSIVE</code> or <code>MOST_EXPENSIVE</code>, a <code>quantity</code>, and its own <code>items</code> matcher (this is how "20% off your cheapest eligible item" is written). <code>gift_item</code> adds a free product or variant. <code>shipping</code> grants <code>free_shipping</code> over given <code>zone_ids</code>. <code>fixed_price_set</code> forces a fixed price for a set of items. The discount amount itself is expressed as a <code>fixed_amount</code> or a <code>percentage_amount</code>.<sup><a href="#s2">2</a></sup></p>
+
+<h3>④ A worked example — buy one, get one free</h3>
+<p>BOGO is a condition plus a <code>gift_item</code> action: the condition requires at least one of the product in the cart (<code>minimum_quantity: 1</code> with an <code>items</code> matcher), and the action gives one free (<code>gift_item</code> with <code>quantity: 1</code>).<sup><a href="#s2">2</a></sup> Set the rule's <code>apply_once</code> to <code>false</code> and it repeats — buy two, get two. That one pattern, with different conditions and actions, covers most of the offer catalog a store will ever need.</p>
+
+<h3>⑤ Stacking and priority — when many promotions run</h3>
+<p>Three separate controls decide how promotions combine. A rule-level <code>stop</code>: "if you set stop to <code>true</code> on a rule, and it is applied successfully, you will end the evaluation."<sup><a href="#s2">2</a></sup> A promotion-level <code>stop</code>, which "determines if you want to calculate any other promotions after this one."<sup><a href="#s2">2</a></sup> And <code>can_be_used_with_other_promotions</code>, which "when set to false, only apply this promotion if there are no discounts applied already, and stop executing other promotions if this promotion applies successfully."<sup><a href="#s2">2</a></sup> Priority is documented as an ordering concept — "a lower number means higher priority"<sup><a href="#s2">2</a></sup> — though it does not appear as a field in the JSON examples, so treat rule order and the stop flags as the reliable levers.</p>
+
+<h2>Where it surfaces in the API</h2>
+
+<ul>
+<li><strong>Promotions</strong> — <code>POST/GET /v3/promotions</code>; the <code>rules</code>, <code>redemption_type</code>, <code>status</code>, <code>max_uses</code>, <code>customer</code>, and stacking fields all live on this object.<sup><a href="#s1">1</a></sup></li>
+<li><strong>Coupon codes</strong> — <code>POST /v3/promotions/{promotion_id}/codes</code> for a <code>COUPON</code> promotion (Lesson 5).<sup><a href="#s2">2</a></sup></li>
+<li><strong>Result</strong> — the resolved discount appears on the cart's line-item <code>discounts[]</code> and cart-level <code>coupons[]</code> (Lesson 5).<sup><a href="#s2">2</a></sup></li>
+</ul>
+
+<div class="figure">
+<pre><code>// A COUPON promotion: one rule, condition + cart_items action, exclusive stacking
+// POST /v3/promotions
+{
+  "name": "Planeswalker Spark Sale",
+  "redemption_type": "COUPON",
+  "can_be_used_with_other_promotions": false,   // exclusive: don't stack
+  "currency_code": "USD",
+  "status": "ENABLED",
+  "max_uses": 500,
+  "rules": [
+    {
+      "condition": {
+        "cart": { "items": { "products": [129] }, "minimum_quantity": 2 }   // WHEN
+      },
+      "action": {
+        "cart_items": {                                                     // WHAT
+          "discount": { "percentage_amount": "20" },
+          "strategy": "LEAST_EXPENSIVE",     // 20% off the cheapest eligible item
+          "quantity": 1,
+          "items": { "products": [130] }
+        }
+      },
+      "apply_once": true,
+      "stop": true                            // first success ends evaluation
+    }
+  ]
+}</code></pre>
+<p class="cap">Condition + action inside one rule. <code>strategy: LEAST_EXPENSIVE</code> is what makes "off your cheapest item" expressible.</p>
+</div>
+
+<div class="figure">
+<pre><code>// BUY ONE GET ONE FREE — an automatic gift_item promotion
+{
+  "name": "Buy one and get one free",
+  "redemption_type": "AUTOMATIC",
+  "rules": [
+    {
+      "condition": { "cart": { "items": { "products": [130] }, "minimum_quantity": 1 } },
+      "action":    { "gift_item": { "product_id": 130, "quantity": 1 } },
+      "apply_once": false,       // repeats: buy 2 get 2, buy 3 get 3
+      "stop": false
+    }
+  ],
+  "status": "ENABLED"
+}</code></pre>
+<p class="cap">BOGO = a <code>minimum_quantity</code> condition and a <code>gift_item</code> action. <code>apply_once:false</code> makes it repeat.</p>
+</div>
+
+<h2>Why a rule engine</h2>
+
+<p>The condition/action split is what lets one object model an open-ended catalog of offers without a special case per offer. Every promotion a store will run — tiered spend thresholds, brand-targeted deals, BOGO, free shipping to some zones, wholesale fixed prices — is the same shape, just different conditions and actions. The ordered-rules-first-match rule keeps a single promotion's outcome unambiguous, and the three stop/stacking controls extend that determinism across many promotions at once. And because <code>redemption_type</code> sits outside the rules, the exact same engine serves both an always-on automatic sale and a code-gated coupon — which is precisely the unification Lesson 5 pointed at. The engine decides the number; the cart's <code>discounts[]</code> and <code>coupons[]</code> report it.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A promotion is an ordered list of rules, each an action (<code>cart_value</code> / <code>cart_items</code> / <code>gift_item</code> / <code>shipping</code> / <code>fixed_price_set</code>) guarded by a condition (<code>cart</code> with <code>minimum_spend</code>/<code>minimum_quantity</code>/item matchers, composed with <code>and</code>/<code>or</code>/<code>not</code>). Rules run top-down and the <em>first</em> that applies wins; three controls — rule <code>stop</code>, promotion <code>stop</code>, and <code>can_be_used_with_other_promotions</code> — govern stacking across promotions."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Expecting every matching rule in a promotion to apply. It doesn't — the rules array runs until the <em>first</em> applicable rule applies a discount successfully, then the rest are skipped. If you want two effects, that's two rules where the first doesn't <code>stop</code>, or two promotions. The related half: stacking across promotions is governed by three <em>distinct</em> flags (rule-level <code>stop</code>, promotion-level <code>stop</code>, and <code>can_be_used_with_other_promotions</code>), not one — and <code>priority</code>, though documented as "lower = higher," isn't a reliable JSON field, so lean on rule order and the stop flags.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① A promotion has three rules and the cart matches all three. How many apply, and which?</p>
+  <details><summary>show answer</summary>
+  <p class="a">One — the first applicable rule that applies a discount successfully. The rest are skipped. Rules are first-match, not apply-all.</p></details>
+  <p>② Name the two halves of a rule, and the four condition types.</p>
+  <details><summary>show answer</summary>
+  <p class="a">A rule = a <code>condition</code> (when) + an <code>action</code> (what). Condition types: <code>cart</code>, and the boolean wrappers <code>and</code>, <code>or</code>, <code>not</code>.</p></details>
+  <p>③ Which action, with which option, expresses "20% off your single cheapest eligible item"?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>cart_items</code> with <code>strategy: LEAST_EXPENSIVE</code>, <code>quantity: 1</code>, a <code>percentage_amount</code> discount, and an <code>items</code> matcher for eligibility.</p></details>
+  <p>④ Name the three controls that govern how a promotion stacks with others.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Rule-level <code>stop</code>, promotion-level <code>stop</code>, and <code>can_be_used_with_other_promotions</code> (false = exclusive).</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/store-operations/promotions">BigCommerce Developer Center — Promotions overview</a>, plus the Create Promotion API reference for the exact <code>rules</code>/<code>condition</code>/<code>action</code> schema. Together they hold every field name in this lesson.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the <code>fixed_price_set</code> shape, the promotion <code>notifications</code> (upsell/eligible/applied banners), or how <code>customer.group_ids</code> targets a segment? Ask. Next lesson: consignments in full — splitting a cart across addresses, how shipping options are generated and chosen, and how a checkout consignment becomes an order shipment.
+</div>
+
+<div class="course-nav">
+  <span><a href="0005-discounts-landscape.html">← Lesson 5</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-consignments.html"><em>Next: Lesson 7 — consignments →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> <code>rules</code> = "an ordered list of rules to be executed until the first applicable one applies a discount successfully and the rest will be skipped"; the promotion object fields — <a href="https://developer.bigcommerce.com/docs/rest-management/promotions">BigCommerce Developer Center: Promotions (Create Promotion)</a>.<br>
+<span id="s2">2.</span> Condition types (<code>cart</code>/<code>and</code>/<code>or</code>/<code>not</code>, <code>minimum_spend</code>/<code>minimum_quantity</code>/item matchers), action types (<code>cart_value</code>/<code>cart_items</code> with <code>strategy</code>/<code>gift_item</code>/<code>shipping</code>/<code>fixed_price_set</code>), <code>fixed_amount</code>/<code>percentage_amount</code>, <code>apply_once</code>, rule &amp; promotion <code>stop</code>, <code>can_be_used_with_other_promotions</code>, priority — <a href="https://developer.bigcommerce.com/docs/store-operations/promotions">BigCommerce Developer Center: Promotions overview</a>.
+</p>

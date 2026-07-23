@@ -1,0 +1,99 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — How BigCommerce Works Glossary</title>
+
+<p class="eyebrow">How BigCommerce Works · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">The shared vocabulary for this course, in plain language, no ecommerce background assumed. Every lesson uses these terms exactly as defined here, and each definition follows the course's rule — the generic concept first, then how BigCommerce means it. Print it; keep it next to you. Grows as the course does.</p>
+
+<h2>The pipeline objects</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Cart</strong></td><td>The container stage: "a collection of items, prices, discounts, etc." that "does not contain customer-related data." Mutable and disposable — the pre-purchase basket. (Lesson 1)</td></tr>
+  <tr><td><strong>Checkout</strong></td><td>The staging stage: a cart plus a billing address plus one or more consignments. A cart is promoted to a checkout by adding a billing address, and keeps the same ID. (Lesson 1)</td></tr>
+  <tr><td><strong>Order</strong></td><td>The record stage: the durable object minted when an eligible checkout is converted. What fulfillment, refunds, and reporting act on. Created as <code>incomplete</code>. (Lesson 1)</td></tr>
+  <tr><td><strong>Consignment</strong></td><td>"A list of physical products that will travel together to the purchaser," specifying "how those items can and will ship." Contains at least one line item, one address, and (before conversion) a selected shipping option. A shipment-in-waiting. (Lesson 1; full treatment later)</td></tr>
+</table>
+
+<h2>Handoffs &amp; gates</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Billing address</strong></td><td>The customer commitment that promotes a cart to a checkout. The cart→checkout boundary — not payment. (Lesson 1)</td></tr>
+  <tr><td><strong><code>selected_shipping_option</code></strong></td><td>The chosen shipping method on a consignment. A checkout with physical products cannot convert to an order until every consignment has one. The checkout→order gate. (Lesson 1)</td></tr>
+  <tr><td><strong><code>incomplete</code></strong></td><td>An order's status at API creation, before payment. (Lesson 1)</td></tr>
+  <tr><td><strong>Awaiting Fulfillment</strong></td><td>The status an order moves to automatically once payment succeeds. (Lesson 1)</td></tr>
+</table>
+
+<h2>The catalog</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Product</strong></td><td>The primary catalog entity — the marketing-page thing. Carries <code>name</code>, <code>price</code>, categories, and a <code>type</code>. Every product has at least one variant. (Lesson 2)</td></tr>
+  <tr><td><strong>Product type</strong></td><td><code>physical</code> (has weight, ships to customers) or <code>digital</code> (downloadable files or services, no weight). Physical products force a consignment + shipping option at checkout. (Lesson 2)</td></tr>
+  <tr><td><strong>Variant</strong></td><td>"An item as it sits on the shelf in the warehouse" — the saleable unit. Must have a SKU; tracks inventory; can override the product's price/weight/image. (Lesson 2)</td></tr>
+  <tr><td><strong>Base variant</strong></td><td>A product with no options is its own single variant. So "a purchase is a variant" always holds, with no special case. (Lesson 2)</td></tr>
+  <tr><td><strong>Variant option</strong></td><td>A facet whose values combine to build variants — e.g. size (S/M/L) and color (R/G/B). Options auto-generate variants; each combination is a SKU. (Lesson 2)</td></tr>
+  <tr><td><strong>Modifier</strong></td><td>"Any choice a shopper can make that doesn't affect the variant that's selected" — e.g. engraving text, a gift-wrap checkbox. Changes fulfillment, not the SKU; never tracks inventory. Can add cost. (Lesson 2)</td></tr>
+  <tr><td><strong>SKU</strong></td><td>Stock-keeping unit — the code identifying a specific variant, the level at which inventory is counted. (Lesson 2)</td></tr>
+</table>
+
+<h2>Line items</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Line item</strong></td><td>One row of a cart or order: a variant (or a custom item) plus a quantity, with name, price, and chosen options captured at add-time. A snapshot, not a live link to the catalog. (Lesson 3)</td></tr>
+  <tr><td><strong>Line-item types</strong></td><td>A cart's <code>line_items</code> splits rows into <code>physical_items</code>, <code>digital_items</code>, <code>gift_certificates</code>, and <code>custom_items</code>. (Lesson 3)</td></tr>
+  <tr><td><strong>Custom item</strong></td><td>A line item with no catalog link — carries its own <code>sku</code>, <code>name</code>, <code>quantity</code>, <code>list_price</code>; no <code>product_id</code>. For phone orders, one-offs, fees. (Lesson 3)</td></tr>
+  <tr><td><strong><code>option_selections</code></strong></td><td>The array used instead of <code>variant_id</code> when adding a product that has modifiers — encodes both the variant facet choices and the modifier choices together. (Lesson 3)</td></tr>
+  <tr><td><strong>Snapshot</strong></td><td>The principle that a line item (and an order's copied addresses/products) captures data at creation, so later catalog changes never rewrite existing carts or past orders. (Lessons 1, 3)</td></tr>
+</table>
+
+<h2>Pricing</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Price order of operations</strong></td><td>The fixed weighted stack that resolves a price: default → sale → variant → price list → modifiers → customer-group / bulk → discounts / coupons → tax (last). Read top (lowest weight) to bottom. (Lesson 4)</td></tr>
+  <tr><td><strong><code>calculated_price</code></strong></td><td>Read-only resolved shopper price after sale price and adjustment rules — the output of the stack, not "price minus a discount." (Lesson 4)</td></tr>
+  <tr><td><strong>Price list</strong></td><td>A collection of price records. A <strong>price record</strong> is a per-variant, per-currency override (variant_id + price + currency). Missing variants fall back to catalog pricing. (Lesson 4)</td></tr>
+  <tr><td><strong>Price list assignment</strong></td><td>Ties a price list to a customer group and/or sales channel — how one product carries retail and wholesale prices at once. (Lesson 4)</td></tr>
+  <tr><td><strong>Customer group</strong></td><td>A segment of customers; can attach a price list and a group discount. Group discounts do <em>not</em> apply on top of price-list prices. (Lesson 4)</td></tr>
+  <tr><td><strong>Bulk pricing</strong></td><td>Quantity-break pricing (type <code>price</code>/<code>percent</code>/<code>fixed</code> over a quantity band). Skipped for SKUs that have price-list prices. (Lesson 4)</td></tr>
+  <tr><td><strong>Tax-inclusive / exclusive</strong></td><td>Whether a price already contains tax. Surfaced as <code>entered_inclusive</code> plus computed <code>tax_inclusive</code> / <code>tax_exclusive</code>. Tax applies last. (Lesson 4)</td></tr>
+</table>
+
+<h2>Discounts &amp; promotions</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Sale price</strong></td><td>A catalog-level price cut (<code>sale_price</code>), baked into the item and feeding <code>calculated_price</code> before a cart exists. Not a cart-time discount event. (Lessons 4–5)</td></tr>
+  <tr><td><strong>Promotion</strong></td><td>A cart-time discount rule. Fires automatically or via a coupon code, per <code>redemption_type</code>. Owns the discount logic. (Lessons 5–6)</td></tr>
+  <tr><td><strong><code>redemption_type</code></strong></td><td>The field deciding a promotion is <code>AUTOMATIC</code> (no code) or <code>COUPON</code> (a code unlocks it). Immutable after creation. (Lessons 5–6)</td></tr>
+  <tr><td><strong>Two coupon systems</strong></td><td>(1) Promotions coupon code — a bare trigger; discount lives in the promotion. (2) Legacy v2 coupon — self-contained, carries its own <code>type</code> + <code>amount</code>. (Lesson 5)</td></tr>
+  <tr><td><strong>Rule</strong></td><td>One entry of a promotion's ordered <code>rules</code>: an <strong>action</strong> guarded by an optional <strong>condition</strong>. Rules run top-down; the first that applies a discount wins, the rest are skipped. (Lesson 6)</td></tr>
+  <tr><td><strong>Condition</strong></td><td>The "when" of a rule: a <code>cart</code> condition (<code>minimum_spend</code>/<code>minimum_quantity</code>/item matchers) composed with <code>and</code>/<code>or</code>/<code>not</code>. (Lesson 6)</td></tr>
+  <tr><td><strong>Action</strong></td><td>The "what" of a rule: <code>cart_value</code>, <code>cart_items</code> (with <code>strategy</code>), <code>gift_item</code>, <code>shipping</code>, or <code>fixed_price_set</code>; amount as <code>fixed_amount</code> or <code>percentage_amount</code>. (Lesson 6)</td></tr>
+</table>
+
+<h2>Fulfillment &amp; the order</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong><code>available_shipping_options</code></strong></td><td>Server-generated fulfillment options for a consignment, computed from the destination address and item weight. Returned only when explicitly included. (Lesson 7)</td></tr>
+  <tr><td><strong>Pickup consignment (BOPIS)</strong></td><td>A consignment fulfilled by in-store pickup — a <code>pickupOption</code> (location) plus line items, instead of an address + shipping option. (Lesson 7)</td></tr>
+  <tr><td><strong>Two kinds of consignment update</strong></td><td>(1) select a shipping option; (2) change address / line items. Never both in one call — changing the address regenerates the options. (Lesson 7)</td></tr>
+  <tr><td><strong><code>consignment_structure=object</code></strong></td><td>Query param for order consignments returning the supported object structure (<code>shipping</code>/<code>pickups</code>/<code>downloads</code>/<code>email</code>). Legacy array form deprecates 1 Feb 2026. (Lessons 7–8)</td></tr>
+  <tr><td><strong>Order status / <code>status_id</code></strong></td><td>One of 15 lifecycle states (string + fixed numeric id). Payment transitions auto (Awaiting Payment → Awaiting Fulfillment); fulfillment/refunds are manual; status doesn't auto-revert. (Lesson 8)</td></tr>
+  <tr><td><strong>Shipment</strong></td><td>The actual dispatch record (tracking number, carrier, items). Distinct from a consignment (the plan); partial shipments drive Partially Shipped → Shipped. (Lesson 8)</td></tr>
+  <tr><td><strong>Sub-resource</strong></td><td>Order data returned as a <code>{url, resource}</code> pointer you expand: <code>products</code>, <code>shipping_addresses</code>, <code>consignments</code>, <code>coupons</code>, <code>fees</code>. (Lesson 8)</td></tr>
+</table>
+
+<h2>The APIs</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>REST Management API</strong></td><td>Server-side, store-wide API (snake_case). Owns authoritative catalog, pricing, promotions, and order data. Orders are a <strong>v2</strong> API; catalog/pricing/promotions are <strong>v3</strong>. (Lessons 1, 4, 8)</td></tr>
+  <tr><td><strong>REST Storefront API</strong></td><td>Customer-scoped, client-side API (camelCase) for a shopper's own session — the same cart/checkout/consignment objects, accessed as the current customer. (Lesson 1)</td></tr>
+  <tr><td><strong>GraphQL Storefront API</strong></td><td>Graph access to storefront cart and checkout data alongside catalog data; useful for headless storefronts. (Lesson 1)</td></tr>
+  <tr><td><strong>camelCase vs snake_case</strong></td><td>Storefront API returns camelCase (<code>billingAddress</code>); Management API returns snake_case (<code>billing_address</code>). Same objects, different casing. (Lessons 1, 7)</td></tr>
+</table>

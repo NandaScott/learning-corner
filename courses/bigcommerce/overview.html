@@ -1,0 +1,87 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>How BigCommerce Works — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>How BigCommerce Works</h1>
+<p class="lede">Domain fluency in ecommerce as BigCommerce actually implements it. Each lesson takes one concept the same way: the plain generic idea, then how BigCommerce models it, then where that data surfaces in the API — with a scrubbed example object. Built to answer "how does BigCommerce work?" cold. Sourced from BigCommerce's own documentation.</p>
+
+<div class="home-group">
+  <p class="label">Part 1 · The pipeline</p>
+  <p class="blurb">The map first — the three objects a purchase moves through.</p>
+
+  <a class="lesson-card" href="lessons/0001-cart-checkout-order-pipeline.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>The cart → checkout → order pipeline</strong><span>Three objects, not one. A cart (items, no customer) becomes a checkout by adding a billing address, and converts to an order once every consignment has a shipping option. <code>incomplete</code> → <code>Awaiting Fulfillment</code>.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 2 · The catalog &amp; the cart</p>
+  <p class="blurb">What a purchasable thing is, how it enters a cart, and what it costs.</p>
+
+  <a class="lesson-card" href="lessons/0002-the-catalog-products-and-variants.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>The catalog: products &amp; variants</strong><span>Product vs variant vs option vs modifier. Variant options generate SKUs and track inventory; modifiers change fulfillment without touching the SKU. Every product has a base variant.</span></span>
+    <span class="arrow">→</span>
+  </a>
+
+  <a class="lesson-card" href="lessons/0003-line-items.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Line items</strong><span>The frozen join between catalog and pipeline. Four types; name a variant by <code>variant_id</code> or by <code>option_selections</code> when modifiers apply; the row captures name/price/options as a snapshot, not a live link.</span></span>
+    <span class="arrow">→</span>
+  </a>
+
+  <a class="lesson-card" href="lessons/0004-pricing.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Pricing</strong><span>Price is an ordered override stack, not a field: default → sale → variant → price list → customer-group / bulk → modifiers → tax. <code>calculated_price</code> is the read-only result; price lists are variant-level and short-circuit later layers.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 3 · Discounts</p>
+  <p class="blurb">The four machines behind one word, then the engine that runs two of them.</p>
+
+  <a class="lesson-card" href="lessons/0005-discounts-landscape.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>The discounts landscape</strong><span>Sale price vs automatic promotion vs coupon — on three axes (catalog/cart, coded/not, which object). Automatic vs coupon is one field. And BigCommerce runs two separate coupon systems.</span></span>
+    <span class="arrow">→</span>
+  </a>
+
+  <a class="lesson-card" href="lessons/0006-promotions-rule-engine.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>The promotions rule engine</strong><span>Ordered <code>rules</code>, each an action guarded by a condition. Conditions (<code>cart</code>/<code>and</code>/<code>or</code>/<code>not</code>), actions (<code>cart_value</code>/<code>cart_items</code>/<code>gift_item</code>/<code>shipping</code>/<code>fixed_price_set</code>), BOGO, and how stacking resolves. First match wins.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 4 · Fulfillment &amp; the record</p>
+  <p class="blurb">How the order ships, and the durable object it all comes to rest in.</p>
+
+  <a class="lesson-card" href="lessons/0007-consignments.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Consignments</strong><span>The checkout's fulfillment unit in full: splitting a cart across addresses, <code>available</code> vs <code>selected</code> shipping options, pickup/BOPIS, the two-kinds-of-update rule, and the order-side object structure.</span></span>
+    <span class="arrow">→</span>
+  </a>
+
+  <a class="lesson-card" href="lessons/0008-the-order-object.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>The order object</strong><span>The full 15-status lifecycle (auto payment transitions, manual fulfillment/refunds, no auto-revert), what the order carries, the two ways it's born, and how a consignment becomes a tracked shipment. The pipeline, whole.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 5 · Review &amp; reference</p>
+  <p class="blurb">Where "I followed it" turns into "I can explain it cold."</p>
+
+  <a class="quiz-cta" href="lessons/0009-interleaved-review.html">
+    <span class="icon">🧠</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>24 questions across all 8 lessons, shuffled, with near-miss distractors. Run it cold, then again days later.</span></span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/glossary.html">📖 Glossary — plain-language canonical vocabulary</a>
+  </div>
+</div>

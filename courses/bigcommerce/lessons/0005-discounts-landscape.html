@@ -1,0 +1,154 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5: The discounts landscape</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 5</p>
+<h1>The discounts landscape</h1>
+<p class="lede">"Discount" is one word hiding four different machines. Lesson 4 already met one of them — the catalog sale price. This lesson maps the whole terrain: sale price vs automatic promotion vs coupon, and the fact that BigCommerce runs <em>two separate coupon systems</em>. The goal is a taxonomy sharp enough that you always know which object and which API you are talking about.</p>
+
+<h2>The concept</h2>
+
+<p>Shoppers experience every price cut as "a discount," but the systems behind them differ on three axes that decide how you build and reason about them: <strong>where</strong> the cut is applied (baked into the catalog, or applied to the cart), <strong>whether a code</strong> is required, and <strong>which object</strong> owns the logic. Blur those axes and you double-count savings, or reach for the wrong API.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>Four kinds, along those axes:</p>
+
+<div class="figure">
+<pre><code>  KIND                     applied where     needs code?   owned by
+  ─────────────────────────────────────────────────────────────────────────
+  1  Sale price            CATALOG (item)    no            Catalog API (sale_price)
+  2  Automatic promotion   CART              no            Promotions API (AUTOMATIC)
+  3  Coupon promotion      CART / checkout   YES           Promotions API (COUPON) + code
+  4  Legacy v2 coupon      CART / checkout   YES           Coupons API (/v2/coupons)
+
+                    ▲ catalog          ▲──────── cart layer ────────▲
+              price is already cut     discount decided when the cart
+              before a cart exists     is evaluated (Lesson 6's engine)
+
+  Two of these carry a CODE — and they come from two DIFFERENT systems (see step ④).</code></pre>
+<p class="cap">Four machines. The split that matters: catalog (kind 1) vs cart (kinds 2–4), and the two separate code-bearing systems.</p>
+</div>
+
+<h3>① Sale price — a catalog fact, not a discount event</h3>
+<p>The first "discount" isn't an event at all. A product or variant <code>sale_price</code> "will be used instead of value in the price field when calculating the product's cost,"<sup><a href="#s1">1</a></sup> and it feeds <code>calculated_price</code> from Lesson 4 <em>before any cart exists</em>. No code, no rule, no promotion object — it is catalog data. Treat it as a lower price, not as a discount applied to an order.</p>
+
+<h3>② Automatic promotions — cart rules with no code</h3>
+<p>The remaining three act on the cart. A <strong>promotion</strong> gives "discounts based on whether the shopper has met specific criteria such as ordering a certain amount, purchasing certain brands, or being a repeat customer."<sup><a href="#s2">2</a></sup> An <em>automatic</em> promotion needs no code: "the shopper does not need to satisfy any special conditions, and the promotion will apply automatically."<sup><a href="#s2">2</a></sup> It fires the moment the cart matches its rules.</p>
+
+<h3>③ Coupon promotions — the same engine, gated by a code</h3>
+<p>The difference between automatic and coupon-gated is a <em>single field</em> on the promotion: <code>redemption_type</code>, either <code>AUTOMATIC</code> or <code>COUPON</code>.<sup><a href="#s2">2</a></sup> For a coupon promotion you additionally "send a request to the Create a coupon code endpoint,"<sup><a href="#s2">2</a></sup> and — the key mental move — that code carries <em>no discount logic</em>. The discount lives in the promotion's action (Lesson 6); the coupon code is only the key that unlocks it. One field flips the same rule engine between "applies on its own" and "applies when this code is entered."</p>
+
+<h3>④ Two coupon systems — the trap in the terrain</h3>
+<p>Here is the fact that trips people up: BigCommerce has <strong>two</strong> coupon systems. The modern one is the Promotions coupon code above — a thin object of <code>code</code> plus usage counters, whose discount lives in the parent promotion. The older one is the standalone <strong>v2 Coupons API</strong>, where the coupon object <em>itself</em> carries the discount: a <code>type</code> (such as <code>per_total_discount</code>) and an <code>amount</code>.<sup><a href="#s3">3</a></sup> Same shopper-facing idea, "enter a code, get money off," but two different objects in two different APIs. When you see "coupon," your first question must be: which system?</p>
+
+<h3>⑤ How discounts surface on the cart and order</h3>
+<p>Because the kinds differ, they show up in different places, and BigCommerce keeps them deliberately separate. On the cart, promotion/order discounts land in a line item's <code>discounts</code> array, while coupons land in the cart-level <code>coupons</code> array.<sup><a href="#s4">4</a></sup> And the cart's <code>discountAmount</code> is narrower than it looks — it is "order based discounted amount only — Coupon discounts and product based discounts are excluded."<sup><a href="#s4">4</a></sup> On the finished order, redeemed coupons appear in the <code>coupons</code> sub-resource, each with its <code>code</code>, <code>amount</code>, and a <code>type</code>.<sup><a href="#s5">5</a></sup></p>
+
+<h2>Where it surfaces in the API</h2>
+
+<ul>
+<li><strong>Sale price</strong> — <code>sale_price</code> on <code>/v3/catalog/products</code> and variants (Lesson 4).<sup><a href="#s1">1</a></sup></li>
+<li><strong>Promotions</strong> (automatic &amp; coupon) — <code>/v3/promotions</code>; coupon codes at <code>POST /v3/promotions/{id}/codes</code>.<sup><a href="#s2">2</a></sup></li>
+<li><strong>Legacy coupons</strong> — the v2 <code>/v2/coupons</code> Coupons API, a separate system.<sup><a href="#s3">3</a></sup></li>
+<li><strong>On the cart / order</strong> — cart line-item <code>discounts[]</code> and cart-level <code>coupons[]</code>; order <code>/orders/{id}/coupons</code>.<sup><a href="#s4">4</a></sup></li>
+</ul>
+
+<p>The centerpiece contrast — the same "code for money off," from the two systems:</p>
+
+<div class="figure">
+<pre><code>// LEGACY v2 COUPON — the coupon carries its OWN discount logic
+// GET /v2/coupons/{id}
+{
+  "id": 1,
+  "name": "$5 off",
+  "code": "S2549JM0Y",
+  "type": "per_total_discount",      // ← the discount lives HERE
+  "amount": "5.0000",                // ← and HERE
+  "min_purchase": "0.0000",
+  "applies_to": { "entity": "categories", "ids": [0] },
+  "max_uses": 0,
+  "enabled": true
+}
+
+// PROMOTIONS COUPON CODE — a thin trigger; discount lives in the PROMOTION
+// POST /v3/promotions/{promotion_id}/codes   → returns:
+{
+  "data": {
+    "id": 1,
+    "code": "SPARK20",               // ← just the key…
+    "current_uses": 0,
+    "max_uses": 200,
+    "max_uses_per_customer": 1
+  },                                 // …no type, no amount: the promotion holds those
+  "meta": {}
+}</code></pre>
+<p class="cap">Two coupons, two systems. The v2 coupon is self-contained; the Promotions code is a bare key to a promotion's rule.</p>
+</div>
+
+<div class="figure">
+<pre><code>// ON THE FINISHED ORDER — GET /orders/{id}/coupons
+[
+  { "id": 3, "coupon_id": 1, "order_id": 120,
+    "code": "S2549JM0Y",
+    "amount": 5,        // "$3 returns as 3; 5% returns as 5" — read type to interpret
+    "type": 2,          // integer enum here (2 = per_total_discount)
+    "discount": 5 }
+]</code></pre>
+<p class="cap">Redeemed coupons on the order. Note <code>amount</code> is ambiguous without <code>type</code> — a percent and a dollar amount can print identically.</p>
+</div>
+
+<h2>Why the taxonomy matters</h2>
+
+<p>The four kinds exist because the cuts happen at genuinely different times and places. A sale price must be true before a cart exists — it is what the storefront displays and what a line item freezes at add-time (Lessons 3–4), so it cannot be a cart rule. Automatic and coupon promotions are cart-time decisions, computed when the cart is evaluated, which is why they need the rule engine of the next lesson. And the two coupon systems are simply history: the flexible modern engine lives in Promotions, with the coupon reduced to a trigger, while the older self-contained coupon persists for compatibility. Keeping them straight is what lets you read a cart's totals correctly — <code>discountAmount</code>, <code>discounts[]</code>, and <code>coupons[]</code> are three different numbers, on purpose.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Four kinds of discount on three axes (catalog vs cart, coded vs not, which object): catalog <code>sale_price</code>; automatic promotions; coupon promotions; and legacy v2 coupons. Automatic vs coupon is one field, <code>redemption_type</code>. And there are two coupon systems — the modern Promotions code is a bare trigger whose discount lives in the promotion; the legacy v2 coupon carries its own <code>type</code> and <code>amount</code>."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Collapsing "discount" into one idea, in two specific ways. First, assuming there is one coupon concept — there are two systems (Promotions coupon codes vs the v2 Coupons API), and the code's meaning is opposite in each: a trigger in one, the whole discount in the other. Second, reading a cart's <code>discountAmount</code> as total savings — it is order-based discounts only and <em>excludes</em> coupon and product discounts, which live in <code>coupons[]</code> and in item pricing. Both mistakes make the math wrong.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Which of the four kinds is applied in the catalog, before a cart exists, and needs no code?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The product/variant <code>sale_price</code>. It feeds <code>calculated_price</code> and is catalog data, not a cart-time discount event.</p></details>
+  <p>② What single field decides whether a promotion is automatic or requires a coupon code?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>redemption_type</code> — <code>AUTOMATIC</code> (no code) or <code>COUPON</code> (a code created at <code>/promotions/{id}/codes</code> unlocks it). It's immutable after creation.</p></details>
+  <p>③ In the modern Promotions system, where does a coupon code's discount logic live — on the code, or somewhere else?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Not on the code. The code is a bare trigger (code + usage counters); the discount logic lives in the parent promotion's action. Contrast the legacy v2 coupon, which carries its own <code>type</code>/<code>amount</code>.</p></details>
+  <p>④ A cart's <code>discountAmount</code> is $10. Is that the shopper's total savings? Why or why not?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. <code>discountAmount</code> is order-based discounts only — it excludes coupon discounts (in <code>coupons[]</code>) and product/catalog discounts (in item pricing). Total savings can be higher.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/store-operations/promotions">BigCommerce Developer Center — Promotions overview</a>. It defines a promotion, the <code>AUTOMATIC</code> vs <code>COUPON</code> redemption types, and how a coupon code attaches to a promotion — the spine of this landscape. The v2 Coupons API reference documents the older, self-contained coupon for contrast.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the full v2 coupon <code>type</code> enum, or when you'd still reach for the legacy Coupons API over Promotions? Ask. Next lesson: inside the promotions rule engine — conditions, actions, BOGO, and how stacking and priority actually resolve.
+</div>
+
+<div class="course-nav">
+  <span><a href="0004-pricing.html">← Lesson 4</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-promotions-rule-engine.html"><em>Next: Lesson 6 — the promotions rule engine →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> <code>sale_price</code> used instead of <code>price</code> when set — <a href="https://developer.bigcommerce.com/docs/rest-catalog/products">BigCommerce Developer Center: Catalog Products (create-product schema)</a>.<br>
+<span id="s2">2.</span> Promotion definition, <code>AUTOMATIC</code> vs <code>COUPON</code> <code>redemption_type</code>, automatic applies with no code, coupon-code creation endpoint — <a href="https://developer.bigcommerce.com/docs/store-operations/promotions">BigCommerce Developer Center: Promotions overview</a>.<br>
+<span id="s3">3.</span> Legacy self-contained v2 coupon (carries <code>type</code> + <code>amount</code> + <code>applies_to</code>) — <a href="https://developer.bigcommerce.com/docs/rest-content/marketing/coupons">BigCommerce Developer Center: Coupons (v2)</a>.<br>
+<span id="s4">4.</span> Cart line-item <code>discounts[]</code> vs cart-level <code>coupons[]</code>; <code>discountAmount</code> is "order based discounted amount only — Coupon discounts and product based discounts are excluded" — <a href="https://developer.bigcommerce.com/docs/rest-storefront/carts">BigCommerce Developer Center: Storefront Carts (Get Cart)</a>.<br>
+<span id="s5">5.</span> Order <code>coupons</code> sub-resource (<code>code</code>, <code>amount</code>, integer <code>type</code>, <code>discount</code>); "$3 returns as 3 while 5% will return as 5" — <a href="https://developer.bigcommerce.com/docs/rest-management/orders/order-coupons">BigCommerce Developer Center: Order Coupons</a>.
+</p>

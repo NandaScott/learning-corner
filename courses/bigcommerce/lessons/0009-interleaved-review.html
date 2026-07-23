@@ -1,0 +1,274 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 9: Interleaved review</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 9 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading feels like learning but mostly builds <em>fluency</em> — the illusion of mastery. Retrieving from memory, cold, with topics shuffled, is what builds <em>storage strength</em>.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all eight lessons and <strong>shuffled</strong> every run, by design. Interleaving (mixing topics rather than reviewing one lesson at a time) is harder, and that difficulty is what makes it stick.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <em>near-miss</em>: the shallow version that sounds right. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em> and run it again in a few days — that spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag it — it's worth re-explaining a different way, or drilling just that concept. Clearing this cold, two sessions apart, means you can trace a purchase from catalog to shipped order — carts, line items, pricing, discounts, consignments, and status — without notes.
+</div>
+
+<div class="course-nav">
+  <span><a href="0008-the-order-object.html">← Lesson 8</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties — Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// 4 options each. options[0] = correct; options[1] = deliberate near-miss (right idea,
+// subtly wrong). The engine shuffles display order, so position never leaks the answer.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "What single action promotes a cart to a checkout?",
+    options: [
+      "Adding a billing address",
+      "The shopper submitting payment",
+      "Selecting a shipping option",
+      "Assigning a customer to the cart"
+    ], answer: 0,
+    explain: "Commitment, not money: adding a billing address is the cart→checkout boundary. Payment is later, and shipping selection is the checkout→order gate — the near-miss. (<a href='0001-cart-checkout-order-pipeline.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "A checkout with physical products can't become an order until…",
+    options: [
+      "every consignment has a selected_shipping_option",
+      "payment has been captured successfully",
+      "the cart's customer_id is set to a real customer",
+      "all line items are marked in stock"
+    ], answer: 0,
+    explain: "The conversion gate is resolved shipping on every consignment. Payment isn't the gate — an order is created before payment confirms. (<a href='0001-cart-checkout-order-pipeline.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "The cart and its checkout relate how?",
+    options: [
+      "Two views of one record — the checkout uses the same id as the cart",
+      "The checkout is a fresh object copied from the cart with a new id",
+      "The cart is deleted once the checkout is created",
+      "They are unrelated objects joined only at order time"
+    ], answer: 0,
+    explain: "checkoutId corresponds to the cart id — same underlying record. Only the order is a new object minted at conversion. (<a href='0001-cart-checkout-order-pipeline.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A shopper types text to be engraved on an item. Variant option or modifier?",
+    options: [
+      "Modifier — it changes fulfillment, not the SKU, and tracks no inventory",
+      "Variant option — it produces a new SKU for the engraved item",
+      "Neither — engraving is a separate custom product",
+      "Both — it creates a variant and a modifier together"
+    ], answer: 0,
+    explain: "Engraving doesn't pick a different item off the shelf, so it's a modifier. Size/color would be variant options (new SKUs). (<a href='0002-the-catalog-products-and-variants.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A plain product with no options has how many variants?",
+    options: [
+      "One — itself, called the base variant",
+      "Zero — variants exist only when options are defined",
+      "One per category it belongs to",
+      "It depends on its inventory_tracking setting"
+    ], answer: 0,
+    explain: "Every product has at least one variant; a plain one is its own base variant. That's why 'a purchase is a variant' always holds. (<a href='0002-the-catalog-products-and-variants.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Inventory (inventory_level) is tracked at which level?",
+    options: [
+      "The variant — each SKU is counted separately",
+      "The product — one count across all its variants",
+      "The category the product sits in",
+      "The modifier option the shopper selected"
+    ], answer: 0,
+    explain: "Variants are 'items on the shelf', so stock is counted per variant/SKU. Modifiers never track inventory — the near-miss direction. (<a href='0002-the-catalog-products-and-variants.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A merchant raises a product's catalog price after it's in a shopper's cart. The line item…",
+    options: [
+      "keeps its captured price — it's a snapshot, not a live link",
+      "updates to the new price on the cart's next recalculation",
+      "is removed and must be re-added at the new price",
+      "keeps the old price only until checkout begins"
+    ], answer: 0,
+    explain: "A line item captures name/price/options at add-time. It holds a copy, never a pointer to the catalog. (<a href='0003-line-items.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Adding a product that has modifiers, you should…",
+    options: [
+      "omit variant_id and send option_selections for the variant and modifier choices",
+      "send variant_id plus a separate modifiers array",
+      "send only variant_id — modifiers are applied automatically",
+      "create a custom_item so the modifier text is captured"
+    ], answer: 0,
+    explain: "A SKU alone can't carry modifier picks. option_selections encodes both the variant and the modifiers; variant_id is omitted. (<a href='0003-line-items.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Which field does a custom_item lack that a catalog line item has?",
+    options: [
+      "product_id — a custom item has no catalog link",
+      "quantity — custom items are always quantity one",
+      "list_price — custom items inherit the cart's currency default",
+      "name — custom items display a generic label"
+    ], answer: 0,
+    explain: "A custom item carries its own sku/name/quantity/list_price but no product_id (or variant_id) — pure snapshot, no catalog behind it. (<a href='0003-line-items.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "What is calculated_price?",
+    options: [
+      "A read-only resolved shopper price after sale price and adjustment rules",
+      "The product price minus the current cart discount",
+      "The variant price you set for a specific customer group",
+      "The list price with tax always included"
+    ], answer: 0,
+    explain: "It's the computed output of the override stack, not something you set and not 'price minus a discount'. (<a href='0004-pricing.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "A price list sets prices at which level?",
+    options: [
+      "Variant — a price record targets a variant_id; missing variants fall back to catalog pricing",
+      "Product — one override that cascades to all its variants",
+      "Category — every product in the category shares the price",
+      "Customer group — the group carries the price directly"
+    ], answer: 0,
+    explain: "Price records are variant-level, per currency. A group or channel is how a list is assigned, not where the price lives. (<a href='0004-pricing.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "A SKU has a price-list price. Do product bulk-pricing breaks and customer-group discounts still apply on top?",
+    options: [
+      "No — price-list prices exclude that SKU from both",
+      "Yes — all discount layers stack additively",
+      "Only bulk pricing applies; group discounts still do",
+      "Only group discounts apply; bulk pricing still does"
+    ], answer: 0,
+    explain: "A price-list price short-circuits two later layers. Assuming every layer stacks overstates the savings — the classic near-miss. (<a href='0004-pricing.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "In the modern Promotions system, where does a coupon code's discount logic live?",
+    options: [
+      "In the parent promotion's action — the code is just a trigger",
+      "On the coupon code object itself, as type and amount",
+      "On the cart, computed when the code is entered",
+      "Split between the code and the promotion"
+    ], answer: 0,
+    explain: "A Promotions coupon code is a bare key (code + usage counters). The legacy v2 coupon is the one that carries its own type/amount — the near-miss. (<a href='0005-discounts-landscape.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Automatic vs coupon-gated promotion is decided by…",
+    options: [
+      "redemption_type — AUTOMATIC or COUPON",
+      "whether the promotion has any coupon codes attached",
+      "the promotion's status field",
+      "whether a condition is present on the rule"
+    ], answer: 0,
+    explain: "One immutable field, redemption_type. Attaching codes follows from choosing COUPON; it isn't what defines the type. (<a href='0005-discounts-landscape.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "A cart's discountAmount is $10. Is that the shopper's total savings?",
+    options: [
+      "No — it's order-based discounts only; coupon and product discounts are excluded",
+      "Yes — it sums every discount applied to the cart",
+      "Yes — but only before tax is applied",
+      "No — it excludes shipping discounts only"
+    ], answer: 0,
+    explain: "discountAmount is deliberately narrow. Coupons live in coupons[], catalog cuts in item pricing — three separate numbers. (<a href='0005-discounts-landscape.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A promotion's cart matches all three of its rules. How many apply?",
+    options: [
+      "One — the first applicable rule; the rest are skipped",
+      "All three — every matching rule applies in turn",
+      "The one with the highest priority number",
+      "None until you resolve the conflict manually"
+    ], answer: 0,
+    explain: "Rules run top-down until the first applies a discount successfully, then stop. First-match, not apply-all. (<a href='0006-promotions-rule-engine.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Which action + option expresses '20% off your single cheapest eligible item'?",
+    options: [
+      "cart_items with strategy LEAST_EXPENSIVE, quantity 1, a percentage_amount",
+      "cart_value with a percentage_amount over the whole cart",
+      "gift_item giving the cheapest item free",
+      "fixed_price_set pinning the cheapest item's price"
+    ], answer: 0,
+    explain: "cart_items carries the strategy (LEAST/MOST_EXPENSIVE) and quantity. cart_value discounts the whole cart, not one item — the near-miss. (<a href='0006-promotions-rule-engine.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "The two halves of a promotion rule are…",
+    options: [
+      "a condition (when) and an action (what)",
+      "a trigger (the coupon code) and a discount",
+      "a start_date and an end_date window",
+      "a customer group and a channel"
+    ], answer: 0,
+    explain: "Condition + action is the rule. Conditions use cart/and/or/not; actions are cart_value/cart_items/gift_item/shipping/fixed_price_set. (<a href='0006-promotions-rule-engine.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Where do a consignment's available_shipping_options come from?",
+    options: [
+      "The server generates them from the destination address and item weight",
+      "You supply them when creating the consignment",
+      "They're copied from the store's global shipping settings",
+      "They come from the cart's shipping preferences"
+    ], answer: 0,
+    explain: "They're computed once an address + items exist, and returned only if you include them. Not caller-supplied — the near-miss. (<a href='0007-consignments.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Why can't you change a consignment's address and select its shipping option in one call?",
+    options: [
+      "Changing the address regenerates the options — you'd pick from a stale menu",
+      "The API rate-limits multi-field consignment updates",
+      "Address changes require a separate authorization step",
+      "Selecting an option locks the address permanently"
+    ], answer: 0,
+    explain: "Two distinct update kinds, by design: address/line-items vs option selection. Address changes alter available options, so they can't be combined. (<a href='0007-consignments.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "A cart ships to two addresses. Minimum consignments?",
+    options: [
+      "Two — at least one consignment per address",
+      "One — a single consignment lists both addresses",
+      "Two per address, one for billing and one for shipping",
+      "It depends on the number of line items"
+    ], answer: 0,
+    explain: "At least one consignment per address (more allowed). Items are allocated to each via its line_items list. (<a href='0007-consignments.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Which order transition happens automatically on payment confirmation?",
+    options: [
+      "Awaiting Payment → Awaiting Fulfillment",
+      "Awaiting Fulfillment → Shipped",
+      "Incomplete → Completed",
+      "Awaiting Fulfillment → Awaiting Pickup"
+    ], answer: 0,
+    explain: "Payment confirming auto-advances 7 → 11. Shipping transitions are seller actions, not automatic — the near-miss. (<a href='0008-the-order-object.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "You create an order via the V2 API. The customer's order-confirmation email…",
+    options: [
+      "is NOT sent — create and convert a cart if you need it",
+      "is sent automatically like any storefront order",
+      "is sent only if you set is_email_opt_in",
+      "is queued until the order reaches Awaiting Fulfillment"
+    ], answer: 0,
+    explain: "V2 order creation skips the order email. The email path is creating a cart and converting it. (<a href='0008-the-order-object.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "A consignment and a shipment differ how?",
+    options: [
+      "Consignment is the planned grouping; shipment is the actual dispatch with tracking",
+      "They're the same object under two names",
+      "A consignment carries tracking; a shipment is the plan",
+      "A shipment exists only for pickup orders"
+    ], answer: 0,
+    explain: "The consignment plans items + destination + method at checkout; the shipment records the real dispatch and drives Partially Shipped → Shipped. (<a href='0008-the-order-object.html'>L8</a>)" }
+]);
+</script>

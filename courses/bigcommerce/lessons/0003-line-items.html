@@ -1,0 +1,152 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3: Line items</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 3</p>
+<h1>Line items</h1>
+<p class="lede">Lesson 1 put items in a cart; Lesson 2 said a purchasable thing is a variant. This lesson is the join between them: the <strong>line item</strong>, one row on the receipt. It is where a catalog variant plus its modifier choices becomes a concrete "2 × this, at this price" — and, crucially, where that becomes a frozen record rather than a live link back to the catalog.</p>
+
+<h2>The concept</h2>
+
+<p>A line item is one row of an order: a specific thing, a quantity, and a price. Every cart and every order is, at bottom, a list of these rows plus some totals.</p>
+
+<p>The subtle part is time. The catalog changes — prices move, products get renamed, items are discontinued. A line item must not move with it. If a shopper adds a headphone at $99 and the merchant raises the catalog price to $119 an hour later, the cart still owes $99. And a placed order must read the same next year as it did the day it shipped. So a line item cannot be a live pointer into the catalog; it has to <strong>capture</strong> what was true when the row was created. A line item is a snapshot.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>BigCommerce sorts a cart's rows into typed buckets, builds each row from a catalog variant (or from nothing, for a one-off), and freezes the details onto the row. Three things to hold:</p>
+
+<div class="figure">
+<pre><code>   CART.line_items
+   ├─ physical_items[]     ← variants with type "physical" (ship; need a consignment)
+   ├─ digital_items[]      ← variants with type "digital"  (no shipping)
+   ├─ gift_certificates[]  ← a stored-value certificate, not a catalog product
+   └─ custom_items[]       ← a row with NO catalog link (name + price typed in)
+
+   Building one physical row from the catalog:
+
+     product_id  ─┬─ + variant_id            → pick the SKU directly
+                  └─ + option_selections[]   → when the product has MODIFIERS
+                                               (encodes the variant AND the
+                                                modifier choices together)
+                          │
+                          ▼
+     the row captures name, sku, price, chosen options  ── frozen ──▶ snapshot</code></pre>
+<p class="cap">Rows are typed by kind; each is built from a variant (or typed in), then its details are frozen onto the row.</p>
+</div>
+
+<h3>① The four line-item types</h3>
+<p>A cart's <code>line_items</code> object splits rows into four arrays by kind: <code>physical_items</code>, <code>digital_items</code>, <code>gift_certificates</code>, and <code>custom_items</code>.<sup><a href="#s1">1</a></sup> The first two come straight from Lesson 2's product <code>type</code> — a physical variant lands in <code>physical_items</code> and is what forces a consignment and shipping option back in Lesson 1; a digital variant lands in <code>digital_items</code> and skips shipping entirely. Gift certificates are stored value, not a catalog product. Custom items are the escape hatch, below.</p>
+
+<h3>② How a catalog product becomes a row</h3>
+<p>Adding a catalog row needs a <code>product_id</code> and a <code>quantity</code>. To say <em>which</em> variant, there are two mutually exclusive ways, and this is the part people get wrong. If the product is a plain variant pick, send its <code>variant_id</code>. But "when a product has modifiers, omit the <code>variant_id</code> and instead use the <code>option_selections</code> array to describe both the <strong>variant</strong> and the <strong>modifier</strong> selections."<sup><a href="#s2">2</a></sup> That is the payoff of Lesson 2's split: variant options and modifiers are different objects, so a row that involves modifiers cannot be named by a SKU alone — <code>option_selections</code> is what carries the engraving text or the insurance checkbox alongside the size-and-color choice.</p>
+
+<h3>③ Custom items — a row with no catalog behind it</h3>
+<p>Sometimes the thing sold is not in the catalog: a phone order, a one-off, a fee. A custom item is a line item built from typed-in values — it "is not added to the catalog" and requires <code>sku</code>, <code>name</code>, <code>quantity</code>, and <code>list_price</code>, with no <code>product_id</code> at all.<sup><a href="#s2">2</a></sup> (An <code>image_url</code> is accepted but does not render on the storefront.<sup><a href="#s2">2</a></sup>) A custom item is the clearest proof of the snapshot idea: it is <em>all</em> snapshot and no catalog link, and the rest of the pipeline treats it like any other row.</p>
+
+<h3>④ The snapshot — why the row is frozen</h3>
+<p>Three facts in the model show the row captures rather than links. First, when adding a catalog row you may override <code>name</code> and <code>list_price</code> right on the line<sup><a href="#s2">2</a></sup> — a live pointer to the catalog could not allow that. Second, custom items carry full name and price with no catalog reference at all. Third, recall from Lesson 1 that an order exposes its own <code>/orders/{id}/products</code> sub-resource, separate from the catalog: the order keeps its <em>own</em> copy of every row. Change the catalog price tomorrow and existing carts and orders are untouched, because they never held a pointer — they held a copy.</p>
+
+<h2>Where it surfaces in the API</h2>
+
+<p>Rows live inside the cart's <code>line_items</code> object (Lesson 1's cart example), are created through the cart's items endpoint, and persist onto the order as the <code>/products</code> sub-resource.</p>
+
+<ul>
+<li><strong>Add rows</strong> — <code>POST /v3/carts/{cartId}/items</code>, with a <code>line_items</code> array (catalog rows) and/or a <code>custom_items</code> array.<sup><a href="#s2">2</a></sup></li>
+<li><strong>Read rows</strong> — they come back inside the cart's <code>line_items</code>, split into the four typed arrays.<sup><a href="#s1">1</a></sup></li>
+<li><strong>On the order</strong> — <code>GET /v2/orders/{id}/products</code>, the order's own frozen copy of its rows.<sup><a href="#s1">1</a></sup></li>
+</ul>
+
+<p>The request body — the two ways to name a variant, side by side, plus a custom row:</p>
+
+<div class="figure">
+<pre><code>// POST /v3/carts/{cartId}/items
+{
+  "line_items": [
+    { "product_id": 111, "variant_id": 222, "quantity": 2 },   // plain: name the SKU
+
+    { "product_id": 333, "quantity": 1,                        // has modifiers:
+      "option_selections": [                                   //   NO variant_id
+        { "option_id": 102, "option_value": "205" },           //   the variant facet
+        { "option_id": 88,  "option_value": "J.D." }           //   the modifier (engraving)
+      ] }
+  ],
+  "custom_items": [
+    { "sku": "PHONE-ORDER-1", "name": "Repair fee",            // no product_id:
+      "quantity": 1, "list_price": 40.00 }                     //   nothing in the catalog
+  ]
+}</code></pre>
+<p class="cap">Two ways in: <code>variant_id</code> for a plain pick, <code>option_selections</code> when modifiers are in play. Custom items carry their own name and price.</p>
+</div>
+
+<div class="figure">
+<pre><code>// A returned physical row, scrubbed — note it's a copy, not a link
+{
+  "id": "69791a88-…",
+  "product_id": 333,
+  "variant_id": 334,
+  "name": "Premium Headphones",     // captured — survives later catalog renames
+  "sku": "HEADPHONES-001-RED",
+  "quantity": 1,
+  "list_price": 99.99,              // captured — survives later price changes
+  "sale_price": 99.99,
+  "extended_list_price": 99.99,     // list_price × quantity
+  "options": [                      // the chosen variant + modifier selections, frozen
+    { "name": "Fit",       "value": "Over-ear" },
+    { "name": "Engraving", "value": "J.D." }
+  ]
+}</code></pre>
+<p class="cap">The row holds its own <code>name</code>, <code>list_price</code>, and chosen <code>options</code>. The <code>lineItemIds</code> a consignment referenced back in Lesson 1 point at rows like this one.</p>
+</div>
+
+<h2>Why line items are their own object</h2>
+
+<p>The line item is where the two halves of this course meet: it takes a variant from the catalog (Lesson 2) and places it into the pipeline (Lesson 1), and by freezing the details at that moment it lets the two halves change independently. The catalog stays free to evolve — reprice, rename, discontinue — without rewriting anyone's cart or falsifying anyone's past order. The four types let one row list carry everything a purchase can contain: things that ship, things that download, stored value, and one-offs that were never catalog items at all. And <code>option_selections</code> is the seam that keeps Lesson 2's variant-versus-modifier distinction intact all the way to the receipt: the row records not just which SKU, but every choice the shopper made about it.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A line item is one frozen row: a variant (or a typed-in custom item) plus quantity, with its name, price, and chosen options captured at add-time — not linked live to the catalog. Rows come in four types (physical, digital, gift certificate, custom); catalog rows name their variant by <code>variant_id</code>, or by <code>option_selections</code> when modifiers are involved."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Thinking a line item is a live reference to a product, so editing the catalog would change carts and orders. It does not — the row is a snapshot, which is exactly why an order still reads correctly after the catalog moves on. The second, mechanical half of the same trap: when a product has modifiers, sending <code>variant_id</code> is wrong. You must omit it and use <code>option_selections</code>, because a SKU alone cannot carry the modifier choices (the engraving text, the insurance checkbox) — only <code>option_selections</code> encodes the variant <em>and</em> the modifiers together.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Name the four line-item types in a cart's <code>line_items</code>.</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>physical_items</code>, <code>digital_items</code>, <code>gift_certificates</code>, <code>custom_items</code>.</p></details>
+  <p>② A product has modifiers. How do you specify what the shopper chose when adding it, and what must you <em>not</em> send?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Send <code>option_selections</code> (which encodes both the variant and the modifier choices). Do <em>not</em> send <code>variant_id</code> — omit it. A SKU alone can't carry the modifier picks.</p></details>
+  <p>③ A merchant raises a product's catalog price after a shopper added it to their cart. What happens to the existing line item, and why?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Nothing — it keeps its captured <code>list_price</code>. The row is a snapshot, not a live link to the catalog, so catalog changes don't rewrite it.</p></details>
+  <p>④ What is a custom item, and which field does it lack that a catalog row has?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A line item with no catalog link — it carries its own <code>sku</code>, <code>name</code>, <code>quantity</code>, <code>list_price</code>. It lacks a <code>product_id</code> (and any <code>variant_id</code>).</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/rest-management/carts/items">BigCommerce Developer Center — Cart Items (Add Line Items)</a>. It states the <code>variant_id</code>-vs-<code>option_selections</code> rule and the custom-item fields this lesson turns on. Pair it with the Cart object reference for the four typed arrays.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want how gift certificates behave differently from products at checkout, or the full <code>option_selections</code> shape for a product with several modifiers? Ask. Next lesson: pricing — where <code>list_price</code> actually comes from, how variant and option adjustments stack, and how price lists and customer groups override it before it ever reaches a line item.
+</div>
+
+<div class="course-nav">
+  <span><a href="0002-the-catalog-products-and-variants.html">← Lesson 2</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-pricing.html"><em>Next: Lesson 4 — pricing →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Cart <code>line_items</code> split into <code>physical_items</code> / <code>digital_items</code> / <code>gift_certificates</code> / <code>custom_items</code>; line-item <code>options</code> arrays; order products sub-resource — <a href="https://developer.bigcommerce.com/docs/rest-management/carts">BigCommerce Developer Center: Carts</a> and <a href="https://developer.bigcommerce.com/docs/rest-storefront/carts/cart-items">Cart Items</a>.<br>
+<span id="s2">2.</span> Adding rows: <code>product_id</code>/<code>quantity</code>/<code>variant_id</code>, the "omit <code>variant_id</code> and use <code>option_selections</code> to describe both the variant and the modifier selections" rule, and custom-item fields (<code>sku</code>, <code>name</code>, <code>quantity</code>, <code>list_price</code>; <code>image_url</code> accepted but not rendered) — <a href="https://developer.bigcommerce.com/docs/rest-management/carts/items">BigCommerce Developer Center: Cart Items — Add Cart Line Items</a>.
+</p>

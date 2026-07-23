@@ -1,0 +1,176 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8: The order object</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 8</p>
+<h1>The order object</h1>
+<p class="lede">Lesson 1 minted the order at the end of the pipeline and left it as <code>incomplete</code>. This lesson is the whole object: its complete status lifecycle, everything it carries, the two ways it can be born, and how a consignment becomes a tracked shipment. Everything the earlier lessons built — catalog, line items, pricing, discounts, consignments — comes to rest here.</p>
+
+<h2>The concept</h2>
+
+<p>The order is the durable record: the source of truth for money and fulfillment once a purchase is committed. Unlike the cart, it is meant to persist and to read the same later as it did the day it was placed. And because fulfilling it takes time — payment confirms, items ship, refunds happen — an order is not static. It moves through a <strong>lifecycle</strong>, and a status field is how the whole business reads where it is.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>An order carries a copied-in snapshot of the purchase plus a set of sub-resources, and it advances through a fixed list of statuses. Start with the lifecycle, because status is how everything else coordinates.</p>
+
+<h3>① The status lifecycle</h3>
+<p>Every order sits at exactly one of fifteen statuses, each with a fixed numeric <code>status_id</code> and a string <code>status</code>.<sup><a href="#s1">1</a></sup> (Merchants can rename the shopper-facing label via <code>custom_label</code>, but the <code>id</code> and <code>system_label</code> are fixed.<sup><a href="#s1">1</a></sup>)</p>
+
+<table>
+<tr><th>id</th><th>Status</th><th>What it means</th></tr>
+<tr><td>0</td><td>Incomplete</td><td>Reached payment but didn't complete the transaction.</td></tr>
+<tr><td>1</td><td>Pending</td><td>Started checkout but didn't complete it.</td></tr>
+<tr><td>7</td><td>Awaiting Payment</td><td>Completed checkout; payment not yet confirmed.</td></tr>
+<tr><td>11</td><td>Awaiting Fulfillment</td><td>Checkout complete and <strong>payment confirmed</strong>.</td></tr>
+<tr><td>9</td><td>Awaiting Shipment</td><td>Pulled and packaged, awaiting the carrier.</td></tr>
+<tr><td>8</td><td>Awaiting Pickup</td><td>Pulled, awaiting customer pickup at a location.</td></tr>
+<tr><td>3</td><td>Partially Shipped</td><td>Only some items have shipped.</td></tr>
+<tr><td>2</td><td>Shipped</td><td>All items shipped; receipt not yet confirmed.</td></tr>
+<tr><td>10</td><td>Completed</td><td>Paid digital order; files available for download.</td></tr>
+<tr><td>4 / 14</td><td>Refunded / Partially Refunded</td><td>Seller used the Refund action (fully / partially).</td></tr>
+<tr><td>5 / 6</td><td>Cancelled / Declined</td><td>Seller cancelled, or marked declined for lack of payment.</td></tr>
+<tr><td>12</td><td>Manual Verification Required</td><td>On hold pending manual confirmation.</td></tr>
+<tr><td>13</td><td>Disputed</td><td>Customer opened a dispute (e.g. a PayPal case).</td></tr>
+</table>
+
+<p>The happy path threads a few of these, and the split between automatic and manual transitions is the thing to hold:</p>
+
+<div class="figure">
+<pre><code>   checkout converts                 payment confirmed              seller ships items
+        │                                  │                              │
+        ▼          (auto)                  ▼        (auto)                ▼   (seller action)
+   Incomplete/Pending ──▶ Awaiting Payment ──▶ Awaiting Fulfillment ──┬─▶ Partially Shipped ─▶ Shipped
+      (0 / 1)                  (7)                    (11)             │        (3)                (2)
+                                                                      └─▶ Completed (10, digital)
+
+   seller actions branch off at any point:  Refunded(4) · Partially Refunded(14)
+                                            Cancelled(5) · Declined(6) · Manual Verification(12)
+
+   ⚠ status does NOT auto-revert: "deleting a shipment does not move the order out of shipped status."</code></pre>
+<p class="cap">Payment transitions are automatic (7 → 11). Fulfillment and refunds are seller actions. Nothing rewinds on its own.</p>
+</div>
+
+<h3>② What the order carries</h3>
+<p>An order bundles the committed purchase. Its own fields include identity and origin (<code>cart_id</code> back to the cart, <code>channel_id</code>, <code>order_source</code>), a full set of <strong>totals</strong> held as strings (<code>subtotal_ex_tax</code>/<code>subtotal_inc_tax</code>, <code>total_ex_tax</code>/<code>total_inc_tax</code>, <code>shipping_cost_*</code>, <code>coupon_discount</code>, <code>discount_amount</code>, <code>refunded_amount</code>), payment state (<code>payment_method</code>, <code>payment_status</code>), and a copied-in <code>billing_address</code> — the snapshot from Lesson 3.<sup><a href="#s2">2</a></sup> The rest hangs off as <strong>sub-resources</strong>, each returned as a <code>{url, resource}</code> pointer you expand: <code>products</code> (the line items), <code>shipping_addresses</code>, <code>consignments</code>, <code>coupons</code>, and <code>fees</code>.<sup><a href="#s2">2</a></sup> Payment <strong>transactions</strong> and <strong>refunds</strong> live on separate v3 endpoints.<sup><a href="#s3">3</a></sup></p>
+
+<h3>③ Two ways an order is born</h3>
+<p>The pipeline path — a checkout converting — is one way. The other is creating an order <em>directly</em>, with no prior cart: the manual or phone-order path via <code>POST /v2/orders</code>.<sup><a href="#s4">4</a></sup> It requires a <code>billing_address</code> plus either <code>products</code> or <code>consignments</code>, accepts catalog products or custom ones, and takes <code>customer_id: 0</code> for a guest.<sup><a href="#s4">4</a></sup> One consequential difference: "the V2 Orders API will not trigger the typical Order Email when creating orders" — to send it, "you can instead create a cart and convert that cart into an order."<sup><a href="#s5">5</a></sup> Orders are also editable after creation, via <code>PUT</code>.<sup><a href="#s4">4</a></sup></p>
+
+<h3>④ Consignments become shipments</h3>
+<p>Lesson 7's consignment was the <em>plan</em>; the shipment is the <em>act</em>. "Once an order has products, a billing address, and a shipping address, you can create an order shipment"<sup><a href="#s5">5</a></sup> — a record with a <code>tracking_number</code>, <code>tracking_carrier</code>, <code>shipping_method</code>, and an <code>items</code> list of what went in it. Multiple partial shipments are allowed, and each drives the status from Awaiting Fulfillment toward Partially Shipped and then Shipped. The consignment named the intended grouping; the shipment records the real dispatch and its tracking.</p>
+
+<h2>Where it surfaces in the API</h2>
+
+<p>Orders are a <strong>v2</strong> API; transactions and refunds are surfaced on <strong>v3</strong>.<sup><a href="#s3">3</a></sup></p>
+
+<ul>
+<li><strong>Order</strong> — <code>GET/POST/PUT /v2/orders/{id}</code>; sub-resources at <code>/products</code>, <code>/shipping_addresses</code>, <code>/consignments</code>, <code>/coupons</code>, <code>/fees</code>.<sup><a href="#s2">2</a></sup></li>
+<li><strong>Statuses</strong> — <code>/v2/order_statuses</code> lists the fixed table (id, name, <code>custom_label</code>).<sup><a href="#s1">1</a></sup></li>
+<li><strong>Shipments</strong> — <code>/v2/orders/{id}/shipments</code>.<sup><a href="#s5">5</a></sup></li>
+<li><strong>Transactions / refunds</strong> — <code>GET /v3/orders/{id}/transactions</code> and the v3 refund endpoints.<sup><a href="#s3">3</a></sup></li>
+</ul>
+
+<div class="figure">
+<pre><code>// ORDER — v2, trimmed. Totals are strings; addresses are copied in; rest is sub-resources.
+{
+  "id": 152,
+  "status_id": 11,
+  "status": "Awaiting Fulfillment",
+  "cart_id": "a1b2c3d4-…",            // ← back-reference to the origin cart (Lesson 1)
+  "customer_id": 47,                  // 0 would mean a guest
+  "date_created": "Wed, 22 Jul 2026 14:03:11 +0000",
+  "subtotal_inc_tax": "129.6000",
+  "total_inc_tax": "138.2400",
+  "shipping_cost_inc_tax": "8.6400",
+  "coupon_discount": "0.0000",
+  "discount_amount": "0.0000",
+  "payment_method": "Credit Card",
+  "payment_status": "captured",
+  "order_source": "manual",          // this one was created directly, not via checkout
+  "channel_id": 1,
+  "items_total": 2, "items_shipped": 0,
+  "billing_address": { "first_name": "Jace", "last_name": "Beleren", "zip": "90210", … },
+  "products":     { "resource": "/orders/152/products" },
+  "consignments": { "resource": "/orders/152/consignments" },
+  "coupons":      { "resource": "/orders/152/coupons" }
+}</code></pre>
+<p class="cap">The order's own fields are identity, totals, and payment; everything richer is a sub-resource pointer.</p>
+</div>
+
+<div class="figure">
+<pre><code>// ORDER PRODUCT (a line item on the order) — the frozen row from Lesson 3, now on the order
+{
+  "id": 311, "order_id": 152,
+  "product_id": 88, "variant_id": 190,
+  "name": "Sol Ring Playmat", "sku": "MTG-PLAYMAT-01",
+  "type": "physical",                       // physical | digital | giftcertificate
+  "quantity": 2, "quantity_shipped": 0, "quantity_refunded": 0,
+  "price_inc_tax": "64.8000", "total_inc_tax": "129.6000",
+  "applied_discounts": [], "product_options": []
+}
+
+// ORDER SHIPMENT — the actual dispatch, with tracking
+{
+  "id": 12, "order_id": 152, "order_address_id": 205,
+  "tracking_number": "1Z999AA10123456784", "tracking_carrier": "ups",
+  "shipping_method": "Standard",
+  "items": [ { "order_product_id": 311, "product_id": 88, "quantity": 2 } ]
+}</code></pre>
+<p class="cap">The order keeps its own copy of each row (<code>quantity_shipped</code>/<code>quantity_refunded</code> track fulfillment); a shipment references those rows and carries the tracking.</p>
+</div>
+
+<h2>The pipeline, whole</h2>
+
+<p>Step back and the eight lessons are one object graph. A <strong>product</strong> and its <strong>variants</strong> (L2) define what can be bought; a <strong>line item</strong> (L3) freezes a chosen variant plus its <strong>price</strong> (L4) into a cart; <strong>discounts</strong> (L5) and the <strong>promotions engine</strong> (L6) adjust the cart total; <strong>consignments</strong> (L7) plan how it ships; and conversion mints the <strong>order</strong> (L1, L8) — the durable record all of that comes to rest in. The order's <code>cart_id</code> points back to where it started, its <code>products</code> are the frozen line items, its <code>consignments</code> are the fulfillment plan turning into shipments, and its <code>status</code> is how payment and fulfillment stay coordinated over time. The cart was disposable; the order is the truth.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "An order is the durable record with a fifteen-status lifecycle: payment transitions are automatic (Awaiting Payment → Awaiting Fulfillment on confirmation), fulfillment and refunds are seller actions, and nothing auto-reverts. It carries totals, payment state, and a snapshot billing address on itself, with products, consignments, coupons, transactions, and shipments as sub-resources — and it can be born either from a converting checkout or created directly for phone orders."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Assuming order creation and status behave like the storefront. Two real gotchas: first, an order created through the V2 API does <em>not</em> send the customer's order-confirmation email — if you need it, create a cart and convert it instead; and the default <code>status_id</code> on API create is documented inconsistently, so always set it explicitly. Second, status is not fully automatic or reversible — fulfillment and refunds are manual seller actions, and undoing one doesn't rewind the status ("deleting a shipment does not move the order out of shipped status"). And keep <em>consignment</em> (the plan) distinct from <em>shipment</em> (the tracked dispatch).
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Which order-status transition is automatic on payment confirmation, and what are the two statuses?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Awaiting Payment (7) → Awaiting Fulfillment (11), automatically once payment is confirmed.</p></details>
+  <p>② You create an order via the V2 API. Does the customer get the order-confirmation email? How do you make sure they do?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No — V2 order creation doesn't trigger the order email. To send it, create a cart and convert that cart into an order instead.</p></details>
+  <p>③ What's the difference between a consignment and a shipment on an order?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The consignment is the intended grouping (items + destination + fulfillment method, planned at checkout); the shipment is the actual dispatch record with a tracking number. Partial shipments advance the status toward Shipped.</p></details>
+  <p>④ An order's <code>products</code>, <code>consignments</code>, and <code>coupons</code> aren't inline objects in the order response. How are they returned?</p>
+  <details><summary>show answer</summary>
+  <p class="a">As sub-resource pointers (<code>{url, resource}</code>) that you expand — via a separate request or an <code>include</code> param. The order's own fields are identity, totals, payment, and the copied billing address.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/store-operations/orders">BigCommerce Developer Center — Orders overview</a>, with the List Order Statuses reference for the fixed status table and the Create Order reference for the manual-creation rules. These three hold every fact in this lesson.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the <code>payment_status</code> enum, the order-transaction <code>event</code>/<code>status</code> values, or how order editing recalculates totals? Ask. Next: the interleaved review — all eight lessons, shuffled, cold. That is where "I followed it" turns into "I can explain it."
+</div>
+
+<div class="course-nav">
+  <span><a href="0007-consignments.html">← Lesson 7</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0009-interleaved-review.html"><em>Next: Lesson 9 — interleaved review →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> The full order status table (id → name → description), <code>custom_label</code>/<code>system_label</code> — <a href="https://developer.bigcommerce.com/docs/rest-management/orders/order-status">BigCommerce Developer Center: List Order Statuses</a>.<br>
+<span id="s2">2.</span> Order fields (identity, totals as strings, <code>payment_status</code>, copied <code>billing_address</code>) and sub-resources (<code>products</code>, <code>shipping_addresses</code>, <code>consignments</code>, <code>coupons</code>, <code>fees</code>) — <a href="https://developer.bigcommerce.com/docs/rest-management/orders">BigCommerce Developer Center: Orders — Get Order</a>.<br>
+<span id="s3">3.</span> Orders are v2; v3 surfaces order transactions and refunds; <code>consignment_structure=object</code> — <a href="https://developer.bigcommerce.com/docs/store-operations/orders">BigCommerce Developer Center: Orders overview</a>.<br>
+<span id="s4">4.</span> Create Order (<code>POST /v2/orders</code>): billing address + (products or consignments) required, custom products, guest <code>customer_id: 0</code>, shipping vs pickup mutually exclusive, editable via PUT — <a href="https://developer.bigcommerce.com/docs/rest-management/orders/orders">BigCommerce Developer Center: Create an Order</a>.<br>
+<span id="s5">5.</span> V2 order creation doesn't trigger the order email (create + convert a cart to send it); "once an order has products, a billing address, and a shipping address, you can create an order shipment"; status doesn't auto-revert — <a href="https://developer.bigcommerce.com/docs/store-operations/orders">BigCommerce Developer Center: Orders overview</a>.
+</p>

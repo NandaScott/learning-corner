@@ -1,0 +1,174 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2: The catalog — products &amp; variants</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 2</p>
+<h1>The catalog: products &amp; variants</h1>
+<p class="lede">Lesson 1 put items into a cart without asking what an item <em>is</em>. This lesson answers that. In BigCommerce the thing a shopper buys is not one flat object — it is a product, its variants, its options, and its modifiers, and the differences between those four decide what has a SKU, what tracks inventory, and what ends up on a shipping label.</p>
+
+<h2>The concept</h2>
+
+<p>In any store, the word "product" hides an ambiguity. A T-shirt is one product in the catalog and on the marketing page — but "small red shirt" and "large blue shirt" are different things in the warehouse, counted and restocked separately. And "add a monogram" is a third kind of thing: it changes the shirt the buyer receives without being a different shirt on the shelf.</p>
+
+<p>So a catalog has to separate three ideas that casual speech blurs: the <strong>marketing entity</strong> (the product you browse to), the <strong>stock-keeping unit</strong> (the exact item picked, counted, and shipped), and the <strong>customization</strong> (a change to that item that the warehouse does not count). Get these mixed up and inventory numbers lie.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>BigCommerce models the catalog as "a store's collection of physical and digital products," where "products are the primary catalog entity."<sup><a href="#s1">1</a></sup> Under each product sit variants, the options that generate them, and modifiers. The four fit together like this:</p>
+
+<div class="figure">
+<pre><code>          PRODUCT  "T-Shirt"   ← the catalog entity (name, price, type)
+          ┌──────────────┴───────────────┐
+          │                              │
+   VARIANT OPTIONS                   MODIFIERS
+   the facets that build SKUs        change fulfillment, NOT the SKU
+   ┌──────────┬──────────┐          ┌─────────────────────────┐
+   Size: S M L  Color: R G B         "Monogram text: _______"
+          │                          "☑ add gift wrap (+$5)"
+          │ combinations auto-generate       │
+          ▼                                  │ no new SKU
+   VARIANTS (each has a SKU)                 │ no inventory tracked
+   ┌────────────┬────────────┐               ▼
+   S/Red  →  SKU TS-S-R      the same variant is picked off the
+   L/Blue →  SKU TS-L-B      shelf, then customized before shipping
+   … one per combination
+   (tracked, counted, restocked)</code></pre>
+<p class="cap">Variant options build SKUs down the left. Modifiers hang off the product and never touch the SKU. That split is the whole lesson.</p>
+</div>
+
+<h3>① The product — the catalog entity</h3>
+<p>The product is the top-level thing: "the primary function of the ecommerce platform is to sell products."<sup><a href="#s1">1</a></sup> A minimal product carries a <code>name</code>, a <code>price</code>, categories, and a <code>type</code> — either <strong>physical</strong> ("exist in a physical form, have a weight, and are sold by merchants to ship to customers") or <strong>digital</strong> ("non-physical products, including downloadable files… and services").<sup><a href="#s1">1</a></sup> Physical products carry a <code>weight</code>; digital ones do not. That <code>type</code> field matters downstream — remember from Lesson 1 that only physical products force a consignment and a shipping option.</p>
+
+<h3>② Variants — the things on the shelf</h3>
+<p>A variant is the actual saleable unit: "an item as it sits on the shelf in the warehouse or a particular saleable product."<sup><a href="#s1">1</a></sup> Each variant "must have a SKU code" and can carry its own price, weight, and image, or inherit them from the product.<sup><a href="#s1">1</a></sup> Variants are what inventory is counted against — "I care when I run out of small, red shirts — I need to re-stock!"<sup><a href="#s2">2</a></sup> A product with no options is not special-cased away: "the product is its own variant — called a base variant."<sup><a href="#s1">1</a></sup> So every product has at least one variant, always.</p>
+
+<h3>③ Variant options — the facets that generate variants</h3>
+<p>Variant options are the choices that <em>build</em> variants: "a product might have the variant options <em>size</em> and <em>color</em>," each with values (small/medium/large; red/green/blue).<sup><a href="#s2">2</a></sup> Their combinations become variants — and in the control panel, options "will automatically generate variants when created."<sup><a href="#s1">1</a></sup> Two sizes × three colors gives six variants, each its own SKU. The option is the question ("what size?"); the variant is a specific answered combination with stock behind it.</p>
+
+<h3>④ Modifiers — customizations that don't move the SKU</h3>
+<p>A modifier is "any choice a shopper can make that doesn't affect the variant that's selected"<sup><a href="#s2">2</a></sup> — a checkbox for shipping insurance, or text to engrave. It can add cost or capture input, but "the modifier will not change the SKU/variant fulfilled, and you cannot track inventory against combinations of modifier values."<sup><a href="#s1">1</a></sup> Same item off the shelf; something is just done to it before it ships. That is the line every catalog decision turns on: does this choice pick a different item, or change what happens to the same item?</p>
+
+<h2>Where it surfaces in the API</h2>
+
+<p>The catalog lives in the <strong>REST Management API</strong> (the v3 Catalog), and the four ideas above are four distinct resources — which, as with the pipeline objects in Lesson 1, is the clearest sign they are genuinely different things.</p>
+
+<ul>
+<li><strong>Products</strong> — <code>/catalog/products</code>. The base entity: <code>name</code>, <code>price</code>, <code>type</code>, <code>weight</code>, categories.<sup><a href="#s1">1</a></sup></li>
+<li><strong>Variants</strong> — <code>/catalog/products/{id}/variants</code>. Each with its own <code>sku</code>, and optional price/weight/image overrides.<sup><a href="#s3">3</a></sup></li>
+<li><strong>Variant options</strong> — <code>/catalog/products/{id}/options</code>. The facets (size, color) and their values.<sup><a href="#s3">3</a></sup></li>
+<li><strong>Modifiers</strong> — <code>/catalog/products/{id}/modifiers</code>. The customizations that don't produce SKUs.<sup><a href="#s3">3</a></sup></li>
+</ul>
+
+<p>The three catalog objects, scrubbed to the fields that carry the distinction. Note the v3 <code>data</code> / <code>meta</code> envelope wrapping each response:</p>
+
+<div class="figure">
+<pre><code>// PRODUCT — /v3/catalog/products/{id}
+{
+  "data": {
+    "id": 12345,
+    "name": "Premium Headphones",
+    "type": "physical",              // or "digital" — decides weight + shipping
+    "sku": "HEADPHONES-001",
+    "price": "99.99",
+    "weight": "0.5",                 // physical only
+    "inventory_tracking": "product", // "none" | "product" | "variant"
+    "base_variant_id": 54321,        // even a plain product has one variant
+    "categories": [ 15, 23 ]
+  },
+  "meta": {}
+}</code></pre>
+<p class="cap">The product: the catalog entity. Note <code>base_variant_id</code> — the model never lets a product exist without a variant.</p>
+</div>
+
+<div class="figure">
+<pre><code>// VARIANT — /v3/catalog/products/{id}/variants/{variant_id}
+{
+  "data": {
+    "id": 54322,
+    "product_id": 12345,
+    "sku": "HEADPHONES-001-RED",     // its own SKU
+    "price": 109.99,                 // overrides product price, or null to inherit
+    "inventory_level": 45,           // ← stock is counted HERE, per variant
+    "option_values": [               // which option choices this variant answers
+      { "option_id": 101, "id": 201, "label": "Red" },
+      { "option_id": 102, "id": 205, "label": "Over-ear" }
+    ]
+  }
+}</code></pre>
+<p class="cap">A variant carries the SKU and the <code>inventory_level</code>. <code>option_values</code> pin it to a specific combination.</p>
+</div>
+
+<div class="figure">
+<pre><code>// MODIFIER — /v3/catalog/products/{id}/modifiers/{modifier_id}
+{
+  "data": {
+    "id": 88,
+    "product_id": 12345,
+    "type": "text",                  // text | checkbox | dropdown | …
+    "display_name": "Engraving",
+    "required": false,
+    "option_values": [
+      { "id": 301, "label": "Add insurance",
+        "adjusters": { "price":  { "type": "relative", "amount": 5.00 },
+                       "weight": { "type": "relative", "amount": 0.10 } } }
+    ]
+    // ← no sku, no inventory_level anywhere. Only adjusters.
+  }
+}</code></pre>
+<p class="cap">A modifier can adjust price and weight, but it has no SKU and no inventory field — the tell that it never becomes a distinct stock item.</p>
+</div>
+
+<p>One practical wrinkle worth carrying: this is the <strong>v3</strong> catalog. BigCommerce has a legacy v2 catalog with a different, flatter shape, and the two are not identical — when reading old integrations or docs, check which version you are in before trusting a field name.<sup><a href="#s1">1</a></sup></p>
+
+<h2>Why the split matters</h2>
+
+<p>The four resources exist to keep three numbers honest: what a thing is called, how many of it are in stock, and what was done to it on the way out. Variants and their options own the stock question — every distinct combination is a SKU, so the warehouse can count "small red shirts" without the marketing product getting in the way. Modifiers own the customization question, deliberately kept off the inventory ledger because a monogram is not a different shirt to restock. And the base-variant rule means the model has no awkward special case: a plain product still has exactly one variant with one SKU, so everything downstream — pricing, line items, fulfillment — can assume "a purchase is a variant" and never branch on whether the product had options.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A product is the catalog entity; a variant is the SKU on the shelf; variant options are the facets whose combinations generate variants; a modifier changes fulfillment without changing the SKU. Variants track inventory, modifiers never do — and every product has at least one variant, because a plain product is its own base variant."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Treating "options" as one idea. BigCommerce splits them: <strong>variant options</strong> generate new SKUs and are inventory-tracked; <strong>modifiers</strong> do not and cannot be. Ask "does this choice change which physical item is picked?" Size and color → variant option (small red shirt is a different SKU). Engraving text or a gift-wrap checkbox → modifier (same shirt, then customized). Model a size as a modifier and your stock counts silently become fiction — the warehouse never learns it ran out of larges.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① A plain product has no size/color choices. How many variants does it have, and what is that called?</p>
+  <details><summary>show answer</summary>
+  <p class="a">One — itself. It is its own <strong>base variant</strong>, with one SKU. Every product has at least one variant.</p></details>
+  <p>② Size and color each have three values. How many variants, and why do they each need a SKU?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Nine (3 × 3 combinations), auto-generated from the options. Each is a distinct item on the shelf, so each needs its own SKU to track inventory separately.</p></details>
+  <p>③ A shopper can type text to be engraved. Is that a variant option or a modifier, and what is the consequence for inventory?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A modifier. It changes fulfillment, not the SKU, so no inventory is tracked against it — the same variant is picked and then engraved.</p></details>
+  <p>④ Which product <code>type</code> forces a weight and, recalling Lesson 1, a shipping option at checkout?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>physical</code>. Physical products have weight and must ship, so they force a consignment with a <code>selected_shipping_option</code>. Digital products do not.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/store-management/catalog">BigCommerce Developer Center — Catalog overview</a>, plus the catalog course page <a href="https://developer.bigcommerce.com/docs/store-management/catalog/products/variants">"Variants, Variant Options, and Modifier Options."</a> The second is the clearest short statement of the variant-vs-modifier line this lesson turns on.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want how bulk pricing rules or custom fields attach to a product, or how variant option values map to specific variants via the API? Ask. Next lesson: line items — how one of these variants (plus its modifier choices) actually lands in the cart from Lesson 1, and why the line item is a snapshot, not a live link.
+</div>
+
+<div class="course-nav">
+  <span><a href="0001-cart-checkout-order-pipeline.html">← Lesson 1</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-line-items.html"><em>Next: Lesson 3 — line items →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Catalog and product definitions, product types (physical/digital), variant "on the shelf" definition, must-have-SKU, base variant, modifiers not changing SKU or tracking inventory, options auto-generating variants, v2/v3 — <a href="https://developer.bigcommerce.com/docs/store-management/catalog">BigCommerce Developer Center: Catalog overview (products-overview)</a>.<br>
+<span id="s2">2.</span> Variant options (size/color) and their values, the inventory motivation ("I run out of small, red shirts"), modifier definition and examples — <a href="https://developer.bigcommerce.com/docs/store-management/catalog/products/variants">BigCommerce Developer Center: Variants, Variant Options, and Modifier Options</a>.<br>
+<span id="s3">3.</span> Catalog REST resources — Products, Product Variants, Product Variant Options, Product Modifiers — <a href="https://developer.bigcommerce.com/docs/rest-catalog">BigCommerce Developer Center: REST Catalog API reference</a>.
+</p>

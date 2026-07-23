@@ -1,0 +1,165 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1: The cart → checkout → order pipeline</title>
+
+<p class="eyebrow">How BigCommerce Works · Lesson 1</p>
+<h1>The cart → checkout → order pipeline</h1>
+<p class="lede">Before any single object makes sense, you need the map. In BigCommerce a purchase is not one thing that changes state — it is three distinct objects handed off in sequence: a <strong>cart</strong>, a <strong>checkout</strong>, and an <strong>order</strong>. This lesson walks the whole pipeline, so every later lesson has a place to sit.</p>
+
+<h2>The concept</h2>
+
+<p>Every ecommerce system moves a purchase through the same three stages, whatever it calls them. First a container holds what the shopper wants to buy. Then the shopper commits: they say who they are, where it ships, and how they will pay. Finally the system records what was agreed, so it can be fulfilled and accounted for. Container, commitment, record.</p>
+
+<p>Some platforms model this as one object with a status that advances (a single "order" that starts as a draft). BigCommerce does the opposite: it uses <strong>three separate objects</strong>, each owning one stage, with an explicit handoff between them. Knowing where one ends and the next begins is most of the mental model.</p>
+
+<h2>How BigCommerce handles it</h2>
+
+<p>The three objects are the cart, the checkout, and the order. They describe the same purchase at three points in its life, and they even share an identity — the checkout is addressed by the same ID as the cart it grew from.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>   ①  CART                    ②  CHECKOUT                     ③  ORDER
+   ─────────                  ────────────                    ─────────
+   line items                 cart + billing address          the durable record
+   prices, discounts          + consignment(s):               status: incomplete
+   NO customer data                address                          │
+        │                          line items                      │ payment
+        │  add a                    shipping option                 ▼
+        │  billing address     ────────────────────           Awaiting Fulfillment
+        └──────────────▶  every physical consignment  ──POST──▶
+                          needs a selected shipping         Create
+                          option before it can convert      Order</code></pre>
+<p class="cap">One purchase, three objects. The cart is disposable scratch space; the order is the permanent record. The checkout is the staging area in between.</p>
+</div>
+
+<h3>① The cart — the container</h3>
+<p>A cart is "a collection of items, prices, discounts, etc." and, crucially, "it does not contain customer-related data."<sup><a href="#s2">2</a></sup> That is the defining fact: a cart knows <em>what</em> is being bought and what it costs, but not <em>who</em> is buying or where it goes. It is mutable, cheap, and disposable — shoppers add and remove things, abandon it, come back. Nothing about a cart is a commitment.</p>
+
+<h3>② The checkout — the commitment</h3>
+<p>A cart becomes a checkout the moment customer commitment is attached. In BigCommerce, "you can change a cart to a checkout by adding a billing address."<sup><a href="#s1">1</a></sup> The checkout is the same underlying purchase plus the things a cart deliberately lacks: a billing address, and one or more <strong>consignments</strong> — each a shipping address, its line items, and a chosen shipping option.<sup><a href="#s1">1</a></sup> This is the staging area where a loose basket becomes a shippable, payable transaction.</p>
+
+<h3>③ The conversion gate — shipping must be resolved</h3>
+<p>A checkout cannot become an order while shipping is undecided. The rule is exact: "A checkout containing physical products is not eligible to become an order until each of its consignments contains a <code>selected_shipping_option</code>."<sup><a href="#s3">3</a></sup> Consignments get a full lesson later; for now hold the gate: no chosen shipping on every consignment, no order.</p>
+
+<h3>④ The order — the record</h3>
+<p>Converting the checkout creates an order. Created through the API, "the order status is set to <code>incomplete</code>," and once payment succeeds "the order status is then automatically changed to <code>Awaiting Fulfillment</code>."<sup><a href="#s1">1</a></sup> The order is the durable artifact: unlike the cart, it is the permanent record of what was agreed, and it is what the rest of the business — fulfillment, refunds, reporting — acts on.</p>
+
+<h2>Where it surfaces in the API</h2>
+
+<p>Each stage is a different API resource, which is the clearest proof they are genuinely separate objects.</p>
+
+<ul>
+<li><strong>Cart API</strong> — create a cart, add and remove line items. Returns a cart ID (and a redirect URL you can hand to the storefront to resume checkout).<sup><a href="#s1">1</a></sup></li>
+<li><strong>Checkout API</strong> — take that cart ID, add a billing address (this is what promotes it to a checkout), then add consignments and select shipping options.<sup><a href="#s1">1</a></sup></li>
+<li><strong>Create an Order endpoint</strong> — a <code>POST</code> that converts the eligible checkout into an order and returns the new order ID.<sup><a href="#s1">1</a></sup></li>
+</ul>
+
+<p>Two axes to keep straight from the start. First, the same three resources exist in both the <strong>REST Storefront API</strong> (customer-scoped, client-side, for the shopper's own session) and the <strong>REST Management API</strong> (server-side, store-wide) — same objects, different access model. And a naming tell that follows from it: the Storefront API returns <strong>camelCase</strong> fields (<code>billingAddress</code>), the Management API returns <strong>snake_case</strong> (<code>billing_address</code>). Second, the shared identity: the ID you use to address the checkout "will correspond with the cart ID returned by the Create a Cart endpoint."<sup><a href="#s1">1</a></sup> Cart and checkout are two views of one record; the order is the new, permanent object minted at conversion.</p>
+
+<p>The three objects, scrubbed down to the fields that carry the story:</p>
+
+<div class="figure">
+<pre><code>// ① CART — Management API, snake_case. Knows what, not who.
+{
+  "id": "a1b2c3d4-…",          // the id the checkout will reuse
+  "customer_id": 0,            // 0 = guest; a cart carries no real customer
+  "base_amount": 149.99,
+  "cart_amount": 139.99,       // after cart-level discounts
+  "line_items": {
+    "physical_items":    [ { "product_id": 111, "variant_id": 222, "quantity": 2 } ],
+    "digital_items":     [],
+    "gift_certificates": [],
+    "custom_items":      []
+  }
+}</code></pre>
+<p class="cap">A cart: line items and money, no identity. (Line-item types are Lesson 3.)</p>
+</div>
+
+<div class="figure">
+<pre><code>// ② CHECKOUT — Storefront API, camelCase. checkoutId == cartId.
+{
+  "id": "a1b2c3d4-…",
+  "billingAddress": { "firstName": "Jane", … },   // ← promoted cart to checkout
+  "cart": { "id": "a1b2c3d4-…", "cartAmount": 112.93 },
+  "consignments": [
+    {
+      "id": "5ba12…",
+      "address": { "city": "Austin", "countryCode": "US" },
+      "lineItemIds": [ "69791a88-…" ],
+      "selectedShippingOption": { "id": "bb3c…", "cost": 69.94 },  // ← the gate
+      "availableShippingOptions": [ … ]
+    }
+  ],
+  "grandTotal": "211.49"
+}</code></pre>
+<p class="cap">A checkout is the cart plus the two things a cart lacks: a billing address and consignments.</p>
+</div>
+
+<div class="figure">
+<pre><code>// ③ ORDER — Management API, snake_case. The permanent record.
+{
+  "id": 218,
+  "status": "Awaiting Fulfillment",  // was "incomplete" at creation
+                                     //   (status has a numeric twin, status_id — Lesson 8)
+  "cart_id": "a1b2c3d4-…",           // ← links the order back to its cart
+  "total_inc_tax": "69.8400",
+  "currency_code": "USD",
+  "payment_status": "authorized",
+  "billing_address": { "first_name": "Jane", … },   // copied in — a snapshot
+  "products":     { "resource": "/orders/218/products"     },   // sub-resources,
+  "consignments": { "resource": "/orders/218/consignments" }    //   fetched separately
+}</code></pre>
+<p class="cap">The order carries <code>cart_id</code> back to its origin, and copies the address in rather than linking — the record must not change when the cart does.</p>
+</div>
+
+<h2>Why three objects</h2>
+
+<p>The split pays off because the three stages have genuinely different needs. The cart must be fast and throwaway — most carts are abandoned, and holding customer data on every abandoned basket would be wrong on both privacy and storage grounds, which is exactly why a cart carries none. The checkout is where validation lives: addresses, shippability, tax, the shipping-option gate. The order must be immutable enough to be the source of truth for money and fulfillment. One object trying to be all three would be mutable and permanent, anonymous and identified, all at once. BigCommerce refuses that by drawing two hard lines: add a billing address (cart → checkout) and resolve shipping then convert (checkout → order).</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A purchase in BigCommerce is three objects, not one: a cart (items, no customer, disposable), a checkout (cart + billing address + consignments, the staging area), and an order (the permanent record). A billing address promotes cart to checkout; a resolved shipping option on every consignment lets checkout convert to order."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Thinking the cart "becomes" the order by changing status, the way a single draft-order object would. It does not. The cart and checkout share an ID and are two views of the same pre-purchase record, but the order is a <em>separate object created at conversion</em>. And the boundary that matters between cart and checkout is not payment — it is the <strong>billing address</strong>. Adding customer commitment, not taking money, is what turns a basket into a checkout.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Name the three objects in the pipeline, in order, and the one-word job of each.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Cart (container), checkout (commitment / staging), order (record). Cart holds items with no customer data; checkout adds billing address + consignments; order is the durable post-conversion record.</p></details>
+  <p>② What single action turns a cart into a checkout?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Adding a billing address. Not payment — commitment. The checkout keeps the same ID as the cart.</p></details>
+  <p>③ What must be true of every consignment before a checkout with physical products can convert to an order?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Each consignment must contain a <code>selected_shipping_option</code>. No chosen shipping on all of them, no order.</p></details>
+  <p>④ Immediately after the API creates an order, what is its status, and what changes it next?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>incomplete</code> at creation; a successful payment automatically moves it to <code>Awaiting Fulfillment</code>.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  <a href="https://developer.bigcommerce.com/docs/storefront/cart-checkout/guide/consignments">BigCommerce Developer Center — Checkout Consignment guide</a>. It states the consignment definition and the conversion gate this lesson is built on. Pair it with the headless "carts to orders" guide for the full create-cart → add-billing-address → create-order sequence.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to see the actual JSON a cart returns, or why an order is created as <code>incomplete</code> rather than waiting for payment first? Ask. Next lesson: the catalog — what a "product" actually is in BigCommerce, so we can then see how one becomes a line item in that cart.
+</div>
+
+<div class="course-nav">
+  <span></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-the-catalog-products-and-variants.html"><em>Next: Lesson 2 — the catalog: products &amp; variants →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (official BigCommerce documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> Create-cart → add-billing-address (cart becomes checkout) → add consignment → create order; order status <code>incomplete</code> then <code>Awaiting Fulfillment</code>; checkout ID corresponds to cart ID — <a href="https://developer.bigcommerce.com/docs/storefront/headless">BigCommerce Developer Center: headless carts-to-orders guide</a>.<br>
+<span id="s2">2.</span> A cart is "a collection of items, prices, discounts, etc." and "does not contain customer-related data" — <a href="https://developer.bigcommerce.com/docs/rest-management/carts">BigCommerce Developer Center: Carts</a>.<br>
+<span id="s3">3.</span> Consignment definition and the conversion gate ("not eligible to become an order until each of its consignments contains a <code>selected_shipping_option</code>") — <a href="https://developer.bigcommerce.com/docs/storefront/cart-checkout/guide/consignments">BigCommerce Developer Center: Checkout Consignment guide</a>.
+</p>
