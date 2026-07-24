@@ -1,0 +1,225 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Django &amp; DRF Cheat-Sheet</title>
+<style>
+  /* Reference-only layout: the glossary is vocabulary; this is the maps.
+     This page is wider than a lesson (two code columns don't fit 40rem).
+     Two columns on wide screens, single column on narrow and in print. */
+  body { max-width: 64rem; }
+  .lede { max-width: 42rem; }
+  .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem 2rem; align-items: start; }
+  /* min-width:0 lets a grid column shrink below its content's intrinsic
+     width; without it a wide <pre> blows the column out past the page. */
+  .sheet > section { break-inside: avoid; min-width: 0; }
+  .sheet h2 { margin-top: 0.2rem; }
+  .sheet table { margin: 0.4rem 0 0; width: 100%; }
+  .sheet .figure { margin: 0.4rem 0 0; }
+  .sheet pre { font-size: 0.8em; overflow-x: auto; }
+  .span2 { grid-column: 1 / -1; }
+  @media (max-width: 900px) {
+    body { max-width: 40rem; }
+    .sheet { grid-template-columns: 1fr; }
+  }
+  @media print {
+    body { max-width: 100%; }
+    .sheet { grid-template-columns: 1fr 1fr; gap: 0.8rem 1.4rem; }
+    .course-nav, .ask-teacher { display: none; }
+    h1 { margin-bottom: 0.2rem; }
+  }
+</style>
+
+<p class="eyebrow">Django &amp; DRF · Reference</p>
+<h1>Cheat-Sheet</h1>
+<p class="lede">The maps for the whole course on one page: the request lifecycle, the three-rung verb mapping, the view ladder, and the decisions (which serializer hook, which relation prefetch, which status code). The <a href="glossary.html">glossary</a> defines the terms; this sheet shows how they fit. Built to print.</p>
+
+<div class="sheet">
+
+<section class="span2">
+<h2>The request lifecycle, end to end</h2>
+<div class="figure">
+<pre><code>  HTTP request
+     │
+  ┌──────────────── MIDDLEWARE (onion, top-down) ───────────────┐   L14
+  │ Security → Session → Common → Csrf → Auth → ...             │
+  │   │                                                          │
+  │  URLconf  path() matches the PATH only (never the verb)      │   L2
+  │   │                                                          │
+  │  view callable = as_view()  →  dispatch() reads the verb     │   L3
+  │   │                          →  get()/post()/...  (or 405)   │
+  │   │                                                          │
+  │  [ DRF APIView ]  auth → permission → throttle  (the gate)   │   L11
+  │   │               request.data (parsed) ; Response (negotiated)  L5
+  │   │               serializer  ⇄  queryset (lazy, cached)     │  L8/L9
+  │   ▼                                                          │
+  │  action / handler runs, returns Response                     │
+  └──────────────── response back out, BOTTOM-UP ───────────────┘
+     │
+  HTTP response</code></pre>
+<p class="cap">Middleware wraps everything. Routing picks the view by path; the verb is resolved inside it. DRF swaps the request/response objects and runs the gate before your handler.</p>
+</div>
+</section>
+
+<section class="span2">
+<h2>The three-rung verb mapping</h2>
+<div class="figure">
+<pre><code>Rung 1  FBV        if request.method == "GET": ...   (you branch)     L3
+Rung 2  CBV View   def get(self, ...)   dispatch routes  (Django)     L3
+Rung 3  ViewSet    as_view({"get": "list"})  + router   (as data)     L6</code></pre>
+</div>
+<p>DRF's <code>APIView</code> subclasses Django's <code>View</code>: it <em>inherits</em> rung 2, it did not invent it. Rung 3 is the only routing DRF adds on top.</p>
+</section>
+
+<section class="span2">
+<h2>The view abstraction ladder</h2>
+<div class="figure">
+<pre><code>APIView                  you write get()/post() + logic          L5
+  + queryset, serializer_class
+GenericAPIView           knows objects + serializer              L10
+  + mixins (list/create/retrieve/update/destroy)
+GenericAPIView + mixins  behavior exists; wire get()→list()      L10
+  pre-combined
+concrete generics        ListCreateAPIView, etc.; set 2 attrs    L10
+  as a viewset
+ModelViewSet + router    all six actions, routed                 L6/L10</code></pre>
+</div>
+<p>Each rung removes code. Drop down a level the moment the packaging stops fitting.</p>
+</section>
+
+<section>
+<h2>ViewSet action ↔ verb ↔ URL</h2>
+<table>
+  <tr><th>Action</th><th>Verb</th><th>URL</th></tr>
+  <tr><td><code>list</code></td><td>GET</td><td>collection <code>/x/</code></td></tr>
+  <tr><td><code>create</code></td><td>POST</td><td>collection <code>/x/</code></td></tr>
+  <tr><td><code>retrieve</code></td><td>GET</td><td>member <code>/x/42/</code></td></tr>
+  <tr><td><code>update</code></td><td>PUT</td><td>member <code>/x/42/</code></td></tr>
+  <tr><td><code>partial_update</code></td><td>PATCH</td><td>member <code>/x/42/</code></td></tr>
+  <tr><td><code>destroy</code></td><td>DELETE</td><td>member <code>/x/42/</code></td></tr>
+</table>
+<p><code>list</code> and <code>retrieve</code> are both GET, on different URLs. The action names the behavior; the router ties it to verb + URL.</p>
+</section>
+
+<section>
+<h2>Concrete generics → verbs</h2>
+<table>
+  <tr><th>Class</th><th>Methods</th></tr>
+  <tr><td><code>ListAPIView</code></td><td>GET (collection)</td></tr>
+  <tr><td><code>CreateAPIView</code></td><td>POST</td></tr>
+  <tr><td><code>RetrieveAPIView</code></td><td>GET (member)</td></tr>
+  <tr><td><code>UpdateAPIView</code></td><td>PUT, PATCH</td></tr>
+  <tr><td><code>DestroyAPIView</code></td><td>DELETE</td></tr>
+  <tr><td><code>ListCreateAPIView</code></td><td>GET, POST</td></tr>
+  <tr><td><code>RetrieveUpdateAPIView</code></td><td>GET, PUT, PATCH</td></tr>
+  <tr><td><code>RetrieveDestroyAPIView</code></td><td>GET, DELETE</td></tr>
+  <tr><td><code>RetrieveUpdateDestroyAPIView</code></td><td>GET, PUT, PATCH, DELETE</td></tr>
+</table>
+<p>Each needs only <code>queryset</code> + <code>serializer_class</code>.</p>
+</section>
+
+<section>
+<h2>QuerySet: when it hits the DB</h2>
+<table>
+  <tr><th>Operation</th><th>Query?</th></tr>
+  <tr><td>build / chain <code>.filter().exclude()</code></td><td>no (lazy)</td></tr>
+  <tr><td>iterate, <code>list()</code>, <code>len()</code>, <code>bool</code>, print</td><td>yes (evaluate)</td></tr>
+  <tr><td>reuse the same evaluated variable</td><td>no (cached)</td></tr>
+  <tr><td>call <code>.all()</code> again in another place</td><td>yes (new set)</td></tr>
+  <tr><td>read a related object (<code>obj.fk</code>)</td><td>yes (per access)</td></tr>
+</table>
+<p>Relations in a loop = <strong>N+1</strong>. See next box.</p>
+</section>
+
+<section>
+<h2>select_related vs prefetch_related</h2>
+<table>
+  <tr><th></th><th><code>select_related</code></th><th><code>prefetch_related</code></th></tr>
+  <tr><td>Relation</td><td>FK, OneToOne (one-side)</td><td>M2M, reverse FK (many-side)</td></tr>
+  <tr><td>How</td><td>SQL join, one query</td><td>2nd query, joined in Python</td></tr>
+</table>
+<p>Put them in <code>get_queryset()</code>, not on <code>self.queryset</code> (that is cached across requests). This is the N+1 fix for API list endpoints.</p>
+</section>
+
+<section>
+<h2>Serializer: both directions</h2>
+<div class="figure">
+<pre><code>OUT:  Serializer(obj).data           → native → JSON
+      Serializer(qs, many=True).data
+IN:   Serializer(data=request.data)
+      .is_valid() → .validated_data → .save()</code></pre>
+</div>
+</section>
+
+<section>
+<h2>Serializer validation ladder</h2>
+<div class="figure">
+<pre><code>1  field type/format checks   (built in)
+2  validate_&lt;field&gt;()         (one field)
+3  validate(self, data)       (across fields)</code></pre>
+</div>
+<p>One field: <code>validate_&lt;field&gt;</code>. Two fields: <code>validate</code>. <code>ModelSerializer</code> infers fields + validators + create/update. Nested writes need an explicit <code>create()</code>/<code>update()</code>.</p>
+</section>
+
+<section>
+<h2>The auth gate</h2>
+<div class="figure">
+<pre><code>authentication  → sets request.user     (who?)     L11
+   ↓
+permission      → allowed? (all must pass) (may they?)
+   ↓
+throttling      → under the rate?         (how often?)
+   ↓
+view / action runs</code></pre>
+</div>
+<table>
+  <tr><th>Case</th><th>Status</th></tr>
+  <tr><td>no / failed identity</td><td><code>401</code></td></tr>
+  <tr><td>known, refused</td><td><code>403</code></td></tr>
+</table>
+<p><code>has_permission</code> = whole request; <code>has_object_permission</code> = one row (per-owner rules). <code>SAFE_METHODS</code> = GET, HEAD, OPTIONS.</p>
+</section>
+
+<section>
+<h2>Plain Django vs DRF objects</h2>
+<table>
+  <tr><th>Need</th><th>Django</th><th>DRF</th></tr>
+  <tr><td>parsed body (JSON, PUT/PATCH)</td><td><code>request.POST</code> (form/POST)</td><td><code>request.data</code></td></tr>
+  <tr><td>content-negotiated reply</td><td><code>HttpResponse</code> (raw)</td><td><code>Response</code></td></tr>
+  <tr><td>object ⇄ JSON + validation</td><td>hand-rolled</td><td>Serializer</td></tr>
+  <tr><td>405 / parse errors</td><td>manual</td><td>automatic (wrappers)</td></tr>
+</table>
+</section>
+
+<section>
+<h2>Migrations: two commands</h2>
+<div class="figure">
+<pre><code>edit model
+  → makemigrations  write numbered file (no DB hit)
+  → sqlmigrate app N  preview SQL (optional)
+  → migrate  apply unapplied files to the DB
+  → commit the file  version control for schema</code></pre>
+</div>
+<p>Reverse: <code>migrate app 0002</code> unapplies everything after 0002.</p>
+</section>
+
+<section>
+<h2>Middleware onion</h2>
+<div class="figure">
+<pre><code>request  ─▶ layer1 ─▶ layer2 ─▶ [view]
+response ◀─ layer1 ◀─ layer2 ◀─┘
+
+top-down in, bottom-up out; view at center       L14
+get_response = next layer/view
+return without calling it = short-circuit</code></pre>
+</div>
+<p>Order in <code>MIDDLEWARE</code> matters: session-dependent layers after <code>SessionMiddleware</code>.</p>
+</section>
+
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2rem 0 1rem">
+<p class="src"><strong>Compressed from the course lessons</strong> (each cites Django 5.2 and DRF docs). Full definitions in the <a href="glossary.html">glossary</a>. Primary docs: <a href="https://docs.djangoproject.com/en/5.2/">docs.djangoproject.com</a> and <a href="https://www.django-rest-framework.org/">django-rest-framework.org</a>.</p>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="glossary.html">Glossary ↗</a></span>
+  <span><a href="../lessons/0001-why-django.html">Start: Lesson 1 →</a></span>
+</div>

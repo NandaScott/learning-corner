@@ -1,0 +1,107 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2: From URL to response</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 2</p>
+<h1>From URL to response</h1>
+<p class="lede">Lesson 1 established that a Django "view" is the request-answering logic. This lesson is the mechanism around it: how an incoming URL gets matched to a view, what the view receives, and what it must hand back. Nail this cycle and the verb-mapping problem in Lesson 3 becomes obvious.</p>
+
+<h2>The concept</h2>
+
+<p>Django's request handling is a short contract. When a page is requested, Django builds an <strong>HttpRequest</strong> object holding the request's metadata and passes it to the right view. Each view is responsible for returning an <strong>HttpResponse</strong> object.<sup><a href="#s1">1</a></sup> Everything else (routing, the view, the template) is machinery in service of that one in-and-out.</p>
+
+<p>So a view, precisely, is <em>a callable that takes an <code>HttpRequest</code> and returns an <code>HttpResponse</code></em>. Nothing more is required to be a view.</p>
+
+<h2>The steps</h2>
+
+<div class="figure">
+<pre><code>  1. request arrives:  GET /articles/2026/
+        │
+  2. URL resolver scans urlpatterns top-to-bottom for a match
+        │
+  3. match found → Django calls the view, passing the
+     HttpRequest plus any captured path pieces as kwargs
+        │
+  4. view runs its logic (query models, pick a template…)
+        │
+  5. view returns an HttpResponse; Django sends it to the client</code></pre>
+<p class="cap">Two objects define the whole cycle: HttpRequest in at step 3, HttpResponse out at step 5.</p>
+</div>
+
+<h3>Step 2 — the URLconf matches the path</h3>
+<p>A URLconf is a list of <code>path()</code> entries. Each maps a route string to a view, and the route can capture parts of the URL using angle brackets with a converter:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("index/", views.index, name="main-view"),
+    path("articles/&lt;int:year&gt;/", views.year_archive, name="year"),
+]</code></pre>
+<p class="cap"><code>&lt;int:year&gt;</code> captures a segment, converts it to an <code>int</code>, and passes it on as the <code>year</code> keyword argument. The <code>name</code> lets other code refer to this route without hardcoding the URL.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Step 3 — Django calls the view</h3>
+<p>On a match, Django invokes the view with an <code>HttpRequest</code> object and any captured route values as keyword arguments.<sup><a href="#s2">2</a></sup> The <code>view</code> slot in <code>path()</code> takes a view function directly, or the result of <code>as_view()</code> for a class-based view (Lesson 3), or an <code>include()</code> of another URLconf.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 4–5 — the view runs and returns a response</h3>
+<p>The simplest possible view skips models and templates entirely and returns a response by hand:<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>from django.http import HttpResponse
+
+def year_archive(request, year):
+    return HttpResponse(f"Articles from {year}")</code></pre>
+<p class="cap">A plain function. It takes the request (plus the captured <code>year</code>) and returns an <code>HttpResponse</code>. That is a complete, valid Django view.</p>
+</div>
+
+<h2>Why this cycle matters</h2>
+
+<p>Two consequences carry forward. First, the view is the one place the application's logic runs per request, which is why Lesson 1 insisted a "view" is logic, not markup. Second, and this is the setup for the next lesson: notice what the routing matched on. The URL resolver matched on the <em>path</em> (<code>/articles/2026/</code>). It did not look at the HTTP <em>method</em> (GET, POST, PUT, DELETE). The path picks the view; the method is just a field sitting on the <code>HttpRequest</code> the view receives.</p>
+
+<p>That single fact is the root of the verb-mapping question. One path routes to one view, no matter the verb, so if a single URL needs to behave differently for GET versus POST, that difference has to be sorted out <em>inside</em> the view. Lesson 3 is what that looks like, and how Django lets you stop doing it by hand.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A Django view is a callable that takes an HttpRequest and returns an HttpResponse. The URLconf routes on the path alone, so all HTTP methods for one URL arrive at the same view."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Assuming routing considers the HTTP method. It doesn't. <code>path()</code> matches the URL string; the verb rides in on the request object. That's exactly why a plain view has to branch on <code>request.method</code> to serve the same URL differently per verb, which is the awkwardness Lesson 3 unpacks.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① State the view contract: what does a view take, and what must it return?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It takes an <code>HttpRequest</code> (plus any values captured from the URL path, as keyword arguments) and returns an <code>HttpResponse</code>.</p></details>
+  <p>② In <code>path("articles/&lt;int:year&gt;/", views.year_archive)</code>, what does <code>&lt;int:year&gt;</code> do?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Captures that URL segment, converts it to an <code>int</code>, and passes it to the view as the keyword argument <code>year</code>.</p></details>
+  <p>③ Does the URL resolver use the HTTP method to pick a view? What follows from the answer?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. It matches on the path only. So every HTTP method for one URL reaches the same view, and any per-verb difference must be handled inside that view.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://docs.djangoproject.com/en/5.2/ref/request-response">Django docs: Request and response objects</a> for the in/out contract, and <a href="https://docs.djangoproject.com/en/5.2/ref/urls">the URL dispatcher reference</a> for <code>path()</code>. Together they are the whole cycle.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want path converters, <code>re_path</code> regex routes, or <code>include()</code> for splitting URLconfs across apps? Ask. Next lesson: one URL, many verbs, the branching problem, and Django's class-based fix.
+</div>
+
+<div class="course-nav">
+  <span><a href="0001-why-django.html">← Lesson 1</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-one-url-many-verbs.html"><em>Next: Lesson 3, one URL, many verbs →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Django documentation only)<br>
+<span id="s1">1.</span> HttpRequest in, HttpResponse out; the view's responsibility: <a href="https://docs.djangoproject.com/en/5.2/ref/request-response">Django docs: Request and response objects (quick overview)</a>.<br>
+<span id="s2">2.</span> <code>path()</code>, route converters, captured kwargs, the <code>view</code> argument accepting a function / <code>as_view()</code> / <code>include()</code>: <a href="https://docs.djangoproject.com/en/5.2/ref/urls">Django docs: URL dispatcher (<code>django.urls</code> functions)</a>.
+</p>

@@ -1,0 +1,120 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 13: Migrations</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 13</p>
+<h1>Migrations</h1>
+<p class="lede">Lesson 8 was the read side of the ORM: querying rows that already exist. This lesson is the write side of the schema itself. A model describes the shape you want a table to have, but changing a Python class does not change a database. Migrations are how Django turns a model edit into an actual schema change, and keeps every environment's schema in step.</p>
+
+<h2>The concept</h2>
+
+<p>Two schemas exist at once: the one your <em>models</em> describe in Python, and the one the <em>database</em> actually has. When you edit a model (add a field, drop a field, add a table) those two drift apart. Migrations close the gap. The docs call them Django's mechanism for propagating model changes into the database schema, and describe them as a version control system for the database: changes are packaged into migration files, then applied.<sup><a href="#s1">1</a></sup></p>
+
+<p>Two commands do the work, and keeping them straight is most of this lesson: <strong><code>makemigrations</code></strong> writes the change down as a file, and <strong><code>migrate</code></strong> applies that file to the database.</p>
+
+<h2>The steps</h2>
+
+<div class="figure">
+<pre><code>  1. edit a model            add/remove a field on the Python class
+        │
+  2. makemigrations          Django diffs models vs the last migration,
+        │                    writes a new migration file (e.g. 0002_...)
+        │
+  3. sqlmigrate  (optional)  see the SQL that file would run
+        │
+  4. migrate                 run the file's operations against the database
+        │
+  5. commit the file         the migration is checked into version control</code></pre>
+<p class="cap">Step 2 records the intent as a file; step 4 executes it. The two are separate on purpose.</p>
+</div>
+
+<h3>Step 2 - makemigrations writes the change down</h3>
+<p>After editing a model, <code>makemigrations</code> compares the current models to the state captured by the previous migrations and writes a new migration file describing the difference:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>$ python manage.py makemigrations polls
+  Migrations for 'polls':
+    polls/migrations/0002_question_pub_date.py
+      + Add field pub_date to question</code></pre>
+<p class="cap">The result is a file, not a schema change. Nothing has touched the database yet.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<p>Migration files are numbered per app (<code>0001_initial</code>, <code>0002_...</code>), and each declares the <em>operations</em> it performs and its <em>dependencies</em> on earlier migrations. That ordering is what lets Django replay the same sequence of changes on any database and arrive at the same schema.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 3 - sqlmigrate shows the SQL (optional)</h3>
+<p>A migration is not SQL; it is a description Django can turn into SQL for whatever database you use. To see exactly what it would run, ask:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>$ python manage.py sqlmigrate polls 0001</code></pre>
+<p class="cap">Useful for review, and for seeing that one migration can become several SQL statements. It only prints; it changes nothing.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Step 4 - migrate applies it</h3>
+<p><code>migrate</code> runs the unapplied migration files against the database, in dependency order, across every app:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>$ python manage.py migrate
+  Operations to perform:
+    Apply all migrations: admin, auth, contenttypes, sessions, polls
+  Running migrations:
+    Applying polls.0002_question_pub_date... OK</code></pre>
+<p class="cap">Django tracks which migrations are already applied, so <code>migrate</code> only runs the new ones. Run it once per environment (dev, staging, production).<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Migrations run backward too</h3>
+<p>Because the files are an ordered history, you can move to an earlier point. Naming a target migration unapplies everything after it:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>$ python manage.py migrate books 0002
+  Unapplying books.0003_auto... OK</code></pre>
+<p class="cap">Rolling <code>books</code> back to <code>0002</code> reverses <code>0003</code>. The history is navigable in both directions.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h2>Why this matters</h2>
+
+<p>The split between <code>makemigrations</code> and <code>migrate</code> is the whole idea. One records a schema change as a versioned file; the other applies recorded files to a database. Because the files are committed to source control and applied in order, every developer's laptop, the CI server, staging, and production all run the same sequence and end up with the same schema. That is what "version control for the database" means in practice: the model is the source of truth for shape (the DRY principle from Lesson 1), and migrations are the audited trail that carries that shape into every real database.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Editing a model does not change the database. <code>makemigrations</code> writes the change as a numbered, dependency-ordered file; <code>migrate</code> applies unapplied files to the database. The committed files are version control for the schema, keeping every environment in step."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Thinking <code>makemigrations</code> changes the database. It only writes a file; the database is untouched until <code>migrate</code>. The mirror mistake is editing a model and running the app without <code>makemigrations</code>: the model and the schema now disagree, and queries against the missing column fail. Two commands, two distinct effects: record, then apply.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① You add a field to a model. Which command records the change, which applies it, and what does the first one produce?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>makemigrations</code> records it, producing a numbered migration file (e.g. <code>0002_...</code>) describing the operations. <code>migrate</code> applies unapplied files to the database. The database is unchanged until <code>migrate</code> runs.</p></details>
+  <p>② Why are migration files numbered and committed to version control?</p>
+  <details><summary>show answer</summary>
+  <p class="a">They form an ordered history with dependencies, so replaying the same sequence on any database yields the same schema. Committing them keeps every environment (dev, CI, staging, production) in step. They are version control for the schema.</p></details>
+  <p>③ How do you see the SQL a migration will run, and how do you roll one back?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>sqlmigrate &lt;app&gt; &lt;number&gt;</code> prints the SQL without running it. <code>migrate &lt;app&gt; &lt;earlier-number&gt;</code> unapplies everything after that target.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://docs.djangoproject.com/en/5.2/topics/migrations">Django docs: Migrations</a> for the model and the reverse command, and <a href="https://docs.djangoproject.com/en/5.2/intro/tutorial02">Tutorial part 2</a> for <code>makemigrations</code>, <code>sqlmigrate</code>, and <code>migrate</code> in sequence.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want data migrations (<code>RunPython</code>), how Django detects a rename versus a drop-and-add, or squashing a long migration history? Ask. Next lesson: middleware, the outer layer every request passes through before it ever reaches a view.
+</div>
+
+<div class="course-nav">
+  <span><a href="0012-cumulative-review.html">← Lesson 12</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0014-middleware.html"><em>Next: Lesson 14, middleware →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Django documentation only)<br>
+<span id="s1">1.</span> Migrations propagate model changes into the schema; version control for the database; changes packaged into ordered files with operations and dependencies: <a href="https://docs.djangoproject.com/en/5.2/topics/migrations">Django docs: Migrations</a>.<br>
+<span id="s2">2.</span> <code>makemigrations</code> writes files from model changes; <code>sqlmigrate</code> prints the SQL; <code>migrate</code> applies unapplied files, tracking what is done: <a href="https://docs.djangoproject.com/en/5.2/intro/tutorial02">Django docs: Tutorial 2</a>.<br>
+<span id="s3">3.</span> Reversing to a target migration unapplies later ones: <a href="https://docs.djangoproject.com/en/5.2/topics/migrations">Django docs: Migrations (reversing)</a>.
+</p>

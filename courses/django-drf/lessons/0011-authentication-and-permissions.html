@@ -1,0 +1,134 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 11: Authentication and permissions</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 11</p>
+<h1>Authentication and permissions</h1>
+<p class="lede">Every view from the last three lessons runs behind a gate. Before your <code>get()</code> or <code>list()</code> executes, DRF answers two questions in order: who is this request (authentication), and are they allowed to do this (permission). This lesson is that gate, its fixed order, and the classes that fill each slot.</p>
+
+<h2>The concept</h2>
+
+<p>Two different questions, often confused. <strong>Authentication</strong> identifies the request: it decides <em>who</em> is calling and attaches that identity as <code>request.user</code>. <strong>Permission</strong> (authorization) decides <em>whether</em> that identity may proceed. DRF runs them in a fixed sequence, and authentication always goes first: it runs at the very start of the view, before the permission and throttling checks, and before any of your code.<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>  request
+    │
+  1. authentication   → sets request.user, request.auth   (who?)
+    │
+  2. permission       → allowed? if not, raise            (may they?)
+    │
+  3. throttling       → under the rate limit? if not, raise (how often?)
+    │
+  4. your view / action runs</code></pre>
+<p class="cap">A fixed pipeline. Each stage can stop the request before your code runs. Authentication first, because permission needs to know who the user is.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h2>The steps</h2>
+
+<h3>1. Authentication sets request.user</h3>
+<p>You list authentication schemes in <code>authentication_classes</code> on an <code>APIView</code> (or via decorator on a function view). Each scheme tries to identify the request; the first that succeeds sets <code>request.user</code> (the identity) and <code>request.auth</code> (any extra credential, such as a token):<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>class ExampleView(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, format=None):
+        return Response({"user": str(request.user)})   # the identity</code></pre>
+<p class="cap"><code>SessionAuthentication</code> reuses Django's login session; <code>BasicAuthentication</code> reads HTTP Basic credentials. Whoever they identify becomes <code>request.user</code>.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<p><strong>Token authentication</strong> is the common choice for non-browser clients. The client sends <code>Authorization: Token &lt;key&gt;</code>; on success <code>request.user</code> is a Django <code>User</code> and <code>request.auth</code> is the <code>Token</code>. A request that fails authentication and is denied gets a <code>401 Unauthorized</code> with a <code>WWW-Authenticate</code> header:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>Authorization: Token 9944b09199c62bcf9418ad846dd0e4bbdfc6ee4b</code></pre>
+<p class="cap">Header format for <code>TokenAuthentication</code>. The literal word <code>Token</code>, a space, then the key.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h3>2. Permission decides allowed or not</h3>
+<p>Permissions are a list of classes checked in turn before the view's main logic. If any check fails, DRF raises and the view body never runs, returning <code>403 Forbidden</code> or <code>401 Unauthorized</code> depending on whether the request was authenticated:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>  authenticated but not allowed   → 403 Forbidden
+  not authenticated at all        → 401 Unauthorized (with WWW-Authenticate)</code></pre>
+<p class="cap">The status code tells the client which problem it is: "I don't know you" (401) versus "I know you, and no" (403).<sup><a href="#s3">3</a></sup><sup><a href="#s4">4</a></sup></p>
+</div>
+
+<p>The built-in permission classes cover the usual cases:<sup><a href="#s5">5</a></sup></p>
+
+<div class="figure">
+<pre><code>  AllowAny                   everyone, authenticated or not
+  IsAuthenticated            only signed-in users
+  IsAdminUser                only users with is_staff = True
+  IsAuthenticatedOrReadOnly  anyone may read (GET/HEAD/OPTIONS); writes need sign-in
+  DjangoModelPermissions     ties to Django's add/change/delete model permissions</code></pre>
+<p class="cap">Set them with <code>permission_classes = [IsAuthenticated]</code>. They compose: all must pass.<sup><a href="#s5">5</a></sup></p>
+</div>
+
+<h3>3. Two levels of permission check</h3>
+<p>A permission class can decide at two granularities. <code>has_permission</code> judges the whole request (may this user reach this view at all). <code>has_object_permission</code> judges a specific object (may this user act on <em>this</em> row). Object-level checks are where per-owner rules live, and they use the object from the queryset in Lesson 10. The classic custom permission reads any request but restricts writes to the owner:<sup><a href="#s6">6</a></sup></p>
+
+<div class="figure">
+<pre><code>class IsOwnerOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:   # GET, HEAD, OPTIONS
+            return True
+        return obj.owner == request.user</code></pre>
+<p class="cap"><code>SAFE_METHODS</code> are the read-only verbs. Reads pass for anyone; writes require the requesting user to own the object.<sup><a href="#s6">6</a></sup></p>
+</div>
+
+<h3>4. Throttling caps the rate</h3>
+<p>After permission, throttling limits how often a client may call. <code>UserRateThrottle</code> keys on the user id (falling back to client IP for anonymous requests) and enforces a rate like <code>"60/min"</code>, set per-scope in settings.<sup><a href="#s7">7</a></sup> It is the last gate before the view runs.</p>
+
+<h2>Why this matters</h2>
+
+<p>The order is the point. Authentication must run first because permission cannot decide "may this user" without a user, and <code>request.user</code> is precisely what authentication produces. Permissions then compose as an all-must-pass list, at either the request level (<code>has_permission</code>) or the object level (<code>has_object_permission</code>). The 401-versus-403 split falls straight out of the order: no identity yet is 401, known-but-refused is 403. Throttling sits last, capping rate once identity and permission are settled. Set these as class attributes and the same gate protects an <code>APIView</code>, a generic view, or a <code>ModelViewSet</code> alike.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "The gate runs in a fixed order: authentication (sets <code>request.user</code>) then permission (allowed?) then throttling (how often?), before your view. Permissions are an all-pass list, checked at request level (<code>has_permission</code>) or object level (<code>has_object_permission</code>); no identity is 401, known-but-refused is 403."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Conflating authentication with permission, and the two status codes with it. Authentication only answers "who," and it never rejects on its own for being unprivileged; permission answers "may they." A signed-in user hitting a resource they do not own gets <code>403</code> (identity known, refused), not <code>401</code> (no identity). And object-level rules only fire through <code>has_object_permission</code> on a specific object, not <code>has_permission</code>.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① In what order do authentication, permission, and throttling run, and why must authentication be first?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Authentication, then permission, then throttling, all before the view. Authentication is first because it sets <code>request.user</code>, and permission needs to know who the user is to decide whether they are allowed.</p></details>
+  <p>② A logged-in user tries to edit a record they do not own and is refused. What status code, and which permission method enforced it?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>403 Forbidden</code> (the identity is known, the action is refused). Enforced by <code>has_object_permission</code>, comparing <code>obj.owner</code> to <code>request.user</code> for non-<code>SAFE_METHODS</code>.</p></details>
+  <p>③ What do <code>request.user</code> and <code>request.auth</code> hold after successful <code>TokenAuthentication</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>request.user</code> is the Django <code>User</code> instance; <code>request.auth</code> is the <code>Token</code> instance. The client sent <code>Authorization: Token &lt;key&gt;</code>.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/api-guide/authentication">DRF: Authentication</a> for the order and the schemes, and <a href="https://www.django-rest-framework.org/api-guide/permissions">DRF: Permissions</a> for the built-in classes and the 401/403 rule. The <a href="https://www.django-rest-framework.org/tutorial/4-authentication-and-permissions">tutorial's part 4</a> builds the owner permission end to end.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want JWT versus DRF's built-in token, how <code>SessionAuthentication</code> interacts with CSRF, or setting defaults globally via <code>DEFAULT_AUTHENTICATION_CLASSES</code>? Ask. Next: a cumulative review across all eleven lessons.
+</div>
+
+<div class="course-nav">
+  <span><a href="0010-generic-views-and-mixins.html">← Lesson 10</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0012-cumulative-review.html"><em>Next: Lesson 12, cumulative review →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> Authentication runs at the very start of the view, before permission and throttling; it sets <code>request.user</code> and <code>request.auth</code>: <a href="https://www.django-rest-framework.org/api-guide/authentication">DRF: Authentication</a>.<br>
+<span id="s2">2.</span> <code>authentication_classes</code> on <code>APIView</code>; <code>SessionAuthentication</code>/<code>BasicAuthentication</code>; reading <code>request.user</code>: <a href="https://www.django-rest-framework.org/api-guide/authentication">DRF: Authentication</a>.<br>
+<span id="s3">3.</span> <code>TokenAuthentication</code>: <code>Authorization: Token &lt;key&gt;</code>, <code>request.user</code>=<code>User</code>, <code>request.auth</code>=<code>Token</code>, 401 with <code>WWW-Authenticate</code>: <a href="https://www.django-rest-framework.org/api-guide/authentication">DRF: Authentication (TokenAuthentication)</a>.<br>
+<span id="s4">4.</span> Permissions are checked sequentially before the view logic; failure yields 403 or 401 depending on authentication: <a href="https://www.django-rest-framework.org/api-guide/permissions">DRF: Permissions (how permissions are determined)</a>.<br>
+<span id="s5">5.</span> Built-in permissions: <code>AllowAny</code>, <code>IsAuthenticated</code>, <code>IsAdminUser</code>, <code>IsAuthenticatedOrReadOnly</code>, <code>DjangoModelPermissions</code>: <a href="https://www.django-rest-framework.org/api-guide/permissions">DRF: Permissions (API reference)</a>.<br>
+<span id="s6">6.</span> Custom permission with <code>has_object_permission</code> and <code>SAFE_METHODS</code>; <code>obj.owner == request.user</code>: <a href="https://www.django-rest-framework.org/tutorial/4-authentication-and-permissions">DRF: Tutorial 4</a>.<br>
+<span id="s7">7.</span> <code>UserRateThrottle</code> keys on user id (IP for anonymous), rate like <code>"60/min"</code>: <a href="https://www.django-rest-framework.org/api-guide/throttling">DRF: Throttling</a>.
+</p>

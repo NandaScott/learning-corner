@@ -1,0 +1,151 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 10: Generic views and mixins</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 10</p>
+<h1>Generic views and mixins</h1>
+<p class="lede">Lesson 5 wrote a full <code>APIView</code> by hand; Lesson 6 collapsed a resource into a viewset. This lesson fills the rung between them. Most API views do the same five things (list, create, retrieve, update, delete) against a queryset and a serializer, so DRF factors that repetition into mixins and pre-built generic views. It also shows what a <code>ModelViewSet</code> was made of all along.</p>
+
+<h2>The concept</h2>
+
+<p>Start from <code>GenericAPIView</code>, a subclass of the <code>APIView</code> from Lesson 5. It adds two attributes that name the pieces a CRUD view needs: <code>queryset</code> (the objects, Lesson 8) and <code>serializer_class</code> (the object-to-JSON boundary, Lesson 9). It also adds helper methods that read those attributes: <code>get_queryset()</code>, <code>get_serializer_class()</code>, and <code>get_object()</code>, which looks up a single row using <code>lookup_field</code> (default <code>pk</code>).<sup><a href="#s1">1</a></sup> On its own <code>GenericAPIView</code> still has no <code>get()</code> or <code>post()</code>. The behavior comes from mixins.</p>
+
+<h2>The steps: climbing the abstraction ladder</h2>
+
+<div class="figure">
+<pre><code>  APIView                         you write get()/post() and all the logic      (L5)
+     │  + queryset, serializer_class, get_object()
+  GenericAPIView                  knows the objects + the serializer
+     │  + mixins (list/create/retrieve/update/destroy)
+  GenericAPIView + mixins         behavior exists; you wire get()→list()
+     │  pre-combined
+  concrete generics               e.g. ListCreateAPIView; set 2 attributes
+     │  as a viewset
+  ModelViewSet + router           all six actions, routed as data           (L6)</code></pre>
+<p class="cap">Each rung removes code. Same machinery underneath: the verb dispatch from Lesson 3, carrying the DRF objects from Lesson 5.</p>
+</div>
+
+<h3>Rung A - mixins supply the actions</h3>
+<p>Each mixin provides one action method: <code>ListModelMixin.list</code>, <code>CreateModelMixin.create</code>, <code>RetrieveModelMixin.retrieve</code>, <code>UpdateModelMixin.update</code>, <code>DestroyModelMixin.destroy</code>. You combine the mixins you want with <code>GenericAPIView</code> and connect each HTTP verb to the mixin's action:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>class SnippetList(mixins.ListModelMixin,
+                  mixins.CreateModelMixin,
+                  generics.GenericAPIView):
+    queryset = Snippet.objects.all()
+    serializer_class = SnippetSerializer
+
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
+    def post(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)</code></pre>
+<p class="cap">The mixins give you <code>list()</code> and <code>create()</code>; you still map <code>get</code>→<code>list</code> and <code>post</code>→<code>create</code> by hand. Note the verb dispatch is the same <code>get()/post()</code> from Lesson 3.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Rung B - concrete generics pre-combine the mixins</h3>
+<p>The common mixin combinations are already packaged as concrete view classes, so you set only the two attributes:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>class SnippetList(generics.ListCreateAPIView):
+    queryset = Snippet.objects.all()
+    serializer_class = SnippetSerializer
+
+class SnippetDetail(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Snippet.objects.all()
+    serializer_class = SnippetSerializer</code></pre>
+<p class="cap">The whole hand-wiring above collapses to a class name. The pre-built set covers the combinations:<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<div class="figure">
+<pre><code>  ListAPIView                 GET (collection)
+  CreateAPIView               POST
+  RetrieveAPIView             GET (member)
+  UpdateAPIView               PUT, PATCH
+  DestroyAPIView              DELETE
+  ListCreateAPIView           GET, POST
+  RetrieveUpdateAPIView       GET, PUT, PATCH
+  RetrieveDestroyAPIView      GET, DELETE
+  RetrieveUpdateDestroyAPIView GET, PUT, PATCH, DELETE</code></pre>
+<p class="cap">Pick the class whose verbs match the endpoint. Each still just needs a <code>queryset</code> and a <code>serializer_class</code>.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h3>Rung C - override the getters for dynamic behavior</h3>
+<p>Setting the <code>queryset</code> attribute is the static case. Override <code>get_queryset()</code> when the set depends on the request, for example per-user filtering. The docs are explicit that you should use <code>get_queryset()</code> rather than reading <code>self.queryset</code> directly, because <code>self.queryset</code> is evaluated only once and cached across all requests:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>def get_queryset(self):
+    user = self.request.user
+    return user.accounts.all()</code></pre>
+<p class="cap">Per-request querysets go here. This is also where the Lesson 8 fix lives:<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<div class="figure">
+<pre><code>def get_queryset(self):
+    return Order.objects.select_related("customer") \
+                        .prefetch_related("items__product")</code></pre>
+<p class="cap">When the serializer follows relations, add <code>select_related</code>/<code>prefetch_related</code> to <code>get_queryset()</code> so a list endpoint does not become N+1.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h3>Rung D - ModelViewSet is the whole ladder as a viewset</h3>
+<p>Lesson 6's <code>ModelViewSet</code> is what you get when the concrete generics are gathered into one viewset. Give it a <code>queryset</code> and a <code>serializer_class</code> and it implements all six actions, ready for a router:<sup><a href="#s5">5</a></sup></p>
+
+<div class="figure">
+<pre><code>class AccountViewSet(viewsets.ModelViewSet):
+    queryset = Account.objects.all()
+    serializer_class = AccountSerializer</code></pre>
+<p class="cap">Two attributes, full CRUD, routed by a router (Lesson 6). This is the top of the ladder.<sup><a href="#s5">5</a></sup></p>
+</div>
+
+<h2>Why this matters</h2>
+
+<p>The ladder is one idea repeated: name the queryset and the serializer once, and let DRF supply the behavior. <code>APIView</code> gives you the dispatch and nothing else; <code>GenericAPIView</code> plus mixins supplies the five actions; concrete generics pre-mix the common cases; <code>ModelViewSet</code> plus a router is the fully abstracted end. Knowing the rungs means you can drop down a level the moment the packaging does not fit, and you know exactly which method (<code>get_queryset</code>, <code>get_serializer_class</code>, <code>get_object</code>) to override instead of abandoning the generics.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "<code>GenericAPIView</code> adds <code>queryset</code> + <code>serializer_class</code> to <code>APIView</code>; mixins add the five action methods; concrete generics pre-combine them; <code>ModelViewSet</code> is the lot as a viewset. Override <code>get_queryset()</code> (not <code>self.queryset</code>) for per-request sets and to add <code>select_related</code>/<code>prefetch_related</code>."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Reaching for <code>self.queryset</code> inside a method, or filtering it in place. <code>self.queryset</code> is evaluated once and cached across every request, so per-request logic there leaks between users. Override <code>get_queryset()</code> instead. And remember concrete generics did not replace the verb dispatch: a <code>ListCreateAPIView</code> still answers via the same <code>get()/post()</code> methods from Lesson 3, now filled in by the mixins.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① What two attributes does <code>GenericAPIView</code> add over <code>APIView</code>, and what do mixins add on top?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>queryset</code> and <code>serializer_class</code> (plus getters like <code>get_object()</code>). Mixins add the action methods: <code>list</code>, <code>create</code>, <code>retrieve</code>, <code>update</code>, <code>destroy</code>.</p></details>
+  <p>② You need a read-write collection endpoint (GET list, POST create) with no custom logic. Which concrete generic, and what must you set?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>ListCreateAPIView</code>. Set <code>queryset</code> and <code>serializer_class</code>; nothing else is required.</p></details>
+  <p>③ Why override <code>get_queryset()</code> instead of setting <code>self.queryset</code>, and what Lesson 8 tool belongs there?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>self.queryset</code> is evaluated once and cached across all requests, so per-request logic (like per-user filtering) must go in <code>get_queryset()</code>. It is also where you add <code>select_related</code>/<code>prefetch_related</code> to avoid N+1.</p></details>
+  <p>④ What is a <code>ModelViewSet</code>, in terms of this ladder?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The concrete generics gathered into a single viewset: given a <code>queryset</code> and <code>serializer_class</code>, it implements all six actions and is routed by a router (Lesson 6).</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/tutorial/3-class-based-views">DRF Tutorial 3: Class-based views</a> shows the mixin-to-concrete progression on one example; then <a href="https://www.django-rest-framework.org/api-guide/generic-views">the Generic views guide</a> for the attribute/method reference and the <code>get_queryset()</code> optimization note.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the method resolution order that makes mixins work, custom <code>lookup_field</code>, or pagination and filter backends on a generic view? Ask. Next lesson: authentication and permissions, the gate every one of these views passes through before it runs.
+</div>
+
+<div class="course-nav">
+  <span><a href="0009-serializers-in-depth.html">← Lesson 9</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0011-authentication-and-permissions.html"><em>Next: Lesson 11, authentication and permissions →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> <code>GenericAPIView</code> attributes <code>queryset</code>, <code>serializer_class</code>, <code>lookup_field</code>, and getters including <code>get_object()</code>: <a href="https://www.django-rest-framework.org/api-guide/generic-views">DRF: Generic views</a>.<br>
+<span id="s2">2.</span> Mixins (<code>ListModelMixin</code>, <code>CreateModelMixin</code>, <code>RetrieveModelMixin</code>, <code>UpdateModelMixin</code>, <code>DestroyModelMixin</code>) composed with <code>GenericAPIView</code>, wiring <code>get</code>→<code>list</code> etc.: <a href="https://www.django-rest-framework.org/tutorial/3-class-based-views">DRF: Tutorial 3</a>.<br>
+<span id="s3">3.</span> Concrete generic views (<code>ListCreateAPIView</code>, <code>RetrieveUpdateDestroyAPIView</code>, and the full set with their methods): <a href="https://www.django-rest-framework.org/api-guide/generic-views">DRF: Generic views (concrete views)</a> and <a href="https://www.django-rest-framework.org/tutorial/3-class-based-views">Tutorial 3</a>.<br>
+<span id="s4">4.</span> Use <code>get_queryset()</code> rather than <code>self.queryset</code> (evaluated once, cached); optimize with <code>select_related</code>/<code>prefetch_related</code>: <a href="https://www.django-rest-framework.org/api-guide/generic-views">DRF: Generic views (get_queryset)</a>.<br>
+<span id="s5">5.</span> <code>ModelViewSet</code> from <code>queryset</code> + <code>serializer_class</code>: <a href="https://www.django-rest-framework.org/api-guide/viewsets">DRF: ViewSets (ModelViewSet)</a>.
+</p>

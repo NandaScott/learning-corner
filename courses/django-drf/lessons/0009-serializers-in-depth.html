@@ -1,0 +1,131 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 9: Serializers in depth</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 9</p>
+<h1>Serializers in depth</h1>
+<p class="lede">Lesson 5 introduced the serializer as the object-to-JSON boundary with validation. This lesson goes inside it: the <code>ModelSerializer</code> shortcut that infers fields from a model, the two layers of custom validation, and what it takes to write a nested serializer that can save. This is the layer where "is this input acceptable" is actually decided.</p>
+
+<h2>The concept</h2>
+
+<p>A plain <code>Serializer</code> makes you declare every field by hand. Most of the time a serializer mirrors a model, so DRF provides <code>ModelSerializer</code>: it reads the model and generates matching fields for you, adds model-derived validators (such as a <code>unique_together</code> constraint), and supplies default <code>create()</code> and <code>update()</code> implementations.<sup><a href="#s1">1</a></sup> You describe what you want in an inner <code>Meta</code> class:</p>
+
+<div class="figure">
+<pre><code>class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ["id", "account_name", "users", "created"]</code></pre>
+<p class="cap"><code>Meta.model</code> says which model; <code>Meta.fields</code> lists what to expose. Fields, validators, and create/update come for free from the model.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h2>The steps: the validation ladder</h2>
+
+<p>When you call <code>is_valid()</code> (Lesson 5), DRF runs validation in layers, from narrow to wide. Two of those layers are yours to customize.</p>
+
+<div class="figure">
+<pre><code>  incoming request.data
+        │
+  1. per-field type/format checks   (built in: is this an int? a valid date?)
+        │
+  2. validate_&lt;field&gt;()             (your rule for ONE field)
+        │
+  3. validate()                     (your rule ACROSS fields)
+        │
+  validated_data  →  create() / update()  →  saved object</code></pre>
+<p class="cap">Field checks first, then your field-level rules, then your object-level rule. Only data that clears all three reaches <code>validated_data</code>.</p>
+</div>
+
+<h3>Layer 2 - field-level validation</h3>
+<p>Add a <code>validate_&lt;field_name&gt;()</code> method for a rule about one field. It receives that field's value and must return the validated value or raise <code>serializers.ValidationError</code>. If the field is optional (<code>required=False</code>), the method only runs when the field is present:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>class BlogPostSerializer(serializers.Serializer):
+    title = serializers.CharField()
+
+    def validate_title(self, value):
+        if "django" not in value.lower():
+            raise serializers.ValidationError("Blog post is not about Django")
+        return value</code></pre>
+<p class="cap">One field, one method. Return the value on success; raise <code>ValidationError</code> to reject.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Layer 3 - object-level validation</h3>
+<p>When a rule spans more than one field, put it in <code>validate()</code>. It receives a dictionary of all the field values and must return that dictionary or raise <code>ValidationError</code>:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>    def validate(self, data):
+        if data["start"] &gt; data["finish"]:
+            raise serializers.ValidationError("finish must be after start")
+        return data</code></pre>
+<p class="cap">This is the layer for cross-field rules, the ones no single <code>validate_&lt;field&gt;</code> can see.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h3>Writable nested serializers</h3>
+<p>A serializer can embed another. Reading is automatic: nest a serializer with <code>many=True</code> and the output includes the related objects. Writing is not automatic. Because a default <code>create()</code> does not know how to build the nested objects, you override <code>create()</code> (and <code>update()</code> if needed) to say how the nested data is saved:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>class AlbumSerializer(serializers.ModelSerializer):
+    tracks = TrackSerializer(many=True)
+
+    class Meta:
+        model = Album
+        fields = ["album_name", "artist", "tracks"]
+
+    def create(self, validated_data):
+        tracks_data = validated_data.pop("tracks")
+        album = Album.objects.create(**validated_data)
+        for track_data in tracks_data:
+            Track.objects.create(album=album, **track_data)
+        return album</code></pre>
+<p class="cap">Pull the nested data out of <code>validated_data</code>, create the parent, then create each child pointing at it. Explicit, because DRF will not guess your write semantics.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h2>Why this matters</h2>
+
+<p><code>ModelSerializer</code> is the DRY payoff from Lesson 1 applied to the API boundary: describe the model once, and the serializer's fields, validators, and default save logic follow. The two validation hooks give you a clear place for every rule: one field goes in <code>validate_&lt;field&gt;</code>, many fields go in <code>validate</code>. And the nested-write rule is the one place DRF deliberately steps back: automatic reading, but explicit <code>create()</code>/<code>update()</code> for writing, because only you know how the related rows should be built.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "<code>ModelSerializer</code> infers fields, validators, and create/update from the model. Validation runs field checks, then your <code>validate_&lt;field&gt;()</code>, then your cross-field <code>validate()</code>. Nested serializers read automatically but need an explicit <code>create()</code>/<code>update()</code> to write."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Putting a cross-field rule in a <code>validate_&lt;field&gt;()</code> method. A field-level method only sees its own value, so it cannot compare two fields; that belongs in object-level <code>validate(self, data)</code>. The second trap: expecting a nested serializer to save on its own. Reading nested data is automatic; writing it is not, until you override <code>create()</code>/<code>update()</code>.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① What three things does <code>ModelSerializer</code> generate for you from the model?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Serializer fields matching the model fields, validators derived from the model (e.g. <code>unique_together</code>), and default <code>create()</code> and <code>update()</code> implementations.</p></details>
+  <p>② A rule needs to check that <code>end_date</code> is after <code>start_date</code>. Which method, and why not the other?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Object-level <code>validate(self, data)</code>, because it receives all field values and can compare them. A <code>validate_&lt;field&gt;()</code> method only sees its own field's value, so it cannot see the other date.</p></details>
+  <p>③ You nest <code>TrackSerializer(many=True)</code> inside an album serializer. Reading works; posting an album with tracks fails to save the tracks. Why, and what fixes it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Nested writing is not automatic. Override <code>create()</code> (and <code>update()</code>) to pop the nested data out of <code>validated_data</code> and create the related objects explicitly.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/api-guide/serializers">DRF: Serializers</a> for <code>ModelSerializer</code>, field-level and object-level validation; then <a href="https://www.django-rest-framework.org/api-guide/relations">Serializer relations</a> for the writable-nested pattern.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want <code>SerializerMethodField</code>, the <code>extra_kwargs</code> / <code>read_only_fields</code> Meta options, or how hyperlinked relations work? Ask. Next lesson: generic views and mixins, where a serializer and a queryset get wired into a view with almost no code.
+</div>
+
+<div class="course-nav">
+  <span><a href="0008-the-orm-queryset.html">← Lesson 8</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0010-generic-views-and-mixins.html"><em>Next: Lesson 10, generic views and mixins →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> <code>ModelSerializer</code> auto-generates fields from the model, adds model-derived validators (e.g. <code>unique_together</code>), and provides default <code>create()</code>/<code>update()</code>; the <code>Meta</code> declaration: <a href="https://www.django-rest-framework.org/api-guide/serializers">DRF: Serializers (ModelSerializer)</a>.<br>
+<span id="s2">2.</span> Field-level validation via <code>validate_&lt;field_name&gt;()</code>, returning the value or raising <code>ValidationError</code>; runs only if a <code>required=False</code> field is present: <a href="https://www.django-rest-framework.org/api-guide/serializers">DRF: Serializers (field-level validation)</a>.<br>
+<span id="s3">3.</span> Object-level validation via <code>validate(self, data)</code> for multi-field rules: <a href="https://www.django-rest-framework.org/api-guide/serializers">DRF: Serializers (object-level validation)</a>.<br>
+<span id="s4">4.</span> Writable nested serializers require overriding <code>create()</code>/<code>update()</code>: <a href="https://www.django-rest-framework.org/api-guide/relations">DRF: Serializer relations (writable nested)</a>.
+</p>

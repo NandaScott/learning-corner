@@ -1,0 +1,134 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 15: Testing DRF</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 15</p>
+<h1>Testing DRF</h1>
+<p class="lede">Everything the course built runs behind an HTTP boundary: a request comes in, a view answers, a status code and a payload go out. That boundary is exactly what a test should exercise. DRF ships test helpers that let you send a request to an endpoint and assert on the response, so the whole stack (routing, the verb dispatch, the serializer, the auth gate) is checked end to end.</p>
+
+<h2>The concept</h2>
+
+<p>DRF extends Django's testing tools with API-aware versions. The two you reach for most are <code>APITestCase</code> (a test class that behaves like Django's <code>TestCase</code> but gives you an API client) and <code>APIClient</code> (a client that sends real requests to your URLs and hands back the response).<sup><a href="#s1">1</a></sup> A test builds a request, sends it through the actual view, and asserts on the status code and the returned data. No mocking of the framework; you test what a real caller would see.</p>
+
+<h2>The steps</h2>
+
+<div class="figure">
+<pre><code>  1. subclass APITestCase        gives you self.client (an APIClient)
+        │
+  2. build a URL                 reverse("account-list")
+        │
+  3. send a request              self.client.post(url, data, format="json")
+        │
+  4. assert on the response      status_code, then response.data / the DB</code></pre>
+<p class="cap">Arrange a request, act by sending it, assert on what came back. The same shape as any test, at the HTTP boundary.</p>
+</div>
+
+<h3>1-4. A full endpoint test</h3>
+<p>The canonical create test builds the URL by name, posts JSON, and checks both the status code and that the object landed:<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
+from myproject.apps.core.models import Account
+
+class AccountTests(APITestCase):
+    def test_create_account(self):
+        url = reverse("account-list")
+        data = {"name": "DabApps"}
+        response = self.client.post(url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Account.objects.count(), 1)
+        self.assertEqual(Account.objects.get().name, "DabApps")</code></pre>
+<p class="cap">Three things worth naming: <code>format="json"</code> sends a JSON body (the API case from Lesson 5), <code>status.HTTP_201_CREATED</code> is the readable status constant, and the assertions check both the response and the database.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<p>The <code>APIClient</code> supports every verb (<code>.get()</code>, <code>.post()</code>, <code>.put()</code>, <code>.patch()</code>, <code>.delete()</code>), so one test class can drive the whole verb dispatch from Lesson 3 and check that each method returns the right status:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>from rest_framework.test import APIClient
+
+client = APIClient()
+client.post("/notes/", {"title": "new idea"}, format="json")</code></pre>
+<p class="cap">A GET on a missing member should be 404, a POST with bad data should be 400 (the serializer validation from Lesson 9), a wrong verb should be 405. Each is one short test.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>Testing behind the auth gate</h3>
+<p>Lesson 11 put an authentication and permission gate in front of every view. To test the logic <em>behind</em> the gate without building real credentials, <code>force_authenticate</code> makes the client act as a given user:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>user = User.objects.get(username="lauren")
+client = APIClient()
+client.force_authenticate(user=user)</code></pre>
+<p class="cap">Every request from this client now counts as that user. It sets <code>request.user</code> directly, skipping the token or session path, so the test exercises your permission rules, not the authentication mechanics.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<p>This is what lets you test the object-level rules from Lesson 11 cleanly: authenticate as the owner and assert a 200 on edit, authenticate as someone else and assert a 403, send no authentication and assert a 401. Three users, three status codes, the permission logic pinned down.</p>
+
+<h3>Testing a view in isolation: APIRequestFactory</h3>
+<p>When you want to test one view without routing through URLs, <code>APIRequestFactory</code> builds a request object you pass straight to the view. The standalone <code>force_authenticate</code> helper works on that request:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>from rest_framework.test import APIRequestFactory, force_authenticate
+
+factory = APIRequestFactory()
+view = AccountDetail.as_view()
+
+request = factory.get("/accounts/django-superstars/")
+force_authenticate(request, user=user)
+response = view(request)</code></pre>
+<p class="cap">Lower level than <code>APIClient</code>: no URL resolution, no middleware, just the view called with a request. Use it for focused unit tests of a single view's logic.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h2>Why this matters</h2>
+
+<p>The API boundary is the right place to test, because it is where behavior is defined: a caller sends a request and expects a status and a payload. <code>APITestCase</code> plus <code>APIClient</code> test at exactly that boundary, driving the real routing, verb dispatch, serializer, and auth gate in one pass, which makes them the natural fit for a red-green loop on an endpoint. Drop to <code>APIRequestFactory</code> when you want a single view under a microscope. And <code>force_authenticate</code> is the tool that keeps auth from getting in the way: it separates "does the permission logic work" from "does the token machinery work," so each can be tested for what it is.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Test at the HTTP boundary: <code>APITestCase</code> gives you an <code>APIClient</code>; send a real request with <code>format=\"json\"</code> and assert on <code>response.status_code</code> and <code>response.data</code>. <code>force_authenticate(user=...)</code> sets <code>request.user</code> directly so you test permission logic, not the token path; <code>APIRequestFactory</code> tests one view in isolation."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Two easy mistakes. Forgetting <code>format="json"</code>: the client then sends multipart form data, which is not the API path you meant to test and can pass or fail for the wrong reason. And reading <code>force_authenticate</code> as testing login: it deliberately bypasses the authentication mechanics and just sets <code>request.user</code>, so it validates permission rules, not whether a real token or session would authenticate. Test the token path separately if you need to.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① What two helpers do you use to send a request to an endpoint and assert on the response, and what do you assert on?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>APITestCase</code> (the test class, giving you <code>self.client</code>, an <code>APIClient</code>). You assert on <code>response.status_code</code> (via <code>status.HTTP_*</code> constants) and on <code>response.data</code> and/or the database state.</p></details>
+  <p>② Why pass <code>format="json"</code>, and what happens if you forget it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It sends a JSON body, the actual API request shape. Without it the client sends multipart form data, so you are testing a different code path than the one your API clients use.</p></details>
+  <p>③ You want to test that a non-owner gets 403 on edit. Which helper, and what does it actually do?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>force_authenticate(user=...)</code> on the client. It sets <code>request.user</code> directly, bypassing the token/session mechanics, so the test exercises the permission rules (Lesson 11), not the authentication path.</p></details>
+  <p>④ When would you use <code>APIRequestFactory</code> instead of <code>APIClient</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">To test a single view in isolation: it builds a request you pass straight to <code>View.as_view()</code>, with no URL resolution or middleware. Lower level, for focused unit tests.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing</a>. The whole helper set (<code>APIClient</code>, <code>APIRequestFactory</code>, <code>APITestCase</code>, <code>force_authenticate</code>) with runnable examples, built on Django's own testing framework.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want <code>client.credentials()</code> for testing the real token header, <code>APITransactionTestCase</code>, or how to structure fixtures and factory-boy for API tests? Ask. That closes the appendix: you can now build, secure, and test a DRF endpoint end to end.
+</div>
+
+<div class="course-nav">
+  <span><a href="0014-middleware.html">← Lesson 14</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="../reference/cheat-sheet.html">Cheat-sheet ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> <code>APITestCase</code> with <code>self.client</code>, <code>reverse()</code>, <code>self.client.post(url, data, format="json")</code>, and asserting <code>status.HTTP_201_CREATED</code> plus database state: <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing</a>.<br>
+<span id="s2">2.</span> <code>APIClient</code> supports <code>.get()</code>/<code>.post()</code>/<code>.put()</code>/etc. with a <code>format</code> argument: <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing (APIClient)</a>.<br>
+<span id="s3">3.</span> <code>client.force_authenticate(user=...)</code> forces requests to be treated as authenticated, bypassing credentials: <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing (force_authenticate)</a>.<br>
+<span id="s4">4.</span> <code>APIRequestFactory</code> builds a request passed straight to a view; the standalone <code>force_authenticate(request, user=...)</code>: <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing (APIRequestFactory)</a>.
+</p>

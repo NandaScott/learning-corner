@@ -1,0 +1,132 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3: One URL, many verbs</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 3</p>
+<h1>One URL, many verbs</h1>
+<p class="lede">This is the lesson the whole course was aimed at. Lesson 2 showed that routing matches the path and ignores the HTTP method, so every verb for one URL lands in the same view. Here is the awkwardness that creates, and the fix Django ships for it, a fix that DRF later builds on rather than replaces.</p>
+
+<h2>The concept</h2>
+
+<p>A single resource, say one article at <code>/articles/42/</code>, wants to answer several HTTP methods: GET to read it, PUT to replace it, DELETE to remove it. All three are the same URL, so all three route to the same view (Lesson 2). The view has to tell them apart somehow. There are two ways to do that in Django, and the difference between them is the point.</p>
+
+<h2>Rung 1 — the function-based view branches on the method</h2>
+
+<p>A function-based view receives the request and inspects <code>request.method</code>, branching to the right block:<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>from django.http import HttpResponse
+
+def my_view(request):
+    if request.method == "GET":
+        # ...read logic...
+        return HttpResponse("result")
+    # and, in a real view, elif for POST / PUT / DELETE …</code></pre>
+<p class="cap">One function, one big conditional. Add verbs and the function grows a longer <code>if/elif</code> ladder, all sharing one scope.</p>
+</div>
+
+<p>This works, and for one or two methods it is fine. The awkwardness shows up as it grows: the handlers for unrelated verbs are crammed into one function, sharing local variables and one indentation level; you have to remember to reject unsupported methods yourself; and there is no natural seam to reuse one verb's behavior without dragging the others along. This is the "jank" the framework's own docs implicitly call out by offering the alternative next.</p>
+
+<h2>Rung 2 — the class-based view maps each verb to a method</h2>
+
+<p>Django's <code>View</code> class lets you respond to different HTTP methods with distinct instance methods instead of branching inside one function. The same behavior as above becomes:<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>from django.http import HttpResponse
+from django.views import View
+
+class MyView(View):
+    def get(self, request):
+        # ...read logic...
+        return HttpResponse("result")
+
+    def post(self, request):
+        # ...create logic...
+        return HttpResponse("created")</code></pre>
+<p class="cap">The HTTP verb <em>is</em> the method name. GET runs <code>get()</code>, POST runs <code>post()</code>. No <code>request.method</code> check anywhere in your code.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<p>The docs put it plainly: class-based views let you respond to different HTTP request methods using distinct class instance methods, replacing the need for conditional branching within a single function, which keeps the logic for each request type separate.<sup><a href="#s1">1</a></sup></p>
+
+<h3>How the verb reaches the method: as_view() and dispatch()</h3>
+
+<p>The routing side barely changes. In the URLconf you write <code>MyView.as_view()</code> where a function view would go. <code>as_view()</code> is a class method that bridges the URL resolver and the class: it returns a callable that, per request, instantiates the class, initializes it via <code>setup()</code>, and calls <code>dispatch()</code>. <code>dispatch()</code> looks at the request's HTTP method and routes to the handler of the same name.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>  path("articles/&lt;int:pk&gt;/", MyView.as_view())
+        │
+        ▼   (per request)
+  as_view() → instantiate MyView → setup() → dispatch()
+        │
+        ▼
+  dispatch() reads request.method  ──▶ "GET"    → self.get(request, …)
+                                   ──▶ "POST"   → self.post(request, …)
+                                   ──▶ "DELETE" → self.delete(request, …)
+                                   ──▶ (not defined) → http_method_not_allowed()</code></pre>
+<p class="cap">The <code>request.method</code> check didn't vanish. It moved out of your view and into the framework's <code>dispatch()</code>, done once, correctly, for everyone.</p>
+</div>
+
+<h3>What happens for a method you didn't write</h3>
+
+<p>The base <code>View</code> knows the standard verbs. Its default <code>http_method_names</code> is:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>["get", "post", "put", "patch", "delete", "head", "options", "trace"]</code></pre>
+<p class="cap">The verbs <code>dispatch()</code> is willing to route.</p>
+</div>
+
+<p>If a request uses a method in that list but your class has no matching handler (say a PUT arrives and you only defined <code>get</code>), <code>dispatch()</code> calls <code>http_method_not_allowed()</code>, which returns an <code>HttpResponseNotAllowed</code>, an HTTP <strong>405</strong>, carrying the list of methods you actually support.<sup><a href="#s3">3</a></sup> You get correct method-rejection for free, the thing you had to remember to do by hand in the function-based version.</p>
+
+<h2>Why this matters, and where DRF comes in</h2>
+
+<p>Two things to carry out of this lesson. First, the class-based <code>View</code> turns "branch on the verb" into "name a method after the verb," and hands the branching, plus 405 handling, to <code>dispatch()</code>. That is Django solving its own verb-mapping awkwardness, in core Django, with no third-party help.</p>
+
+<p>Second, and this is the hinge of the course: DRF does not invent verb-to-method mapping. DRF's <code>APIView</code> is a subclass of this very <code>View</code>, so it inherits <code>as_view()</code>, <code>dispatch()</code>, and the <code>get()/post()/put()/delete()</code> convention unchanged. What DRF changes is what flows through that dispatch (the request and response objects, content negotiation, serialization, error handling) and, later, how routing itself is generated. Lessons 4 through 6 are that story. The verb mapping you just learned is the floor they all stand on.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Function views branch on <code>request.method</code>; Django's class-based <code>View</code> names a method after each verb and lets <code>dispatch()</code> do the routing, with a free 405 for unsupported verbs. DRF's <code>APIView</code> subclasses that same <code>View</code>: it inherits the fix, it doesn't invent it."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Believing the <code>request.method</code> check disappears with class-based views. It doesn't; it relocates. <code>dispatch()</code> still reads <code>request.method</code> once, then calls the like-named handler. The win isn't that the check is gone, it's that it's written once in the framework instead of by hand in every view. Miss this and you'll misexplain what DRF is doing on top.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① In a function-based view, how do you serve GET and POST differently on the same URL? Name one downside as it scales.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Branch on <code>request.method</code> with <code>if/elif</code> inside the one function. Downsides: unrelated verb logic shares one scope, you must reject unsupported methods yourself, and there's no clean seam to reuse one verb's behavior.</p></details>
+  <p>② In a class-based <code>View</code>, what runs a GET request, and what component routed it there?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The <code>get()</code> method runs it. <code>dispatch()</code> (reached via <code>as_view()</code>) read <code>request.method</code> and called the like-named handler.</p></details>
+  <p>③ A PUT hits a class-based view that only defines <code>get()</code>. What does the client get, and from which method?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A 405, as an <code>HttpResponseNotAllowed</code> listing the supported methods, produced by <code>http_method_not_allowed()</code> (called by <code>dispatch()</code> because PUT is a known verb with no handler defined).</p></details>
+  <p>④ Does DRF invent the verb-to-method mapping? Explain.</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. DRF's <code>APIView</code> subclasses Django's <code>View</code> and inherits <code>as_view()</code>/<code>dispatch()</code>/<code>get()</code>+<code>post()</code>. DRF adds richer request/response objects and negotiation on top of that inherited dispatch.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://docs.djangoproject.com/en/5.2/topics/class-based-views/intro">Django docs: Class-based views: introduction</a>. It shows the exact function-vs-class pair above and explains <code>as_view()</code>/<code>dispatch()</code>. Then <a href="https://docs.djangoproject.com/en/5.2/ref/class-based-views/base">the base <code>View</code> reference</a> for <code>http_method_names</code> and the 405 path.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to see <code>dispatch()</code>'s actual source, or how generic CBVs (<code>DetailView</code>, <code>FormView</code>) build on this base? Ask. Next lesson: what makes plain Django awkward the moment the response is an API, not a web page.
+</div>
+
+<div class="course-nav">
+  <span><a href="0002-url-to-response.html">← Lesson 2</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-where-plain-django-fights-an-api.html"><em>Next: Lesson 4, where plain Django fights an API →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Django documentation only)<br>
+<span id="s1">1.</span> The function-based <code>request.method</code> branch, the class-based <code>get()</code> equivalent, and "distinct instance methods replacing conditional branching": <a href="https://docs.djangoproject.com/en/5.2/topics/class-based-views/intro">Django docs: Class-based views (introduction)</a>.<br>
+<span id="s2">2.</span> <code>as_view()</code> bridges resolver and class; per request it instantiates, calls <code>setup()</code>, then <code>dispatch()</code> routes by HTTP method: <a href="https://docs.djangoproject.com/en/5.2/topics/class-based-views/intro">Django docs: Class-based views (introduction)</a>.<br>
+<span id="s3">3.</span> Default <code>http_method_names</code> list; <code>http_method_not_allowed()</code> returning <code>HttpResponseNotAllowed</code> (405): <a href="https://docs.djangoproject.com/en/5.2/ref/class-based-views/base">Django docs: Base views (<code>View</code>)</a>.
+</p>

@@ -1,0 +1,143 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>Django &amp; DRF — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>Django &amp; DRF: why each layer exists</h1>
+<p class="lede">What problem Django solves and why you'd reach for it, then what Django REST Framework adds on top. The spine is one concrete question: plain Django's awkward mapping of HTTP verbs onto a single view, and how it gets cleaned up in three rungs: a function that branches, a class that names methods, a viewset routed as data. The second half goes into the machinery each layer leans on: the ORM's QuerySet, serializers, the generic-view ladder, and the authentication and permission gate. Sourced from Django's and DRF's own docs, exclusively.</p>
+
+<div class="home-group">
+  <p class="label">Part 1 · Why Django</p>
+  <p class="blurb">The framework as a box of decided answers, and the request cycle every view lives in.</p>
+
+  <a class="lesson-card" href="lessons/0001-why-django.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>Why Django</strong><span>Batteries included: models, URLconf, templates, the auto admin. DRY and loose coupling. And the word that carries the course: in Django, "view" means the logic, not the HTML.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-url-to-response.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>From URL to response</strong><span>HttpRequest in, HttpResponse out. How <code>path()</code> routes on the path alone, so every HTTP verb for one URL lands in the same view. The setup for the whole verb question.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 2 · The verb-to-view problem</p>
+  <p class="blurb">The verb-handling awkwardness plain Django is known for, and the fix Django ships for it.</p>
+
+  <a class="lesson-card" href="lessons/0003-one-url-many-verbs.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>One URL, many verbs</strong><span>The centerpiece. The function-based <code>if request.method ==</code> branch, then the class-based <code>View</code>: <code>as_view()</code> → <code>dispatch()</code> → <code>get()/post()</code>, with a free 405. Django solving its own jank.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 3 · Why DRF</p>
+  <p class="blurb">Where plain Django fights an API, and the layer DRF adds to stop the fight.</p>
+
+  <a class="lesson-card" href="lessons/0004-where-plain-django-fights-an-api.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Where plain Django fights an API</strong><span><code>request.POST</code> can't read a JSON PUT, <code>HttpResponse</code> doesn't negotiate, serialization and status codes are hand-rolled. The "what does DRF solve" question as a list, and what's <em>not</em> on it.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0005-drf-request-response-serializers.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>DRF's request, response &amp; serializers</strong><span><code>Request</code>/<code>request.data</code>, a negotiated <code>Response</code>, serializers for object↔JSON, wrapped by <code>@api_view</code>/<code>APIView</code>. The verb dispatch it just inherits from Django's <code>View</code>.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 4 · Routing as data</p>
+  <p class="blurb">The one routing step DRF adds past core Django.</p>
+
+  <a class="lesson-card" href="lessons/0006-viewsets-and-routers.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>ViewSets and routers</strong><span>From verb→method to verb→action: <code>list/retrieve/create/update/destroy</code>, the <code>as_view({"get": "list"})</code> map, and a router that generates the URLconf. The top of the three-rung ladder.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 5 · Checkpoint</p>
+  <p class="blurb">Where it turns from "I followed it" into "I can explain it cold."</p>
+
+  <a class="quiz-cta" href="lessons/0007-interleaved-review.html">
+    <span class="icon">🧠</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>20 questions across lessons 1 to 6, shuffled, with near-miss distractors. Run it cold before moving on.</span></span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 6 · Working with the data</p>
+  <p class="blurb">The ORM under the API, and the serializer that turns it into JSON.</p>
+
+  <a class="lesson-card" href="lessons/0008-the-orm-queryset.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>The ORM and the QuerySet</strong><span>Lazy queries: chaining is free, evaluation is the one database hit, results cache per variable. Following a relation is another query, so loops become N+1, fixed by <code>select_related</code> and <code>prefetch_related</code>.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0009-serializers-in-depth.html">
+    <span class="num">L9</span>
+    <span class="body"><strong>Serializers in depth</strong><span><code>ModelSerializer</code> infers fields from a model; validation runs field checks, then <code>validate_&lt;field&gt;()</code>, then cross-field <code>validate()</code>. Nested serializers read for free but need an explicit <code>create()</code>/<code>update()</code> to write.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 7 · Less code, same view</p>
+  <p class="blurb">The abstraction ladder that removes the boilerplate.</p>
+
+  <a class="lesson-card" href="lessons/0010-generic-views-and-mixins.html">
+    <span class="num">L10</span>
+    <span class="body"><strong>Generic views and mixins</strong><span><code>GenericAPIView</code> adds <code>queryset</code> + <code>serializer_class</code>; mixins add the five actions; concrete generics pre-combine them; <code>ModelViewSet</code> is the lot. Override <code>get_queryset()</code> for per-request sets and to kill N+1.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 8 · The gate</p>
+  <p class="blurb">Who is calling, and are they allowed.</p>
+
+  <a class="lesson-card" href="lessons/0011-authentication-and-permissions.html">
+    <span class="num">L11</span>
+    <span class="body"><strong>Authentication and permissions</strong><span>The fixed pipeline: authentication sets <code>request.user</code>, permission decides allowed or not, throttling caps the rate, then the view runs. Request-level vs object-level checks, and 401 vs 403.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Part 9 · Review &amp; reference</p>
+  <p class="blurb">The whole course, cold, with the topics shuffled together.</p>
+
+  <a class="quiz-cta" href="lessons/0012-cumulative-review.html">
+    <span class="icon">🧠</span>
+    <span class="body"><strong>Cumulative review quiz</strong><span>24 questions across all eleven lessons, weighted toward the newer material, shuffled, with near-miss distractors. Run it cold, then again days later.</span></span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/glossary.html">📖 Glossary: plain-language canonical vocabulary</a>
+    <a href="reference/cheat-sheet.html">🗺️ Cheat-sheet: the maps on one printable page</a>
+  </div>
+</div>
+
+<div class="home-group">
+  <p class="label">Appendix · Django core, deeper</p>
+  <p class="blurb">Two foundational Django mechanisms beyond the reviewed arc: the write side of the ORM, and the outer ring of the request lifecycle.</p>
+
+  <a class="lesson-card" href="lessons/0013-migrations.html">
+    <span class="num">L13</span>
+    <span class="body"><strong>Migrations</strong><span>The write side of the ORM that Lesson 8 left out: <code>makemigrations</code> records a model change as a numbered file, <code>migrate</code> applies it. Version control for the schema, keeping every environment in step.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0014-middleware.html">
+    <span class="num">L14</span>
+    <span class="body"><strong>Middleware and the request pipeline</strong><span>The onion around the view: requests go top-down through the <code>MIDDLEWARE</code> stack, the view runs at the center, responses come back bottom-up. Where Django's own auth sits versus DRF's per-view gate.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0015-testing-drf.html">
+    <span class="num">L15</span>
+    <span class="body"><strong>Testing DRF</strong><span>Testing at the HTTP boundary: <code>APITestCase</code> + <code>APIClient</code> send a real request and assert on status and payload; <code>force_authenticate</code> tests the permission logic; <code>APIRequestFactory</code> tests one view in isolation.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>

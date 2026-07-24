@@ -42,6 +42,8 @@ Then close with: a crisp **key line** (the soundbite that nails the point), the 
 
 Repo-specific carve-out for the proofread pass: this is a *register* rule, not a depth cut. Keep the substance, diagrams, and the key-line / trap / recall callouts. The deliberate **key line** soundbite is a marked callout and may stay punchy, so `article-voice` leaves it alone rather than flagging it as an aphoristic closer.
 
+Emdash carve-out: emdashes are allowed in **section titles and headings** (`h1`/`h2`/`h3`), where they read as typographic separators, not prose. The `ai-tells` emdash ban applies to all **body prose**: paragraphs, ledes, captions, callout text (including the key line), recall prompts, glossary cells, quiz text, source citations, and nav link labels. Do not flag or strip emdashes in headings; do strip them everywhere else.
+
 ## How this learner learns (cross-topic)
 
 - Drives hard into mechanism — feed the "why" deep-dives, don't hand-wave.

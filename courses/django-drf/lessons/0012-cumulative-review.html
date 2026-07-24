@@ -1,0 +1,273 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 12: Cumulative review</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 12 · Review</p>
+<h1>Cumulative review</h1>
+<p class="lede">Re-reading feels like learning but mostly builds <em>fluency</em>, the illusion of mastery. Retrieving from memory, cold, with topics shuffled, is what builds <em>storage strength</em>.</p>
+
+<h2>How to use this</h2>
+<p>This set spans all eleven teaching lessons, weighted toward the newer material (the ORM, serializers, generic views, auth), and it is <strong>shuffled</strong> every run.<sup><a href="#s1">1</a></sup> Interleaving the whole course is harder than drilling one lesson, and that difficulty is what makes it stick. Most questions pit the right answer against a <em>near-miss</em>. Answer from memory first, then hit <em>Shuffle &amp; retry</em> and run it again days later.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Flag it; it is worth re-explaining a different way. Clearing this cold means you can trace a request from URL to response, through the verb dispatch, serializer, queryset, and the auth gate, and say what each layer is for.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0011-authentication-and-permissions.html">← Lesson 11</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving &amp; spacing as desirable difficulties: Bjork &amp; Bjork; see <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a> for the research summaries.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// Each question has 4 options. The FIRST is correct; the SECOND is a deliberate
+// "near-miss" (right idea, subtly wrong). The engine shuffles order on render.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "In Django's MTV, the word \"view\" refers to…",
+    options: [
+      "the request-answering logic (MVC's controller)",
+      "the HTML the user sees (MVC's view)",
+      "the model layer that maps to tables",
+      "the URLconf that routes request paths"
+    ], answer: 0,
+    explain: "Django renamed MVC's controller to \"view\" and MVC's view to \"template.\" The HTML is the template. (<a href='0001-why-django.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "The URL resolver selects a view by matching on…",
+    options: [
+      "the request path only; the HTTP method is not used",
+      "the path and the HTTP method together",
+      "the HTTP method, then the path within it",
+      "the Accept header, to route by content type"
+    ], answer: 0,
+    explain: "path() matches the URL string alone, so every verb for one URL reaches the same view. (<a href='0002-url-to-response.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A PUT hits a class-based View that defines only get(). Result?",
+    options: [
+      "405 via http_method_not_allowed(), listing allowed methods",
+      "404, because nothing matches the request",
+      "500, since the missing put() raises an error",
+      "get() runs as the fallback handler"
+    ], answer: 0,
+    explain: "PUT is a known verb with no handler, so dispatch() returns HttpResponseNotAllowed (405). (<a href='0003-one-url-many-verbs.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Moving a function view to a class-based View, the request.method check…",
+    options: [
+      "relocates into the framework's dispatch()",
+      "is eliminated; nothing inspects the method",
+      "must still be written inside each get()/post()",
+      "is replaced by a router reading a verb map"
+    ], answer: 0,
+    explain: "The check moves, it does not vanish. dispatch() reads it once, centrally. (<a href='0003-one-url-many-verbs.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Which task is NOT a problem DRF exists to solve?",
+    options: [
+      "mapping HTTP verbs to view code",
+      "parsing a JSON body sent on PUT",
+      "negotiating JSON versus a browsable page",
+      "converting model instances to JSON with validation"
+    ], answer: 0,
+    explain: "Verb dispatch was solved by Django's class-based View; DRF inherits it. The rest are DRF's API-layer job. (<a href='0004-where-plain-django-fights-an-api.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "In DRF, APIView dispatches HTTP verbs by…",
+    options: [
+      "inheriting Django View's dispatch(); get()/post() unchanged",
+      "a new DRF mechanism replacing Django's dispatch()",
+      "reading a verb→action dict from as_view()",
+      "requiring a request.method branch in each method"
+    ], answer: 0,
+    explain: "APIView subclasses Django's View, so the verb dispatch is inherited. The verb→action dict is viewsets. (<a href='0005-drf-request-response-serializers.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "The inbound serializer path (client data to saved object) is…",
+    options: [
+      "Serializer(data=request.data) → is_valid() → validated_data → save()",
+      "Serializer(instance).data → JSONRenderer → save()",
+      "request.POST → is_valid() → HttpResponse → commit()",
+      "Serializer(many=True) → dispatch() → render()"
+    ], answer: 0,
+    explain: "Pass incoming data, validate, read validated_data, save. The second is the outbound path. (<a href='0005-drf-request-response-serializers.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "The viewset action \"retrieve\" corresponds to…",
+    options: [
+      "GET on a member URL (one object)",
+      "GET on the collection URL (many objects)",
+      "POST on the collection URL",
+      "PUT on a member URL"
+    ], answer: 0,
+    explain: "retrieve = GET on one member; list = GET on the collection. Both GET, different URLs. (<a href='0006-viewsets-and-routers.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A DRF router's job is to…",
+    options: [
+      "generate the URLconf for a registered viewset's actions",
+      "negotiate the response content type per request",
+      "validate request bodies against the serializer",
+      "dispatch each verb to a like-named APIView method"
+    ], answer: 0,
+    explain: "Register a viewset; the router builds the collection and member URLs and verb→action maps. (<a href='0006-viewsets-and-routers.html'>L6</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "You chain three .filter()/.exclude() calls and never iterate the result. Queries run?",
+    options: [
+      "zero; a QuerySet is lazy until evaluated",
+      "three, one per chained call",
+      "one, executed as you build the chain",
+      "three, but cached so only one hits the database"
+    ], answer: 0,
+    explain: "Building and refining is lazy. Nothing runs until evaluation (iterate, list, len, print). (<a href='0008-the-orm-queryset.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "A loop over 100 rows reads a ForeignKey on each. Query count and fix?",
+    options: [
+      "101 queries (N+1); add select_related to join the relation",
+      "101 queries; add prefetch_related to join the relation",
+      "1 query; relations load with the initial fetch by default",
+      "2 queries; Django batches all relation lookups automatically"
+    ], answer: 0,
+    explain: "1 + 100 = 101. select_related handles ForeignKey/OneToOne via a join. prefetch_related is for M2M/reverse. (<a href='0008-the-orm-queryset.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "When do you use prefetch_related rather than select_related?",
+    options: [
+      "for many-to-many and reverse FK relations, joined in Python",
+      "for ForeignKey and OneToOne relations, joined in SQL",
+      "whenever the queryset will be evaluated more than once",
+      "only when the related table is in a different database"
+    ], answer: 0,
+    explain: "prefetch_related: many-side, second query joined in Python. select_related: one-side, SQL join. (<a href='0008-the-orm-queryset.html'>L8</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "A rule must check end_date is after start_date. Where does it go?",
+    options: [
+      "object-level validate(self, data), which sees all fields",
+      "field-level validate_end_date(), which sees end_date",
+      "the model's Meta class as a constraint tuple",
+      "the view's get() method, before calling is_valid()"
+    ], answer: 0,
+    explain: "Cross-field rules need validate(), which gets the whole data dict. A field-level method sees only its own value. (<a href='0009-serializers-in-depth.html'>L9</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "What does ModelSerializer generate from the model?",
+    options: [
+      "matching fields, model-derived validators, and default create()/update()",
+      "matching fields only; validators and save logic stay manual",
+      "the URLconf and router entries for the model",
+      "the database migration for the model's table"
+    ], answer: 0,
+    explain: "Fields, validators (e.g. unique_together), and default create/update, from one Meta declaration. (<a href='0009-serializers-in-depth.html'>L9</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "A nested TrackSerializer(many=True) reads fine but won't save on POST. Why?",
+    options: [
+      "nested writing needs an explicit create()/update() override",
+      "nested serializers are read-only and can never be written",
+      "many=True disables saving; use a plain nested serializer",
+      "the Meta.fields list omitted the nested field"
+    ], answer: 0,
+    explain: "Reading nested data is automatic; writing it is not until you override create()/update(). (<a href='0009-serializers-in-depth.html'>L9</a>)" },
+
+  { lesson: "Lesson 10",
+    q: "GenericAPIView adds which two attributes over APIView?",
+    options: [
+      "queryset and serializer_class",
+      "authentication_classes and permission_classes",
+      "renderer_classes and parser_classes",
+      "lookup_field and pagination_class only"
+    ], answer: 0,
+    explain: "queryset (the objects) and serializer_class (the boundary), plus getters like get_object(). Mixins add the actions. (<a href='0010-generic-views-and-mixins.html'>L10</a>)" },
+
+  { lesson: "Lesson 10",
+    q: "You need per-user filtering plus select_related on a list endpoint. Put it in…",
+    options: [
+      "get_queryset(), overriding it",
+      "the queryset class attribute directly",
+      "the serializer's validate() method",
+      "has_object_permission() on a permission class"
+    ], answer: 0,
+    explain: "self.queryset is evaluated once and cached across requests; per-request logic and relation prefetching go in get_queryset(). (<a href='0010-generic-views-and-mixins.html'>L10</a>)" },
+
+  { lesson: "Lesson 10",
+    q: "A ModelViewSet, in terms of the abstraction ladder, is…",
+    options: [
+      "the concrete generics gathered into one viewset (queryset + serializer_class → all six actions)",
+      "a plain APIView with a router attached",
+      "a serializer that also handles routing",
+      "a mixin you add to GenericAPIView for pagination"
+    ], answer: 0,
+    explain: "Give it queryset + serializer_class; it implements all six actions, routed by a router. (<a href='0010-generic-views-and-mixins.html'>L10</a>)" },
+
+  { lesson: "Lesson 11",
+    q: "The order of the DRF request gate is…",
+    options: [
+      "authentication, then permission, then throttling, then the view",
+      "permission, then authentication, then throttling, then the view",
+      "throttling, then authentication, then permission, then the view",
+      "authentication and permission together, then throttling"
+    ], answer: 0,
+    explain: "Authentication first (it sets request.user), then permission (which needs the user), then throttling. (<a href='0011-authentication-and-permissions.html'>L11</a>)" },
+
+  { lesson: "Lesson 11",
+    q: "A signed-in user edits a record they do not own and is refused. Status code?",
+    options: [
+      "403 Forbidden; identity known, action refused",
+      "401 Unauthorized; the credentials were rejected",
+      "404 Not Found; the object is hidden from them",
+      "400 Bad Request; the edit failed validation"
+    ], answer: 0,
+    explain: "Known identity, refused action is 403. 401 is for no/failed identity. Enforced via has_object_permission. (<a href='0011-authentication-and-permissions.html'>L11</a>)" },
+
+  { lesson: "Lesson 11",
+    q: "What is the difference between authentication and permission?",
+    options: [
+      "authentication sets who the request is; permission decides whether they may proceed",
+      "authentication decides whether they may proceed; permission sets who they are",
+      "they are two names for the same request-gate check",
+      "authentication runs after the view; permission runs before it"
+    ], answer: 0,
+    explain: "Authentication answers \"who\" (sets request.user); permission answers \"may they.\" Auth runs first. (<a href='0011-authentication-and-permissions.html'>L11</a>)" },
+
+  { lesson: "Lesson 11",
+    q: "has_permission versus has_object_permission?",
+    options: [
+      "has_permission judges the whole request; has_object_permission judges one object",
+      "has_permission judges one object; has_object_permission judges the request",
+      "they are aliases; either name works for both cases",
+      "has_object_permission runs for reads, has_permission for writes"
+    ], answer: 0,
+    explain: "Request-level vs object-level. Per-owner rules (obj.owner == request.user) live in has_object_permission. (<a href='0011-authentication-and-permissions.html'>L11</a>)" },
+
+  { lesson: "Synthesis",
+    q: "The three rungs of verb mapping across the course are…",
+    options: [
+      "function branch → class method (dispatch) → viewset action (router)",
+      "router → dispatch → request.method branch",
+      "serializer → response → request",
+      "URLconf → template → model"
+    ], answer: 0,
+    explain: "Branch on request.method (FBV) → method per verb (CBV dispatch) → verbs mapped to named actions, routed (viewsets). (<a href='0006-viewsets-and-routers.html'>L6</a>)" },
+
+  { lesson: "Synthesis",
+    q: "A serializer on a list endpoint reads a ForeignKey per row and the endpoint is slow. The fix lives in…",
+    options: [
+      "get_queryset(), adding select_related for that relation",
+      "the serializer's validate(), caching the relation",
+      "permission_classes, to skip the relation for anonymous users",
+      "the router, by disabling the browsable API renderer"
+    ], answer: 0,
+    explain: "This is L8's N+1 surfacing through an L9 serializer, fixed at the L10 seam: select_related in get_queryset(). (<a href='0010-generic-views-and-mixins.html'>L10</a>)" }
+]);
+</script>

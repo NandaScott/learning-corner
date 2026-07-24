@@ -1,0 +1,130 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6: ViewSets and routers</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 6</p>
+<h1>ViewSets and routers</h1>
+<p class="lede">This is the one routing improvement DRF adds beyond what Django's class-based views already gave you. It lifts the verb mapping up a level: from "verb → method" to "verb → named action," and then lets a router generate the whole URLconf from a single viewset. It's the payoff of the three-rung story the course has been building.</p>
+
+<h2>The concept</h2>
+
+<p>Lesson 3 mapped an HTTP verb to a like-named method (<code>get</code>, <code>post</code>). That's fine for one URL. But a typical resource spans <em>two</em> URLs with a predictable set of behaviors: a collection (<code>/snippets/</code>) and a member (<code>/snippets/42/</code>), across list, create, retrieve, update, and delete. Writing that as separate <code>APIView</code> classes means repeating the same wiring for every model. A <strong>ViewSet</strong> collapses the related behaviors into one class, named by <em>action</em> rather than by HTTP verb, and a <strong>router</strong> generates the URL patterns for it.<sup><a href="#s1">1</a></sup></p>
+
+<h2>The steps</h2>
+
+<h3>1. A ViewSet names actions, not verbs</h3>
+<p>Instead of <code>get()</code> and <code>post()</code>, a viewset defines the standard CRUD actions. The default routers know this exact set:<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>class UserViewSet(viewsets.ViewSet):
+    def list(self, request):            ...   # collection: many
+    def create(self, request):          ...   # collection: add one
+    def retrieve(self, request, pk):    ...   # member: one
+    def update(self, request, pk):      ...   # member: replace
+    def partial_update(self, request, pk): ... # member: patch
+    def destroy(self, request, pk):     ...   # member: delete</code></pre>
+<p class="cap">These action names (<code>list</code>, <code>create</code>, <code>retrieve</code>, <code>update</code>, <code>partial_update</code>, <code>destroy</code>) are the standard set routers provide routes for.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h3>2. The verb→action map is data</h3>
+<p>The link between HTTP verbs and these actions is an explicit dictionary. You can even bind it by hand, which is the clearest way to see what a router automates:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>snippet_list = SnippetViewSet.as_view({
+    "get": "list",
+    "post": "create",
+})
+snippet_detail = SnippetViewSet.as_view({
+    "get": "retrieve",
+    "put": "update",
+    "patch": "partial_update",
+    "delete": "destroy",
+})</code></pre>
+<p class="cap">Same <code>as_view()</code> from Lesson 3, but now it takes a <strong>map</strong>. GET on the collection runs <code>list</code>; GET on a member runs <code>retrieve</code>. The routing is a value you can read, not a set of method names.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<div class="figure">
+<pre><code>  Rung 1 (L3): verb  →  if request.method == "GET"          (you branch)
+  Rung 2 (L3): verb  →  get()                               (Django dispatch)
+  Rung 3 (L6): verb  →  {"get": "list"}  →  list()          (verb→action map)</code></pre>
+<p class="cap">The whole course in three lines. Each rung moves the verb-to-code decision further out of your hands and into declarable structure.</p>
+</div>
+
+<h3>3. A router generates the URLconf</h3>
+<p>You rarely write that map yourself. You register the viewset with a router, and the router produces the URL patterns for all the standard actions across the collection and member URLs:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+router.register(r"snippets", SnippetViewSet, basename="snippet")
+
+urlpatterns = router.urls   # /snippets/ and /snippets/&lt;pk&gt;/ , all verbs wired</code></pre>
+<p class="cap">One <code>register()</code> call replaces the two <code>as_view({...})</code> blocks above and every <code>path()</code> for them. The router builds the URLconf from the viewset.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h3>4. Extra actions with @action</h3>
+<p>For behavior outside the standard six, the <code>@action</code> decorator marks a method as an extra route, and the router picks it up too. You declare the verb(s) and whether it's a detail (member) or collection route:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>from rest_framework.decorators import action
+
+class UserViewSet(ModelViewSet):
+    @action(methods=["post"], detail=True)
+    def set_password(self, request, pk=None):
+        ...            # POST /users/&lt;pk&gt;/set_password/</code></pre>
+<p class="cap">The verb→action mapping extends cleanly to custom behavior, still as declared data.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h2>Why this is the top of the ladder</h2>
+
+<p>The course's whole arc, in one view: core Django made you branch on the verb, then let you name a method after it (Lesson 3). DRF kept that dispatch and enriched the objects moving through it (Lesson 5). ViewSets take the last step: describe a resource's behaviors as named actions, hand the verb→action map to a router, and let it generate the routes. The verb mapping that started as a hand-written <code>if request.method ==</code> ends as a dictionary you often don't even write. That progression, from branch to method to routed action, is the precise answer to "the jankiness in how Django maps verbs to a view, and how DRF cleans it up."</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A ViewSet names a resource's behaviors as actions (<code>list</code>, <code>retrieve</code>, <code>create</code>…); <code>as_view({\"get\": \"list\"})</code> maps verbs to actions as data; a router generates the URLconf from it. Verb-to-code goes from a hand-written branch to a declared map."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Treating actions as if they were HTTP verbs. <code>retrieve</code> and <code>list</code> are <em>both</em> GET, on different URLs (member vs collection); <code>update</code> is PUT, <code>partial_update</code> is PATCH, <code>destroy</code> is DELETE. The action name describes the <em>behavior</em>; the verb→action map (written by you, or generated by the router) is what ties each to an actual HTTP method and URL.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① List the six standard viewset actions and, for each, the HTTP verb and whether it's collection or member.</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>list</code> (GET, collection), <code>create</code> (POST, collection), <code>retrieve</code> (GET, member), <code>update</code> (PUT, member), <code>partial_update</code> (PATCH, member), <code>destroy</code> (DELETE, member).</p></details>
+  <p>② What does <code>SnippetViewSet.as_view({"get": "list", "post": "create"})</code> express, and how does it differ from a plain <code>APIView</code>'s <code>as_view()</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It maps HTTP verbs to viewset actions as data: GET→<code>list</code>, POST→<code>create</code>. A plain <code>APIView.as_view()</code> takes no map; it dispatches straight to like-named <code>get()/post()</code> methods.</p></details>
+  <p>③ What does a router do, in one sentence?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It generates the URL patterns (the URLconf) for a registered viewset's standard actions across its collection and member URLs, so you don't hand-write the verb→action maps or <code>path()</code> entries.</p></details>
+  <p>④ Recite the three rungs of verb mapping this course covered.</p>
+  <details><summary>show answer</summary>
+  <p class="a">(1) Function view branches on <code>request.method</code>. (2) Class-based <code>View</code> names a method per verb, dispatched by <code>dispatch()</code>. (3) ViewSet + router map verbs to named actions as data and generate the routes.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/tutorial/6-viewsets-and-routers">DRF Tutorial 6: ViewSets &amp; Routers</a>. It shows the explicit <code>as_view({...})</code> binding and then replaces it with a router, which is the exact "routing as data" point. Then <a href="https://www.django-rest-framework.org/api-guide/viewsets">the ViewSets guide</a> for the action set and <code>@action</code>.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want <code>ModelViewSet</code> (the batteries-included viewset where the six actions are already implemented from a queryset + serializer), the generic views/mixins that sit between <code>APIView</code> and viewsets, or how <code>DefaultRouter</code> differs from <code>SimpleRouter</code>? Ask. Next: the interleaved quiz across all six lessons.
+</div>
+
+<div class="course-nav">
+  <span><a href="0005-drf-request-response-serializers.html">← Lesson 5</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-interleaved-review.html"><em>Next: Lesson 7, interleaved review →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> A viewset defines the standard actions <code>list/create/retrieve/update/partial_update/destroy</code> that default routers provide routes for: <a href="https://www.django-rest-framework.org/api-guide/viewsets">DRF: ViewSets</a>.<br>
+<span id="s2">2.</span> Binding verbs to actions explicitly via <code>as_view({"get": "list", ...})</code>: <a href="https://www.django-rest-framework.org/tutorial/6-viewsets-and-routers">DRF: Tutorial 6</a>.<br>
+<span id="s3">3.</span> Registering a viewset with a router to generate the URLconf: <a href="https://www.django-rest-framework.org/api-guide/routers">DRF: Routers</a> and <a href="https://www.django-rest-framework.org/tutorial/6-viewsets-and-routers">Tutorial 6</a>.<br>
+<span id="s4">4.</span> <code>@action</code> for extra routed methods, with <code>methods</code> and <code>detail</code>: <a href="https://www.django-rest-framework.org/api-guide/viewsets">DRF: ViewSets</a> and <a href="https://www.django-rest-framework.org/api-guide/routers">Routers</a>.
+</p>

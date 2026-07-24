@@ -1,0 +1,114 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1: Why Django</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 1</p>
+<h1>Why Django</h1>
+<p class="lede">Before any code, the plain question: what is Django a solution to? The answer is that building a database-backed website means solving the same dozen problems every time, and Django ships decided answers to all of them in one box. This lesson is what's in the box, and the principles that shaped it.</p>
+
+<h2>The concept</h2>
+
+<p>Every content-driven web app needs the same machinery: a way to describe data and talk to a database, a way to turn a URL into code, a way to render pages, a way to handle forms, a login system, and an interface for staff to edit records. Write those from scratch and most of the work is plumbing, not the product. Django is a high-level Python web framework that supplies that plumbing so a small team can move fast: the docs describe it as being for "perfectionists with deadlines," emphasizing rapid development and clean, pragmatic design.<sup><a href="#s1">1</a></sup></p>
+
+<p>"Batteries included" is the usual shorthand. Django bundles the common parts rather than leaving you to assemble them, and the parts are built to work together.</p>
+
+<h2>What's in the box</h2>
+
+<p>The overview page walks the pieces in the order you'd build a site.<sup><a href="#s2">2</a></sup> A short tour of the four that matter for this course:</p>
+
+<h3>1. Models — data described once, in Python</h3>
+<p>A model is a Python class that defines a table's shape. Django reads it to talk to the database for you, so you write queries in Python instead of SQL, and the same class definition is the one source for that data's structure.<sup><a href="#s2">2</a></sup> This is the object-relational mapper (ORM).</p>
+
+<h3>2. URLconf — a URL becomes a function call</h3>
+<p>A URL configuration maps request paths to the code that answers them, capturing pieces of the path as arguments along the way:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>urlpatterns = [
+    path("articles/&lt;int:year&gt;/", views.year_archive),
+    path("articles/&lt;int:year&gt;/&lt;int:month&gt;/", views.month_archive),
+]</code></pre>
+<p class="cap">A request for <code>/articles/2026/</code> calls <code>year_archive(request, year=2026)</code>. Lesson 2 is this line in detail.</p>
+</div>
+
+<h3>3. Templates — the HTML, kept out of the Python</h3>
+<p>Templates describe how a page looks, separately from the code that fetches the data. The template system is deliberately independent of the rest so the presentation layer and the logic layer don't reach into each other.<sup><a href="#s3">3</a></sup></p>
+
+<h3>4. The admin — a staff interface, generated for free</h3>
+<p>Register a model and Django reads its metadata to build a working add/change/delete interface for trusted staff, no custom backend screens required.<sup><a href="#s2">2</a></sup><sup><a href="#s4">4</a></sup> One line:</p>
+
+<div class="figure">
+<pre><code>from django.contrib import admin
+from . import models
+
+admin.site.register(models.Article)</code></pre>
+<p class="cap">The admin is an internal management tool for trusted users, not a public front end.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h2>The principles under it</h2>
+
+<p>The pieces feel consistent because a few stated philosophies shaped all of them.<sup><a href="#s3">3</a></sup></p>
+
+<p><strong>DRY: don't repeat yourself.</strong> Every distinct piece of data or logic should live in exactly one place; Django tries to deduce as much as it can from as little input as possible.<sup><a href="#s3">3</a></sup> Describe a model once and the ORM, the admin, and forms all read from that single definition.</p>
+
+<p><strong>Loose coupling, tight cohesion.</strong> The layers stay independent: the template system, the database layer, and the view system each work without knowing about the others.<sup><a href="#s3">3</a></sup> You can swap or reason about one without dragging the rest along.</p>
+
+<p><strong>Explicit over implicit; less code.</strong> Django prefers explicit behavior over "magic," using it only where the convenience is large and stays understandable, and it leans on Python's introspection to cut boilerplate so you write less.<sup><a href="#s3">3</a></sup></p>
+
+<h2>MTV: the same idea as MVC, renamed</h2>
+
+<p>You'll see Django called an "MTV" framework: Model, Template, View. It's close to the classic Model-View-Controller pattern, with two words moved. What MVC calls the <em>controller</em> (the code that decides what happens), Django calls the <strong>view</strong>. What MVC calls the <em>view</em> (the presentation), Django calls the <strong>template</strong>.<sup><a href="#s5">5</a></sup></p>
+
+<div class="figure">
+<pre><code>  classic MVC          Django (MTV)
+  ───────────          ────────────
+  Model         →      Model        (the data)
+  Controller    →      View         (the logic that answers a request)
+  View          →      Template     (the HTML)</code></pre>
+<p class="cap">Hold onto one word: in Django, a <strong>view</strong> is the logic that answers a request. That word carries the next five lessons.</p>
+</div>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Django is a box of decided answers to the problems every database-backed site shares (models, URL routing, templates, an auto admin), held together by DRY and loose coupling. And in Django, 'view' means the request-answering logic, not the HTML."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Reading "view" as the visual page. In Django a view is the <em>controller-side</em> code that receives a request and returns a response; the visible HTML is the <em>template</em>. Getting this backwards makes every later lesson (and the whole verb-to-view question) read wrong, because the verbs map onto the view, which is logic, not markup.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① Name three of the four things Django bundles that this lesson covered, and one sentence on what each is for.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Models (describe data once, talk to the DB via the ORM); URLconf (map a URL path to the code that answers it); templates (the HTML, kept separate from logic); the admin (an auto-generated staff interface read from model metadata).</p></details>
+  <p>② What does the DRY principle mean in Django, concretely?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Every distinct concept or piece of data lives in one place; Django deduces as much as possible from minimal input. Example: one model definition feeds the ORM, the admin, and forms.</p></details>
+  <p>③ In Django's MTV naming, which classic MVC part is renamed to "view," and what is the HTML called?</p>
+  <details><summary>show answer</summary>
+  <p class="a">MVC's <em>controller</em> is Django's <strong>view</strong> (the request-answering logic). The HTML/presentation is the <strong>template</strong>.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://docs.djangoproject.com/en/5.2/intro/overview">Django docs: Django at a glance</a>. The overview this lesson tours, with the model/admin/URLconf/template pieces in one page. Pair it with <a href="https://docs.djangoproject.com/en/5.2/misc/design-philosophies">Design philosophies</a> for the principles.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the ORM or the template language drilled on its own, or the full MVC-vs-MTV debate? Ask. Next lesson: how a URL actually becomes a response, and what a view <em>is</em> as a Python object.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-url-to-response.html"><em>Next: Lesson 2, from URL to response →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Django documentation only, per this course's sourcing rule)<br>
+<span id="s1">1.</span> "Perfectionists with deadlines," rapid development, clean pragmatic design: <a href="https://docs.djangoproject.com/en/5.2/faq">Django FAQ: General</a> and <a href="https://docs.djangoproject.com/en/5.2/contents">Django at a glance</a>.<br>
+<span id="s2">2.</span> Models, URLconf with <code>path()</code>, the automatic admin: <a href="https://docs.djangoproject.com/en/5.2/intro/overview">Django docs: Django at a glance (overview)</a>.<br>
+<span id="s3">3.</span> DRY, loose coupling / tight cohesion, explicit over implicit, less code: <a href="https://docs.djangoproject.com/en/5.2/misc/design-philosophies">Django docs: Design philosophies</a>.<br>
+<span id="s4">4.</span> Admin reads model metadata; internal tool for trusted users: <a href="https://docs.djangoproject.com/en/5.2/ref/contrib/admin/index">Django docs: The Django admin site</a>.<br>
+<span id="s5">5.</span> MVC vs MTV naming (controller = view, view = template): <a href="https://docs.djangoproject.com/en/5.2/faq">Django docs: FAQ General</a>.
+</p>

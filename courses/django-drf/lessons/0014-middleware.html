@@ -1,0 +1,127 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 14: Middleware and the request pipeline</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 14</p>
+<h1>Middleware and the request pipeline</h1>
+<p class="lede">Lesson 2 drew the request cycle as URL to view to response. That skipped a layer. Before a request reaches any view, it passes through a stack of middleware, and the response passes back out through the same stack in reverse. This lesson is that outer layer: what middleware is, the order it runs in, and how it wraps everything you have built so far.</p>
+
+<h2>The concept</h2>
+
+<p>Middleware is a framework of hooks into Django's request and response processing: a light, low-level plugin system for globally altering Django's input or output.<sup><a href="#s1">1</a></sup> It is the code that runs for <em>every</em> request, around the view, regardless of which view. Session loading, authentication, CSRF protection, and security headers are all middleware. The view from Lesson 2 sits at the center; middleware is the wrapping.</p>
+
+<h2>The steps</h2>
+
+<h3>1. The stack is an onion</h3>
+<p>Middleware is listed in the <code>MIDDLEWARE</code> setting, and Django applies it top-down during the request phase and in reverse during the response phase. Each layer wraps the view like an onion. A request travels inward through every layer to the view; the response travels back outward through the same layers in reverse:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>  request ─▶ Security ─▶ Session ─▶ Auth ─▶ Csrf ─▶ [ VIEW ]
+                                                        │
+  response ◀─ Security ◀─ Session ◀─ Auth ◀─ Csrf ◀────┘
+
+  request phase:  top-down through MIDDLEWARE
+  response phase: bottom-up (reverse)
+  the view sits at the center; every layer wraps it</code></pre>
+<p class="cap">In through the list, out through it backward. The view is the innermost point.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>2. A middleware is a callable that wraps the next one</h3>
+<p>The shape is small. A middleware factory takes <code>get_response</code> (the next step in the chain, either the next middleware or the view) and returns a callable that runs per request: do work before, call <code>get_response(request)</code>, do work after, return the response:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>def simple_middleware(get_response):
+    # one-time setup, at server start
+
+    def middleware(request):
+        # BEFORE: runs on the way in, before the view
+        response = get_response(request)   # hand off to the next layer / view
+        # AFTER: runs on the way out, after the view
+        return response
+
+    return middleware</code></pre>
+<p class="cap"><code>get_response</code> is the rest of the onion. Calling it descends one layer; everything before the call is the request phase, everything after is the response phase.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<p>The factory runs once, at server startup (the setup line); the inner function runs once per request.<sup><a href="#s3">3</a></sup></p>
+
+<h3>3. A layer can short-circuit</h3>
+<p>A middleware does not have to call <code>get_response</code>. If a layer returns a response on its own, without calling the next step, the request never reaches the inner layers or the view, and only the layers that already ran on the way in will run on the way out:<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre><code>  request ─▶ Security ─▶ Auth ──✗ returns 403 here
+                                 (view and inner layers never run;
+                                  response goes back out through
+                                  Security only)</code></pre>
+<p class="cap">This is how a middleware blocks a request early: return a response instead of calling <code>get_response</code>.<sup><a href="#s2">2</a></sup></p>
+</div>
+
+<h3>4. Order is significant</h3>
+<p>Because each layer wraps the next, the order in <code>MIDDLEWARE</code> matters. The default stack encodes real dependencies:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]</code></pre>
+<p class="cap">Session-dependent middleware (auth, messages) must come after <code>SessionMiddleware</code> so the session is loaded first; security sits near the top so it runs early. Reorder carelessly and things break.<sup><a href="#s4">4</a></sup></p>
+</div>
+
+<h3>5. Optional per-stage hooks</h3>
+<p>Beyond the before/after wrapping, a middleware class may define extra hooks: <code>process_view</code> (just before the view runs), <code>process_exception</code> (when a view raises), and <code>process_template_response</code> (when the response has a <code>render()</code> method). <code>process_exception</code> runs only for exceptions raised in the <em>view</em>, in reverse order, and if one returns a response the layers above it are skipped.<sup><a href="#s5">5</a></sup></p>
+
+<h2>Why this matters, and how it meets the rest of the course</h2>
+
+<p>Middleware is the outermost ring of the request lifecycle. Lesson 2's URL-to-view-to-response happens <em>inside</em> it: routing and the view run only after the request has passed inward through every middleware layer. That placement explains a detail from Lesson 11. Django's own <code>AuthenticationMiddleware</code> sets <code>request.user</code> during the request phase, from the session, for the whole site. DRF's per-view authentication (Lesson 11) runs later, inside the view, and can set a different <code>request.user</code>, for example from a token. Two auth layers at two depths: the middleware ring on the way in, the view's own gate at the center. Seeing the onion is what makes that ordering make sense.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Middleware is the onion around the view: the request goes top-down through the <code>MIDDLEWARE</code> stack, the view runs at the center, the response comes back bottom-up. Each layer wraps the next via <code>get_response</code>, and a layer that returns a response without calling it short-circuits the rest."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Picturing middleware as a flat list that runs once before the view. It runs twice, in opposite orders: top-down on the request, bottom-up on the response, because each layer wraps the next. That is also why order matters and why a short-circuit only unwinds through the layers that had already run inward, not the whole list.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① In what order does middleware run on the request phase versus the response phase, and where is the view?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Top-down through <code>MIDDLEWARE</code> on the request, bottom-up (reverse) on the response. The view runs at the center, after the request has passed inward through every layer.</p></details>
+  <p>② What is <code>get_response</code>, and what happens if a middleware does not call it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It is the next step in the chain (the next middleware, or the view). If a middleware returns a response without calling <code>get_response</code>, it short-circuits: inner layers and the view never run, and only the already-run outer layers process the response.</p></details>
+  <p>③ Why must <code>AuthenticationMiddleware</code> come after <code>SessionMiddleware</code> in the list?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because each layer wraps the next and runs in order; authentication depends on the session being loaded first, so <code>SessionMiddleware</code> must run earlier (be higher in the list).</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware</a> for the onion model, the factory shape, and the hooks; then <a href="https://docs.djangoproject.com/en/5.2/ref/middleware">the middleware reference</a> for the built-in classes and their required ordering.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to write a real timing or logging middleware, how DRF fits under Django's middleware (it is one view class, wrapped like any other), or how exceptions convert to responses across the stack? Ask. That closes the course: you can now trace a request from the middleware ring, through routing and the verb dispatch, into a view, through the serializer and queryset, past the auth gate, and back out.
+</div>
+
+<div class="course-nav">
+  <span><a href="0013-migrations.html">← Lesson 13</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0015-testing-drf.html"><em>Next: Lesson 15, testing DRF →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Django documentation only)<br>
+<span id="s1">1.</span> Middleware is a framework of hooks into request/response processing; a light, low-level plugin system for altering input/output: <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware</a>.<br>
+<span id="s2">2.</span> Top-down request phase, reverse response phase, the onion model, and short-circuiting by returning a response early: <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware (order and layering)</a>.<br>
+<span id="s3">3.</span> The factory taking <code>get_response</code> and returning a per-request callable; <code>__init__</code> once at startup, the inner call per request: <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware (writing your own)</a>.<br>
+<span id="s4">4.</span> The default <code>MIDDLEWARE</code> stack and why order matters (session before auth, security near the top): <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware</a> and <a href="https://docs.djangoproject.com/en/5.2/ref/middleware">Middleware reference (ordering)</a>.<br>
+<span id="s5">5.</span> Optional hooks <code>process_view</code>, <code>process_exception</code>, <code>process_template_response</code>; <code>process_exception</code> for view exceptions, run in reverse: <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware (other hooks)</a>.
+</p>

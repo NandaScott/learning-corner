@@ -1,0 +1,124 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8: The ORM and the QuerySet</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 8</p>
+<h1>The ORM and the QuerySet</h1>
+<p class="lede">Lesson 1 named the ORM as one of Django's bundled parts and moved on. This lesson opens it up, because the object you query with, the QuerySet, has behavior that surprises people: it is lazy, it caches, and it will quietly fire one database query per row if you are not watching. Understanding when a QuerySet touches the database is the difference between a fast endpoint and a slow one.</p>
+
+<h2>The concept</h2>
+
+<p>A model class maps to a database table, and each model has a manager, reached as <code>Model.objects</code>, that is the entry point for queries. Calling something like <code>Entry.objects.filter(...)</code> gives you back a <strong>QuerySet</strong>: a description of a query, not its results. The results do not exist until the QuerySet is <em>evaluated</em>. That one property, laziness, drives everything else in this lesson.<sup><a href="#s1">1</a></sup></p>
+
+<h2>The steps</h2>
+
+<div class="figure">
+<pre><code>  1. build a QuerySet      Entry.objects.filter(...)   → no DB query yet
+  2. refine it (chain)     .filter(...).exclude(...)   → still no query
+  3. evaluate it           iterate / list() / print    → ONE query runs
+  4. reuse the same var    results are cached           → no new query
+  5. touch a related row   entry.blog                   → a NEW query, per row</code></pre>
+<p class="cap">Steps 1 and 2 are free. Step 3 is the database hit. Step 5 is where the surprise cost hides.</p>
+</div>
+
+<h3>Steps 1-2 - building and chaining are free</h3>
+<p>Creating or refining a QuerySet triggers no database activity. You can stack filters, and Django folds them into a single query that runs only at evaluation:<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>q = Entry.objects.filter(headline__startswith="What")   # no query
+q = q.filter(pub_date__lte=datetime.date.today())        # no query
+q = q.exclude(body_text__icontains="food")               # no query
+print(q)   # NOW one query runs, with all three conditions</code></pre>
+<p class="cap">Three refinements, one database hit. The chain is composed in Python and sent to the database once.<sup><a href="#s1">1</a></sup></p>
+</div>
+
+<h3>Step 3 - evaluation is the database hit</h3>
+<p>The database is queried only when the QuerySet is evaluated: iterating over it, calling <code>list()</code> on it, taking its <code>len()</code>, testing it for truth, or printing it.<sup><a href="#s1">1</a></sup> Until one of those happens, the query has not run.</p>
+
+<h3>Step 4 - a QuerySet caches its results</h3>
+<p>Once a QuerySet is fully evaluated, it stores the results in an internal cache, and later uses of the same QuerySet object reuse that cache instead of re-querying.<sup><a href="#s2">2</a></sup> The practical rule: assign a QuerySet to a variable and reuse the variable. Calling <code>Model.objects.all()</code> twice is two separate QuerySets and two queries; iterating one saved variable twice is one query.<sup><a href="#s2">2</a></sup></p>
+
+<p>One sharp edge: slicing or indexing a QuerySet that has not been fully evaluated queries the database each time, because a partial fetch is not cached the way a full evaluation is.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 5 - related objects are lazy too, and that is the trap</h3>
+<p>Accessing a related object across a foreign key is itself a query. Fetch one <code>Entry</code>, then read <code>entry.blog</code>, and that attribute access hits the database a second time to load the blog:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>e = Entry.objects.get(id=5)   # query 1
+b = e.blog                     # query 2 (loads the related Blog)</code></pre>
+<p class="cap">Fine for one object. Now put it in a loop.</p>
+</div>
+
+<div class="figure">
+<pre><code>for e in Entry.objects.all():   # 1 query for the entries
+    print(e.blog.name)          # + 1 query PER entry for its blog
+
+  100 entries → 1 + 100 = 101 queries.   This is the N+1 problem.</code></pre>
+<p class="cap">One query to get the list, then N more, one per row, to follow the relation. The count scales with your data.</p>
+</div>
+
+<h3>The fix: fetch the relations up front</h3>
+<p>Two methods pull related data in advance. <code>select_related</code> follows foreign-key and one-to-one links by adding a SQL join, so the related rows arrive in the same query and later attribute access does not re-query:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>e = Entry.objects.select_related("blog").get(id=5)   # one query, with a join
+b = e.blog   # no query; already loaded</code></pre>
+<p class="cap"><code>select_related</code>: for the "one" side (ForeignKey, OneToOne). One query, joined.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<p><code>prefetch_related</code> handles many-to-many and reverse relations, where a join would not fit. It runs a separate query for the related set and joins the two in Python:<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>Restaurant.objects.select_related("best_pizza") \
+                  .prefetch_related("best_pizza__toppings")</code></pre>
+<p class="cap"><code>prefetch_related</code>: for the "many" side (ManyToMany, reverse FK). A second query, joined in Python. The two combine, and <code>__</code> traverses deeper.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h2>Why this matters</h2>
+
+<p>The QuerySet's laziness is what lets you build queries up in pieces without paying for each step, and its caching rewards reusing one variable. But the same laziness means every unfollowed relation is a query waiting to fire, and in a loop that becomes N+1. The tools to defeat it, <code>select_related</code> for the one-side and <code>prefetch_related</code> for the many-side, are the two names worth memorizing from this lesson. They decide query count, and query count decides latency.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "A QuerySet is a lazy description of a query: chaining is free, evaluation (iterate, list, len, print) is the one database hit, and results are cached per variable. Following a relation is another query, so relations in a loop are N+1, fixed by <code>select_related</code> (one-side) and <code>prefetch_related</code> (many-side)."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Assuming a query runs where you wrote the <code>filter()</code>. It runs where you <em>evaluate</em>, which may be much later, or twice if you call <code>.all()</code> in two places instead of reusing a variable. And the query you can see (<code>filter</code>) is rarely the expensive one; the hidden queries are the per-row relation lookups a serializer or template triggers while iterating.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① You write three chained <code>.filter()</code>/<code>.exclude()</code> calls and never iterate the result. How many queries ran?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Zero. Building and refining a QuerySet is lazy; nothing hits the database until the QuerySet is evaluated (iterated, <code>list()</code>, <code>len()</code>, truth-tested, or printed).</p></details>
+  <p>② A loop over 50 objects reads a foreign-key relation on each. How many queries, and how do you cut it down?</p>
+  <details><summary>show answer</summary>
+  <p class="a">1 + 50 = 51 (the N+1 problem). Add <code>select_related("&lt;fk&gt;")</code> to the queryset so the related rows come back in the first query via a join, cutting it to 1.</p></details>
+  <p>③ When do you reach for <code>prefetch_related</code> instead of <code>select_related</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">For many-to-many and reverse foreign-key relations, where a SQL join does not fit. <code>prefetch_related</code> runs a second query for the related set and joins it in Python. <code>select_related</code> is for ForeignKey/OneToOne (the one-side), done as a join.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://docs.djangoproject.com/en/5.2/topics/db/queries">Django docs: Making queries</a> for laziness and caching, then <a href="https://docs.djangoproject.com/en/5.2/topics/db/optimization">Database access optimization</a> and the <a href="https://docs.djangoproject.com/en/5.2/ref/models/querysets">QuerySet reference</a> for <code>select_related</code>/<code>prefetch_related</code>.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want the full list of evaluation triggers, how <code>F()</code> and <code>Q()</code> objects build conditions, or aggregation with <code>annotate()</code>? Ask. Next lesson: serializers in depth, where this QuerySet becomes JSON, and where N+1 tends to show up in an API.
+</div>
+
+<div class="course-nav">
+  <span><a href="0007-interleaved-review.html">← Lesson 7</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0009-serializers-in-depth.html"><em>Next: Lesson 9, serializers in depth →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (Django documentation only)<br>
+<span id="s1">1.</span> QuerySets are lazy; the database is queried only on evaluation; chained filters resolve to a single query; managers via <code>.objects</code>: <a href="https://docs.djangoproject.com/en/5.2/topics/db/queries">Django docs: Making queries</a>.<br>
+<span id="s2">2.</span> QuerySet caching after full evaluation; reuse a saved variable; slicing/indexing an unevaluated set can re-query: <a href="https://docs.djangoproject.com/en/5.2/topics/db/queries">Django docs: Making queries (Caching and QuerySets)</a>.<br>
+<span id="s3">3.</span> Related-object access hits the database; <code>select_related</code> (join, for FK/O2O) vs <code>prefetch_related</code> (separate query joined in Python, for M2M/reverse); the N+1 pattern: <a href="https://docs.djangoproject.com/en/5.2/ref/models/querysets">Django docs: QuerySet API</a> and <a href="https://docs.djangoproject.com/en/5.2/topics/db/optimization">Database access optimization</a>.
+</p>

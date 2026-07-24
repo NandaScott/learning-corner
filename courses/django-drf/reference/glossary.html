@@ -1,0 +1,155 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Django &amp; DRF Glossary</title>
+
+<p class="eyebrow">Django &amp; DRF · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">The shared vocabulary for this course, in plain language, no Django background assumed. Every lesson uses these terms exactly as defined here. Print it; keep it next to you.</p>
+
+<h2>Django: the framework and its shape</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Framework (batteries included)</strong></td><td>A bundle of decided answers to the problems every database-backed site shares, built to work together: models, URL routing, templates, forms, auth, an admin. Django's slogan: "for perfectionists with deadlines." (Lesson 1)</td></tr>
+  <tr><td><strong>Model</strong></td><td>A Python class describing a database table's shape. Django reads it to run queries for you (the ORM), so you write Python, not SQL. One model definition is the single source for that data's structure. (Lesson 1)</td></tr>
+  <tr><td><strong>ORM</strong></td><td>Object-relational mapper: the layer that turns model classes and Python method calls into SQL and back. (Lesson 1)</td></tr>
+  <tr><td><strong>Template</strong></td><td>The HTML presentation, kept separate from the logic that fetches data. In MTV naming, this is what classic MVC calls the "view." (Lesson 1)</td></tr>
+  <tr><td><strong>Admin</strong></td><td>An add/change/delete interface Django generates by reading a registered model's metadata. An internal tool for trusted staff, not a public front end. (Lesson 1)</td></tr>
+  <tr><td><strong>MTV</strong></td><td>Model-Template-View, Django's naming of the MVC pattern. MVC's <em>controller</em> → Django's <strong>view</strong>; MVC's <em>view</em> → Django's <strong>template</strong>. (Lesson 1)</td></tr>
+  <tr><td><strong>DRY</strong></td><td>"Don't repeat yourself." Every distinct concept or piece of data lives in one place; Django deduces the rest from minimal input. (Lesson 1)</td></tr>
+  <tr><td><strong>Loose coupling</strong></td><td>The layers (templates, database, views) stay independent and don't need to know about each other. Django's stated design goal, alongside tight cohesion within a layer. (Lesson 1)</td></tr>
+</table>
+
+<h2>Django: the request cycle</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>View</strong></td><td>The request-answering logic. Precisely: a callable that takes an <code>HttpRequest</code> and returns an <code>HttpResponse</code>. Not the HTML (that's the template). The word carries the whole course. (Lesson 2)</td></tr>
+  <tr><td><strong>HttpRequest</strong></td><td>The object Django builds for each incoming request, holding its metadata (path, method, headers, body). Passed into the view. (Lesson 2)</td></tr>
+  <tr><td><strong>HttpResponse</strong></td><td>What a view must return: the bytes (and status/headers) sent back to the client. A plain one sends whatever you put in it, with no content negotiation. (Lesson 2)</td></tr>
+  <tr><td><strong>URLconf</strong></td><td>A list of <code>path()</code> entries mapping URL routes to views. Matches on the <em>path only</em>; the HTTP method is not used for routing. (Lesson 2)</td></tr>
+  <tr><td><strong><code>path()</code></strong></td><td>One URLconf entry: a route string → a view, with optional <code>&lt;converter:name&gt;</code> segments that capture and type-cast parts of the URL, passed to the view as keyword arguments. (Lesson 2)</td></tr>
+  <tr><td><strong>HTTP verb / method</strong></td><td>GET, POST, PUT, PATCH, DELETE, etc. A field on the request. Because routing ignores it, all verbs for one URL reach the same view. (Lesson 2)</td></tr>
+</table>
+
+<h2>The verb-to-view mapping (the three rungs)</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Function-based view (FBV)</strong></td><td>A view written as a plain function. To serve multiple verbs on one URL it branches: <code>if request.method == "GET"</code>. Rung 1, the "jank." (Lesson 3)</td></tr>
+  <tr><td><strong>Class-based view (CBV) / <code>View</code></strong></td><td>A view written as a class subclassing <code>django.views.View</code>. Each verb is a like-named method (<code>get</code>, <code>post</code>, ...); no <code>request.method</code> branching in your code. Rung 2. (Lesson 3)</td></tr>
+  <tr><td><strong><code>as_view()</code></strong></td><td>Class method that bridges the URLconf and a CBV. Returns a callable that, per request, instantiates the class, runs <code>setup()</code>, then calls <code>dispatch()</code>. On a viewset it also accepts a verb→action map. (Lessons 3, 6)</td></tr>
+  <tr><td><strong><code>dispatch()</code></strong></td><td>The method that reads <code>request.method</code> once and routes to the like-named handler. This is where the verb check <em>relocated</em> to (it didn't disappear). (Lesson 3)</td></tr>
+  <tr><td><strong><code>http_method_names</code></strong></td><td>The verbs a <code>View</code> will route, default <code>["get","post","put","patch","delete","head","options","trace"]</code>. (Lesson 3)</td></tr>
+  <tr><td><strong><code>http_method_not_allowed()</code> / 405</strong></td><td>Called by <code>dispatch()</code> when a known verb has no matching handler; returns <code>HttpResponseNotAllowed</code> (HTTP 405) listing supported methods. Free correct rejection. (Lesson 3)</td></tr>
+</table>
+
+<h2>DRF: what it adds on top</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>DRF</strong></td><td>Django REST Framework: a toolkit for building Web APIs on Django. It does not replace Django's request handling; it enriches it and (with viewsets/routers) abstracts routing. (Lesson 4)</td></tr>
+  <tr><td><strong>Content negotiation</strong></td><td>Choosing the response's content type from what the client asked for (e.g. the <code>Accept</code> header). DRF's <code>Response</code> does it; plain <code>HttpResponse</code> does not. (Lesson 4)</td></tr>
+  <tr><td><strong><code>Request</code> (DRF)</strong></td><td>Extends <code>HttpRequest</code> with flexible parsing. (Lesson 5)</td></tr>
+  <tr><td><strong><code>request.data</code></strong></td><td>The parsed request body: file and non-file input, across POST/PUT/PATCH, for JSON and other media types. The API-fit replacement for <code>request.POST</code>. (Lessons 4, 5)</td></tr>
+  <tr><td><strong><code>Response</code> (DRF)</strong></td><td>Takes <em>unrendered</em> Python data, runs content negotiation, and renders to the chosen type. Default renderers: JSON and the browsable API. (Lesson 5)</td></tr>
+  <tr><td><strong>Browsable API</strong></td><td>The default HTML rendering of a DRF endpoint, letting a developer explore the API in a browser. One of the two default renderers. (Lesson 5)</td></tr>
+  <tr><td><strong>Serializer</strong></td><td>Converts both directions: model instance/queryset → native Python (<code>.data</code>) → JSON, and incoming <code>data</code> → validate (<code>is_valid()</code>) → <code>validated_data</code> → <code>save()</code>. (Lesson 5)</td></tr>
+  <tr><td><strong><code>@api_view</code> / <code>APIView</code></strong></td><td>DRF's two view wrappers (function / class). Both deliver a DRF <code>Request</code>, add <code>Response</code> negotiation context, and auto-handle 405 and <code>ParseError</code>. <code>APIView</code> subclasses Django's <code>View</code>, inheriting the verb dispatch. (Lesson 5)</td></tr>
+</table>
+
+<h2>DRF: routing as data (rung 3)</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>ViewSet</strong></td><td>One class grouping a resource's behaviors as named <em>actions</em> rather than HTTP-verb methods. (Lesson 6)</td></tr>
+  <tr><td><strong>Action</strong></td><td>A named behavior on a viewset. The standard six: <code>list</code> (GET collection), <code>create</code> (POST collection), <code>retrieve</code> (GET member), <code>update</code> (PUT member), <code>partial_update</code> (PATCH member), <code>destroy</code> (DELETE member). (Lesson 6)</td></tr>
+  <tr><td><strong>Verb→action map</strong></td><td>The dict passed to <code>as_view({"get": "list", "post": "create"})</code> tying HTTP verbs to actions. Routing expressed as readable data. (Lesson 6)</td></tr>
+  <tr><td><strong>Router</strong></td><td>Registers a viewset and generates its URLconf: the collection and member URL patterns and their verb→action maps, so you don't hand-write them. (Lesson 6)</td></tr>
+  <tr><td><strong><code>@action</code></strong></td><td>Decorator marking a viewset method as an extra routed action beyond the standard six, declaring its <code>methods</code> and whether it's <code>detail</code> (member) or collection. (Lesson 6)</td></tr>
+  <tr><td><strong>Collection vs member URL</strong></td><td>Collection = the resource list (<code>/snippets/</code>); member = one item (<code>/snippets/42/</code>). The same verb (GET) means different actions on each (<code>list</code> vs <code>retrieve</code>). (Lesson 6)</td></tr>
+</table>
+
+<h2>The ORM and the QuerySet</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Manager (<code>.objects</code>)</strong></td><td>The query entry point on a model. <code>Model.objects.filter(...)</code> returns a QuerySet. (Lesson 8)</td></tr>
+  <tr><td><strong>QuerySet</strong></td><td>A description of a database query, not its results. Lazy: building and chaining it runs nothing. (Lesson 8)</td></tr>
+  <tr><td><strong>Lazy / evaluation</strong></td><td>A QuerySet hits the database only when evaluated: iterated, passed to <code>list()</code>/<code>len()</code>, truth-tested, or printed. Chained filters resolve to a single query at that point. (Lesson 8)</td></tr>
+  <tr><td><strong>QuerySet cache</strong></td><td>After full evaluation, results are stored on the QuerySet and reused. Reuse one saved variable rather than re-calling <code>.all()</code>. Slicing/indexing an unevaluated set can re-query. (Lesson 8)</td></tr>
+  <tr><td><strong>N+1 problem</strong></td><td>1 query for a list plus 1 more per row to follow a relation, because related-object access is itself a query. Scales with row count. (Lesson 8)</td></tr>
+  <tr><td><strong><code>select_related</code></strong></td><td>Pulls ForeignKey / OneToOne relations in the first query via a SQL join, so later attribute access does not re-query. The one-side fix for N+1. (Lesson 8)</td></tr>
+  <tr><td><strong><code>prefetch_related</code></strong></td><td>Pulls ManyToMany / reverse relations in a separate query, joined in Python. The many-side fix for N+1. (Lesson 8)</td></tr>
+</table>
+
+<h2>Serializers in depth</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong><code>ModelSerializer</code></strong></td><td>A serializer that reads a model (via inner <code>Meta.model</code> + <code>Meta.fields</code>) and generates matching fields, model-derived validators (e.g. <code>unique_together</code>), and default <code>create()</code>/<code>update()</code>. (Lesson 9)</td></tr>
+  <tr><td><strong>Field-level validation</strong></td><td>A <code>validate_&lt;field&gt;()</code> method: a rule about one field, returning the value or raising <code>ValidationError</code>. Sees only that field. (Lesson 9)</td></tr>
+  <tr><td><strong>Object-level validation</strong></td><td>A <code>validate(self, data)</code> method: a rule across fields, receiving the whole data dict. The place for cross-field checks. (Lesson 9)</td></tr>
+  <tr><td><strong>Writable nested serializer</strong></td><td>A serializer embedded in another (<code>Child(many=True)</code>). Reads automatically; writing requires overriding <code>create()</code>/<code>update()</code> to save the nested objects. (Lesson 9)</td></tr>
+</table>
+
+<h2>Generic views (the abstraction ladder)</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong><code>GenericAPIView</code></strong></td><td>A subclass of <code>APIView</code> that adds <code>queryset</code> and <code>serializer_class</code> attributes and getters (<code>get_queryset()</code>, <code>get_serializer_class()</code>, <code>get_object()</code>). Has no verb handlers on its own. (Lesson 10)</td></tr>
+  <tr><td><strong>Mixin</strong></td><td>A class supplying one action method: <code>ListModelMixin.list</code>, <code>CreateModelMixin.create</code>, <code>RetrieveModelMixin.retrieve</code>, <code>UpdateModelMixin.update</code>, <code>DestroyModelMixin.destroy</code>. Combined with <code>GenericAPIView</code>. (Lesson 10)</td></tr>
+  <tr><td><strong>Concrete generic view</strong></td><td>A pre-combined class needing only <code>queryset</code> + <code>serializer_class</code>: e.g. <code>ListCreateAPIView</code> (GET, POST), <code>RetrieveUpdateDestroyAPIView</code> (GET, PUT, PATCH, DELETE). (Lesson 10)</td></tr>
+  <tr><td><strong><code>get_queryset()</code></strong></td><td>The method to override for a per-request queryset (e.g. per-user filtering) and for adding <code>select_related</code>/<code>prefetch_related</code>. Use it rather than <code>self.queryset</code>, which is evaluated once and cached across requests. (Lesson 10)</td></tr>
+  <tr><td><strong><code>ModelViewSet</code></strong></td><td>The concrete generics gathered into one viewset: given <code>queryset</code> + <code>serializer_class</code>, it implements all six actions and is routed by a router. Top of the ladder. (Lessons 6, 10)</td></tr>
+</table>
+
+<h2>Authentication and permissions (the gate)</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Authentication</strong></td><td>Decides <em>who</em> the request is. Runs first, before permission and throttling; sets <code>request.user</code> and <code>request.auth</code>. Set via <code>authentication_classes</code>. (Lesson 11)</td></tr>
+  <tr><td><strong>Permission (authorization)</strong></td><td>Decides <em>whether</em> the identified request may proceed. An all-must-pass list of classes checked before the view runs. Set via <code>permission_classes</code>. (Lesson 11)</td></tr>
+  <tr><td><strong>Throttling</strong></td><td>Caps how often a client may call. Runs after permission. <code>UserRateThrottle</code> keys on user id (IP for anonymous) with a rate like <code>"60/min"</code>. (Lesson 11)</td></tr>
+  <tr><td><strong><code>has_permission</code> vs <code>has_object_permission</code></strong></td><td>Request-level check (may this user reach the view) vs object-level check (may they act on <em>this</em> row). Per-owner rules live in <code>has_object_permission</code>. (Lesson 11)</td></tr>
+  <tr><td><strong>SAFE_METHODS</strong></td><td>The read-only verbs GET, HEAD, OPTIONS. Used in permissions to allow reads while restricting writes. (Lesson 11)</td></tr>
+  <tr><td><strong>401 vs 403</strong></td><td><code>401 Unauthorized</code>: no or failed identity. <code>403 Forbidden</code>: identity known, action refused. Falls out of the auth-then-permission order. (Lesson 11)</td></tr>
+  <tr><td><strong>TokenAuthentication</strong></td><td>A scheme where the client sends <code>Authorization: Token &lt;key&gt;</code>; on success <code>request.user</code> is a <code>User</code> and <code>request.auth</code> is a <code>Token</code>. (Lesson 11)</td></tr>
+</table>
+
+<h2>Migrations (the schema write side)</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Migration</strong></td><td>A numbered, dependency-ordered file describing a schema change (its <em>operations</em>). Version control for the database. (Lesson 13)</td></tr>
+  <tr><td><strong><code>makemigrations</code></strong></td><td>Diffs the current models against the last migration and writes a new migration file. Records the change; does not touch the database. (Lesson 13)</td></tr>
+  <tr><td><strong><code>migrate</code></strong></td><td>Applies unapplied migration files to the database, in dependency order. Tracks what is already applied. Naming an earlier migration rolls back to it. (Lesson 13)</td></tr>
+  <tr><td><strong><code>sqlmigrate</code></strong></td><td>Prints the SQL a given migration would run, without executing it. (Lesson 13)</td></tr>
+</table>
+
+<h2>Middleware (the request pipeline)</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Middleware</strong></td><td>A framework of hooks into request/response processing: a plugin system for globally altering input or output, running around every view. (Lesson 14)</td></tr>
+  <tr><td><strong><code>MIDDLEWARE</code></strong></td><td>The ordered setting listing the middleware stack. Order matters: session-dependent layers after <code>SessionMiddleware</code>, security near the top. (Lesson 14)</td></tr>
+  <tr><td><strong>The onion</strong></td><td>Each middleware wraps the next. Request phase runs top-down through the list; response phase runs bottom-up (reverse); the view is the center. (Lesson 14)</td></tr>
+  <tr><td><strong><code>get_response</code></strong></td><td>The next step in the chain (next middleware, or the view). A middleware calls it to descend a layer; work before the call is the request phase, work after is the response phase. (Lesson 14)</td></tr>
+  <tr><td><strong>Short-circuit</strong></td><td>A middleware returning a response without calling <code>get_response</code>. Inner layers and the view never run; only already-run outer layers process the response. (Lesson 14)</td></tr>
+</table>
+
+<h2>Testing DRF</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong><code>APITestCase</code></strong></td><td>A test class like Django's <code>TestCase</code> but with <code>self.client</code> set to an <code>APIClient</code>. Base class for endpoint tests. (Lesson 15)</td></tr>
+  <tr><td><strong><code>APIClient</code></strong></td><td>A test client that sends real requests to your URLs (<code>.get()</code>/<code>.post()</code>/...), with a <code>format</code> argument (e.g. <code>format="json"</code>), and returns the response. (Lesson 15)</td></tr>
+  <tr><td><strong><code>format="json"</code></strong></td><td>Tells the test client to send a JSON body (the API path). Omit it and the client sends multipart form data, a different code path. (Lesson 15)</td></tr>
+  <tr><td><strong><code>force_authenticate</code></strong></td><td>Sets <code>request.user</code> directly, bypassing the token/session mechanics, so a test exercises permission logic rather than authentication. On the client or on a factory-built request. (Lesson 15)</td></tr>
+  <tr><td><strong><code>APIRequestFactory</code></strong></td><td>Builds a request object passed straight to <code>View.as_view()</code>, with no URL resolution or middleware. For testing one view in isolation. (Lesson 15)</td></tr>
+</table>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="cheat-sheet.html">Cheat-sheet ↗</a></span>
+  <span><a href="../lessons/0001-why-django.html">Start: Lesson 1 →</a></span>
+</div>

@@ -1,0 +1,146 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5: DRF's request, response, and serializer layer</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 5</p>
+<h1>DRF's request, response, and serializer layer</h1>
+<p class="lede">Lesson 4 listed what plain Django makes you hand-roll for an API. This lesson is DRF's answer to each item: a richer <code>Request</code>, a negotiated <code>Response</code>, and serializers for the object↔JSON boundary, all delivered through two wrappers, <code>@api_view</code> and <code>APIView</code>, that sit on top of the verb dispatch from Lesson 3.</p>
+
+<h2>The concept</h2>
+
+<p>DRF gives you two ways to write an API view, matching Django's two view styles. For a function, the <code>@api_view</code> decorator; for a class, subclass <code>APIView</code>. Both wrappers do the same job: they make sure your code receives DRF's <code>Request</code> instead of Django's plain <code>HttpRequest</code>, they add the context a <code>Response</code> needs for content negotiation, and they handle API errors like <code>405 Method Not Allowed</code> and <code>ParseError</code> for you.<sup><a href="#s1">1</a></sup> Inside that wrapper, you work with three upgraded objects.</p>
+
+<h2>The three upgrades</h2>
+
+<h3>1. Request — parsing that fits an API</h3>
+<p>DRF's <code>Request</code> extends the regular <code>HttpRequest</code> with flexible parsing. Its core is <code>request.data</code>: the parsed request body, covering file and non-file input, working for POST, PUT, and PATCH, and handling JSON or other media types the same way you'd handle form data.<sup><a href="#s2">2</a></sup> This is the direct fix for friction point 1 from Lesson 4.</p>
+
+<h3>2. Response — one object, many rendered forms</h3>
+<p>DRF's <code>Response</code> is given <em>unrendered</em> data (plain Python) and defers the rendering. It runs content negotiation to pick the right content type for the client, then renders. By default the renderers are JSON and the browsable API, so the same endpoint answers a program with JSON and a developer's browser with an explorable HTML page.<sup><a href="#s3">3</a></sup></p>
+
+<div class="figure">
+<pre><code>REST_FRAMEWORK default renderers:
+    'rest_framework.renderers.JSONRenderer',
+    'rest_framework.renderers.BrowsableAPIRenderer',</code></pre>
+<p class="cap">You return data once; the negotiated renderer decides the wire format. The browsable API is why you can click through a DRF endpoint in a browser.<sup><a href="#s3">3</a></sup></p>
+</div>
+
+<h3>3. Serializers — the object/JSON boundary, with validation</h3>
+<p>A serializer converts both directions. Outbound, it turns a model instance (or a queryset, with <code>many=True</code>) into native Python datatypes that a renderer can emit as JSON:<sup><a href="#s4">4</a></sup></p>
+
+<div class="figure">
+<pre><code>serializer = SnippetSerializer(snippet)          # one instance
+serializer.data                                   # → native Python (then JSON)
+
+serializer = SnippetSerializer(Snippet.objects.all(), many=True)   # a queryset
+serializer.data</code></pre>
+<p class="cap">Outbound: object → <code>.data</code> → JSON.</p>
+</div>
+
+<p>Inbound, it takes incoming <code>data</code>, validates it, and exposes the clean result, which you can then save:<sup><a href="#s5">5</a></sup></p>
+
+<div class="figure">
+<pre><code>serializer = CommentSerializer(data=request.data)
+serializer.is_valid()             # validate
+serializer.validated_data         # the clean, typed values
+serializer.save()                 # persist (create/update the object)</code></pre>
+<p class="cap">Inbound: <code>request.data</code> → validate → <code>validated_data</code> → save. This replaces the hand-written parsing and validation from Lesson 4.</p>
+</div>
+
+<h2>Putting it together</h2>
+
+<p>A function-based API view for a single object shows all three at once, and note the verb handling: it's still the <code>request.method</code> branch, because a <em>function</em> view branches. DRF's contribution here is the objects, not the routing:<sup><a href="#s6">6</a></sup></p>
+
+<div class="figure">
+<pre><code>@api_view(["GET", "PUT", "DELETE"])
+def snippet_detail(request, pk):
+    try:
+        snippet = Snippet.objects.get(pk=pk)
+    except Snippet.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        serializer = SnippetSerializer(snippet)
+        return Response(serializer.data)
+
+    elif request.method == "PUT":
+        serializer = SnippetSerializer(snippet, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == "DELETE":
+        snippet.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)</code></pre>
+<p class="cap"><code>@api_view</code> also enforces the method list: a verb not in <code>["GET", "PUT", "DELETE"]</code> gets an automatic 405. By default a bare <code>@api_view</code> accepts only GET.<sup><a href="#s6">6</a></sup></p>
+</div>
+
+<p>Write the same thing as a class and the branch disappears again, exactly as in Lesson 3, because <code>APIView</code> subclasses Django's <code>View</code>:</p>
+
+<div class="figure">
+<pre><code>class SnippetDetail(APIView):
+    def get(self, request, pk, format=None):
+        ...
+        return Response(serializer.data)
+    def put(self, request, pk, format=None):
+        ...
+    def delete(self, request, pk, format=None):
+        ...</code></pre>
+<p class="cap">Same <code>get()/put()/delete()</code> dispatch as core Django, now carrying DRF's <code>Request</code> and <code>Response</code>.</p>
+</div>
+
+<h2>Why this is the whole DRF value, minus routing</h2>
+
+<p>Line the three upgrades against Lesson 4's list and they cancel it: <code>request.data</code> kills the manual body parsing, <code>Response</code> kills the manual content negotiation, serializers kill the hand-written conversion and validation, and the wrappers kill the manual 405/parse-error handling. What DRF did <em>not</em> touch is the verb-to-method dispatch, because <code>APIView</code> inherits it from Django's <code>View</code> untouched. DRF is the API layer bolted onto Django's existing view machinery, not a rewrite of it. The one routing improvement DRF does add, turning verbs into named <em>actions</em> and generating the URLconf, is Lesson 6.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "DRF wraps your view (<code>@api_view</code> for functions, <code>APIView</code> for classes) so it gets a parsing <code>Request</code> (<code>request.data</code>), a negotiated <code>Response</code>, and serializers for object↔JSON with validation, plus automatic 405/parse errors. The verb dispatch it just inherits from Django's <code>View</code>."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Thinking DRF replaced Django's verb dispatch with something new. The function example still branches on <code>request.method</code>, and the class example still uses <code>get()/put()/delete()</code>: the same mechanism from Lesson 3. DRF changed <em>what flows through</em> the view (Request, Response, serializers, auto-errors), not <em>how the verb is routed</em>. The routing change comes later, with viewsets and routers.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① What three things does an <code>@api_view</code>/<code>APIView</code> wrapper guarantee your code, per the docs?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A DRF <code>Request</code> instance (not plain <code>HttpRequest</code>), the context a <code>Response</code> needs for content negotiation, and automatic handling of API errors such as 405 and <code>ParseError</code>.</p></details>
+  <p>② Trace a serializer both directions in one line each.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Outbound: <code>Serializer(instance).data</code> → native Python → JSON. Inbound: <code>Serializer(data=request.data)</code> → <code>is_valid()</code> → <code>validated_data</code> → <code>save()</code>.</p></details>
+  <p>③ In the function-based <code>snippet_detail</code>, how are the verbs told apart, and how in the <code>APIView</code> version?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Function version: <code>if request.method ==</code> branching (a function branches). Class version: <code>get()/put()/delete()</code> methods dispatched by the inherited Django <code>dispatch()</code>.</p></details>
+  <p>④ Which Lesson-4 friction point does DRF <em>not</em> address, and why not?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Verb routing. It was never DRF's to fix; <code>APIView</code> subclasses Django's <code>View</code> and inherits <code>dispatch()</code>. DRF adds the API layer (data/response/serializer/errors) on top.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF Tutorial 2: Requests and Responses</a> for the wrappers, <code>Request</code>, and <code>Response</code>; then <a href="https://www.django-rest-framework.org/tutorial/1-serialization">Tutorial 1: Serialization</a> for the serializer both ways.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want <code>ModelSerializer</code> (the DRY version that infers fields from a model), custom validation, or how the browsable API is rendered? Ask. Next lesson: the routing upgrade: ViewSets turn verbs into actions, and routers generate the URLconf.
+</div>
+
+<div class="course-nav">
+  <span><a href="0004-where-plain-django-fights-an-api.html">← Lesson 4</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-viewsets-and-routers.html"><em>Next: Lesson 6, ViewSets and routers →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> Two wrappers (<code>@api_view</code>, <code>APIView</code>) that deliver <code>Request</code>, add <code>Response</code> context, and handle 405/ParseError: <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF: Tutorial 2</a>.<br>
+<span id="s2">2.</span> <code>Request</code> extends <code>HttpRequest</code>; <code>request.data</code> parses arbitrary media across POST/PUT/PATCH: <a href="https://www.django-rest-framework.org/api-guide/requests">DRF: Requests</a>.<br>
+<span id="s3">3.</span> <code>Response</code> takes unrendered content, negotiates, and renders; default renderers are JSON + Browsable API: <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF: Tutorial 2</a> and <a href="https://www.django-rest-framework.org/api-guide/settings">DRF: Settings</a>.<br>
+<span id="s4">4.</span> Serialize an instance / a queryset (<code>many=True</code>) to <code>.data</code>: <a href="https://www.django-rest-framework.org/tutorial/1-serialization">DRF: Tutorial 1</a>.<br>
+<span id="s5">5.</span> Deserialize + validate: <code>is_valid()</code>, <code>validated_data</code>: <a href="https://www.django-rest-framework.org/api-guide/serializers">DRF: Serializers</a>.<br>
+<span id="s6">6.</span> The <code>@api_view(["GET","PUT","DELETE"])</code> single-object view; default is GET-only; non-listed method → 405: <a href="https://www.django-rest-framework.org/api-guide/views">DRF: Views</a> and <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">Tutorial 2</a>.
+</p>

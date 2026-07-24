@@ -1,0 +1,90 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4: Where plain Django fights an API</title>
+
+<p class="eyebrow">Django &amp; DRF · Lesson 4</p>
+<h1>Where plain Django fights an API</h1>
+<p class="lede">Django was built to serve HTML pages to browsers, and it's good at that. Point it at building a JSON API for other programs instead and several of its defaults work against you. This lesson names those friction points, because each one is a problem DRF exists to solve. This is the "what problem does DRF solve" question, stated as a list.</p>
+
+<h2>The concept</h2>
+
+<p>A web page and an API are different jobs. A page sends HTML to a human's browser, driven by GET and POST from forms. An API sends and receives structured data (usually JSON) to and from other code, across the full set of verbs (GET, POST, PUT, PATCH, DELETE). Django's request and response objects, and its form machinery, are shaped for the first job. Use them for the second and you end up writing the same glue by hand in every view. DRF's own tutorial frames itself as closing exactly this gap.<sup><a href="#s1">1</a></sup></p>
+
+<h2>The friction points</h2>
+
+<h3>1. request.POST doesn't understand JSON, PUT, or PATCH</h3>
+<p>Django's <code>request.POST</code> is built for HTML form submissions: it parses form-encoded bodies, and effectively only for POST requests. An API client sends a JSON body, and often on PUT or PATCH. DRF introduces <code>request.data</code> precisely because it is more useful for Web APIs than <code>request.POST</code>: it parses arbitrary content (JSON and other media types) and works for POST, PUT, and PATCH alike.<sup><a href="#s2">2</a></sup> Without that, a plain Django view has to read and parse the raw request body itself.</p>
+
+<h3>2. HttpResponse doesn't negotiate content types</h3>
+<p>A plain <code>HttpResponse</code> sends back whatever bytes you put in it. An API often needs to answer the same endpoint as JSON for a program and as something browsable for a human developer, chosen by the client's <code>Accept</code> header. That choice is <em>content negotiation</em>, and plain Django doesn't do it. DRF's <code>Response</code> takes unrendered data and uses content negotiation to decide the correct content type to return, then renders accordingly.<sup><a href="#s3">3</a></sup></p>
+
+<h3>3. Serialization is hand-rolled</h3>
+<p>Model instances and querysets are Python objects; JSON is text. Something has to convert between them, in both directions, and validate incoming data before it touches the database. In plain Django you write that conversion and validation yourself for every model. DRF provides serializers to turn model instances and querysets into native Python datatypes (then JSON) and to validate and deserialize incoming data back into objects.<sup><a href="#s4">4</a></sup> Lesson 5 covers them.</p>
+
+<h3>4. Status codes and API errors are manual</h3>
+<p>Correct APIs return meaningful HTTP status codes: 201 on create, 204 on delete, 400 on invalid input, 405 on the wrong verb, and a clean error when a body fails to parse. In plain Django you set and remember each of these by hand. DRF's view wrappers add handling for cases like <code>405 Method Not Allowed</code> and <code>ParseError</code> automatically.<sup><a href="#s5">5</a></sup></p>
+
+<h2>The shape of the problem</h2>
+
+<div class="figure">
+<pre><code>  API need                     plain Django           the manual work you'd write
+  ──────────────────────────   ────────────────────   ───────────────────────────
+  read a JSON / PUT / PATCH     request.POST           parse request.body yourself
+    body
+  answer JSON or browsable      HttpResponse           inspect Accept, serialize,
+    by client                                            set Content-Type by hand
+  object &lt;-&gt; JSON, validated    (none)                 write to_json / from_json +
+                                                         validation per model
+  right status + parse errors   set by hand            remember 201/204/400/405,
+                                                         guard body parsing</code></pre>
+<p class="cap">None of this is hard once. It's that you rewrite it in every view, for every model, forever. That repetition is what a framework layer is supposed to remove.</p>
+</div>
+
+<p>Notice what is <em>not</em> on this list: verb-to-view mapping. Lesson 3 already solved that in core Django with the class-based <code>View</code>. The friction that remains is specifically about being an <em>API</em> (data in and out, negotiated, validated, with correct status), not about routing verbs. That's the precise seam DRF fills, and why it calls itself a toolkit for building Web APIs rather than a replacement for Django's request handling.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Django's defaults are shaped for HTML pages: <code>request.POST</code> can't read a JSON PUT body, <code>HttpResponse</code> doesn't negotiate content, serialization and status codes are hand-rolled. DRF exists to remove that per-view, per-model repetition, not to fix verb routing, which core Django already handled."
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The trap</span>
+  Lumping the verb-mapping fix in with "what DRF solves." It isn't DRF's problem to solve; class-based <code>View</code> handled it (Lesson 3). DRF's contributions are the API concerns: parsing arbitrary bodies (<code>request.data</code>), content negotiation (<code>Response</code>), serialization, and automatic API errors. Keep the two piles separate or you'll credit DRF for Django's work.
+</div>
+
+<div class="recall">
+  <p class="q">Recall, answer out loud before peeking:</p>
+  <p>① Why is <code>request.POST</code> a poor fit for an API, and what does DRF offer instead?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>request.POST</code> parses form-encoded bodies and effectively only for POST. APIs send JSON, often on PUT/PATCH. DRF's <code>request.data</code> parses arbitrary media types across POST/PUT/PATCH.</p></details>
+  <p>② What does "content negotiation" mean, and which object performs it in DRF?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Choosing the response's content type based on what the client asked for (e.g. the <code>Accept</code> header). DRF's <code>Response</code> does it, taking unrendered data and rendering to the negotiated type. Plain <code>HttpResponse</code> doesn't negotiate.</p></details>
+  <p>③ Name one friction point that is <em>not</em> DRF's job, and say why.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Verb-to-view mapping. Core Django's class-based <code>View</code>/<code>dispatch()</code> already solved it (Lesson 3); DRF inherits that and adds the API-specific layer.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source, read this one</span>
+  <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF Tutorial 2: Requests and Responses</a>. It states the gaps this lesson lists (request parsing, response negotiation, automatic 405/ParseError) as the reasons its wrappers exist.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Want to see the raw-body parsing you'd have to write in plain Django, or how Django's own <code>JsonResponse</code> stops short of solving this? Ask. Next lesson: DRF's answer, the <code>Request</code>, <code>Response</code>, and serializer layer, wrapped by <code>@api_view</code> and <code>APIView</code>.
+</div>
+
+<div class="course-nav">
+  <span><a href="0003-one-url-many-verbs.html">← Lesson 3</a></span>
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-drf-request-response-serializers.html"><em>Next: Lesson 5, DRF's request/response/serializer layer →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong> (DRF documentation only)<br>
+<span id="s1">1.</span> The wrappers exist to bridge Django's request handling toward Web APIs: <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF: Tutorial 2, Requests and Responses</a>.<br>
+<span id="s2">2.</span> <code>request.data</code> is more useful than <code>request.POST</code>; parses arbitrary data across POST/PUT/PATCH: <a href="https://www.django-rest-framework.org/api-guide/requests">DRF: Requests</a> and <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">Tutorial 2</a>.<br>
+<span id="s3">3.</span> <code>Response</code> takes unrendered content and uses content negotiation to pick and render the content type: <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF: Tutorial 2</a>.<br>
+<span id="s4">4.</span> Serializers convert model instances/querysets to native datatypes and validate/deserialize incoming data: <a href="https://www.django-rest-framework.org/tutorial/1-serialization">DRF: Tutorial 1, Serialization</a>.<br>
+<span id="s5">5.</span> Wrappers handle <code>405 Method Not Allowed</code> and <code>ParseError</code>: <a href="https://www.django-rest-framework.org/tutorial/2-requests-and-responses">DRF: Tutorial 2</a>.
+</p>
