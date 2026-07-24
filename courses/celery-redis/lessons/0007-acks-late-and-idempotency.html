@@ -18,18 +18,20 @@
 <p>One timeline, two ack points. The window between "task starts" and "ack" is the danger zone: a crash <em>there</em> is what differs.</p>
 
 <div class="figure">
-<pre><code>  acks_late = False   (DEFAULT)
-     BRPOP ─▶ ack (delete ledger entry) ─▶ run task ─▶ done
-                      ▲
-              crash AFTER here = work LOST (nothing to restore)   → AT-MOST-ONCE
-              no duplicates, but a killed worker silently drops its tasks
-
-  acks_late = True
-     BRPOP ─▶ run task ─▶ done ─▶ ack (delete ledger entry)
-                  ▲
-          crash BEFORE the ack = ledger entry survives → Lesson 6 restores it
-          → task runs AGAIN on another worker                    → AT-LEAST-ONCE
-          recovers lost work, but the task can run 2+ times</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph EARLY["acks_late = False (DEFAULT) → AT-MOST-ONCE"]
+    direction TB
+    e1["BRPOP"] --> e2["ack (delete ledger entry)"] --> e3["run task"] --> e4["done"]
+    e2 -.->|"crash AFTER here = work LOST, nothing to restore"| ex1["no duplicates, but a killed worker silently drops its tasks"]
+  end
+  subgraph LATE["acks_late = True → AT-LEAST-ONCE"]
+    direction TB
+    l1["BRPOP"] --> l2["run task"] --> l3["done"] --> l4["ack (delete ledger entry)"]
+    l2 -.->|"crash BEFORE the ack = ledger entry survives, Lesson 6 restores it"| lx1["task runs AGAIN on another worker, can run 2+ times"]
+  end
+  EARLY ~~~ LATE
+</pre>
 <p class="cap">Same machinery (Lesson 5's ledger, Lesson 6's restore). The only change is whether the ack happens on line 1 or line 4. That's the entire reliability decision.<sup><a href="#s1">1</a></sup></p>
 </div>
 
@@ -123,3 +125,6 @@
 <span id="s2">2.</span> <code>acks_on_failure_or_timeout</code> (default True — ack even on failure/timeout); <code>reject_on_worker_lost</code> (default off — abrupt child exit acks rather than redelivers, poison-pill protection); <code>Reject</code> with the <code>redelivered</code> flag — <a href="https://docs.celeryq.dev/en/stable/reference/celery.app.task.html">celery.app.task (Task properties)</a>; <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#reject">Tasks › Rejecting / Re-queuing a message</a>.<br>
 <span id="s3">3.</span> Tasks should be idempotent so they tolerate at-least-once redelivery — <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html">Celery docs: Tasks (idempotency guidance)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

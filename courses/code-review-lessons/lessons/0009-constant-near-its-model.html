@@ -31,16 +31,11 @@ reader asks "what limits a cart?"      reader asks "what limits a cart?"
 <p>When you introduce a constant, ask one question before choosing its home: <em>what domain object does this describe?</em> Put it on or beside that object. The point of first use is where you notice you need it — not where it belongs.</p>
 
 <div class="figure">
-<pre><code>introducing a constant → ask:
-
-   "what domain object does this value constrain / describe?"
-                    │
-                    ▼
-        put it ON or NEXT TO that object
-                    │
-        (point of first use = where you noticed it,
-         not where it lives)
-</code></pre>
+<pre class="mermaid">
+flowchart TB
+  a["introducing a constant — ask:<br/>'what domain object does this<br/>value constrain or describe?'"] --> b["put it ON or NEXT TO that object"]
+  b -.->|"point of first use = where you<br/>noticed it, not where it lives"| c["its concept is its home"]
+</pre>
 <p class="cap">The placement test is aboutness, not first-touch.</p>
 </div>
 
@@ -100,3 +95,6 @@ reader asks "what limits a cart?"      reader asks "what limits a cart?"
 <p class="src"><strong>Sources</strong><br>
 Mistake — from a real code review (identifying details removed for this public repo): a cart-describing constant defined in the serializer module rather than on/near the model it constrains.<br>
 Principle — Martin, <em>Clean Code</em>, Ch.10 (cohesion). Already covered in the global Clean Code canon; this lesson is the specific misfire, not the principle.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

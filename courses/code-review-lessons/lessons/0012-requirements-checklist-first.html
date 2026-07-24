@@ -31,21 +31,14 @@ no enumerated list → an omission has nothing to fail against → it ships
 <p>Before writing code, read the ticket and pull every requirement into an explicit checklist — from the description, the acceptance criteria, and any linked spec. Keep it visible while you work. Before opening the PR, walk the checklist against the diff and confirm each item is implemented. That's a spec-adherence pass, separate from code-quality review.</p>
 
 <div class="figure">
-<pre><code>two gates, not one:
-
-  START ─→ read ticket → enumerate requirements as checkboxes
-             ☐ render quote PDF
-             ☐ accept additional_notes
-             ☐ include the customer's details   ← the one that got missed
-             ☐ gate behind the feature flag
-
-  ... build ...
-
-  BEFORE PR ─→ Gate A (spec):    walk checklist vs diff — is each item present?
-              Gate B (quality):  is what's present correct / clean / tested?
-
-  "did I build everything asked?"  ≠  "is what I built good?"
-</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s["START: read ticket,<br/>enumerate requirements as checkboxes"] --> c["☐ render quote PDF<br/>☐ accept additional_notes<br/>☐ include the customer's details (the one that got missed)<br/>☐ gate behind the feature flag"]
+  c --> b["... build ..."]
+  b --> ga["BEFORE PR — Gate A (spec):<br/>walk checklist vs diff, is each item present?"]
+  ga --> gb["Gate B (quality):<br/>is what's present correct, clean, tested?"]
+  gb --> q["'did I build everything asked?'<br/>is NOT the same question as<br/>'is what I built good?'"]
+</pre>
 <p class="cap">Spec adherence and code quality are different questions; the checklist is what makes the first one answerable.</p>
 </div>
 
@@ -105,3 +98,6 @@ no enumerated list → an omission has nothing to fail against → it ships
 <p class="src"><strong>Sources</strong><br>
 Mistake — self-identified (outside the PR review): a "include the customer's details" requirement was missed in the first draft, survived personal and AI-assisted review, and was caught late at the cost of an extra day.<br>
 Principle — spec adherence as a gate distinct from code-quality review; the ticket's enumerated requirements are the checklist.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

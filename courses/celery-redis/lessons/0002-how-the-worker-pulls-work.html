@@ -18,21 +18,19 @@
 <p>Here's the full route of one message, from the Redis list to a return value. We'll walk each piece underneath.</p>
 
 <div class="figure">
-<pre><code>                       MainProcess  (supervisor — runs NO task code)
- Redis                ┌──────────────────────────────────────────────────┐
- list   ─BRPOP(kombu)─▶  Consumer ─▶ build Request ─▶ reserve (prefetch)   │
-"celery"              │     │                                              │
-                      │     ├─ ETA / countdown / rate-limit ─▶  Timer      │
-                      │     └─ ready to run now ──────────────▶  Pool ──┐  │
-                      └──────────────────────────────────────────────│──┘
-                                                                pipe   │
-                                                  ┌────────────────────▼──────┐
-                                                  │ child process (prefork)    │  add(2,3) → 5
-                                                  └────────────────────┬───────┘
-                                                                       │ return value
-                                                                       ▼
-                                                          Result backend  (separate store —
-                                                                           NOT the broker)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  R[("Redis list 'celery'")]
+  subgraph MAIN["MainProcess — supervisor, runs NO task code"]
+    direction TB
+    C["Consumer"] --> RQ["build Request"] --> PF["reserve (prefetch)"]
+    PF -->|ETA / countdown / rate-limit| T["Timer"]
+    PF -->|ready to run now| P["Pool"]
+  end
+  R -->|BRPOP via kombu| C
+  P -->|pipe| CH["child process (prefork)<br/>add(2,3) → 5"]
+  CH -->|return value| RB["Result backend<br/>(separate store, NOT the broker)"]
+</pre>
 <p class="cap">One hop off the broker (<code>BRPOP</code>), a fork in the road (Timer vs Pool), then a second hop over a pipe into a child. The result does <em>not</em> go back on the queue.</p>
 </div>
 
@@ -134,3 +132,6 @@
 <span id="s3">3.</span> <code>worker_prefetch_multiplier</code> default 4; reserves <code>multiplier × concurrency</code> into memory; <code>worker_disable_prefetch</code> Redis-only — <a href="https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-prefetch-multiplier">Celery docs: Configuration</a>; <a href="https://docs.celeryq.dev/en/stable/userguide/optimizing.html#prefetch-limits">Optimizing: Prefetch limits</a>.<br>
 <span id="s4">4.</span> Prefork execution pool built on <code>multiprocessing</code>/<code>billiard</code>; pool types — <a href="https://docs.celeryq.dev/en/stable/internals/reference/celery.concurrency.prefork.html">celery.concurrency.prefork</a>; <a href="https://docs.celeryq.dev/en/stable/userguide/workers.html#concurrency">Workers: Concurrency</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

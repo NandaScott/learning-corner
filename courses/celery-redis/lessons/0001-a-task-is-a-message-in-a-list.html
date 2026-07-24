@@ -20,14 +20,19 @@
 <p>Here's the full path of one <code>.delay()</code> call, from your view to the worker's hands. We'll walk each step underneath.</p>
 
 <div class="figure">
-<pre><code>1. .delay(2, 3)        in the web process    build a task-request message
-2. serialize           message → JSON         body base64-encoded, headers + properties wrap it
-3. pick the list       routing_key "celery"   → Redis key "celery"
-4. LPUSH               web proc → Redis        prepend the JSON string onto list "celery"
-   ───────────────  ( the web process is now done — returns an AsyncResult ) ───────────────
-5. BRPOP               worker  ← Redis         blocking pop from the right of "celery"
-6. deserialize         JSON → task name+args   look up the registered task, decode the body
-7. run the function    add(2, 3) → 5           execute in a worker child process</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant W as Web process
+  participant R as Redis · list "celery"
+  participant K as Worker
+  W->>W: 1. add.delay(2, 3) — build a task-request message
+  W->>W: 2. serialize → JSON (body base64, headers + properties)
+  W->>R: 3-4. LPUSH "celery" — prepend the JSON string
+  Note over W,R: web process is done — returns an AsyncResult
+  R->>K: 5. BRPOP — blocking pop from the right
+  K->>K: 6. deserialize — look up the registered task, decode body
+  K->>K: 7. run add(2, 3) → 5 in a child process
+</pre>
 <p class="cap">Steps 1–4 happen in your web request. Steps 5–7 happen later, in the worker. Redis is the only thing they share.</p>
 </div>
 
@@ -66,14 +71,16 @@
 <p>The web process runs one Redis command and is done:</p>
 
 <div class="figure">
-<pre><code>  web process                         Redis
-      │   LPUSH celery "{…json…}"        ┌──────────────────────────────┐
-      │ ───────────────────────────────▶│ key "celery"  (a LIST)        │
-      │                                  │  ┌────┬────┬────┐             │
-      │ ◀─── returns AsyncResult ───     │  │ m3 │ m2 │ m1 │ ← older     │
-      ▼                                  │  └────┴────┴────┘             │
-  (request ends, task not yet run)       └──────────────────────────────┘
-                                          new messages pushed on the LEFT</code></pre>
+<pre class="mermaid">
+flowchart LR
+  W["web process<br/>(request ends, task not yet run)"]
+  subgraph R["Redis · key 'celery' (a LIST)"]
+    direction LR
+    m3["m3<br/>newest"] --- m2["m2"] --- m1["m1<br/>older"]
+  end
+  W -->|"LPUSH celery"| R
+  R -.->|"returns AsyncResult"| W
+</pre>
 <p class="cap">The whole "send" is a single <code>LPUSH</code>. If no worker is running, the message just sits in the list, durable as long as Redis keeps it. Nothing is lost simply because no worker was listening.</p>
 </div>
 
@@ -81,9 +88,10 @@
 <p>A worker blocks on <code>BRPOP celery</code>: "pop the rightmost element, and if the list is empty, <em>wait</em> until something arrives (up to a timeout) rather than busy-polling."<sup><a href="#s1">1</a></sup> Push on the left, pop on the right ⇒ oldest message comes out first: <strong>FIFO</strong>.</p>
 
 <div class="figure">
-<pre><code>      LPUSH ──▶  [ m3 ][ m2 ][ m1 ]  ──▶ BRPOP
-                   ▲                  ▲
-                 newest            oldest comes out first  (FIFO)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  L["LPUSH<br/>newest in (left)"] --> Q["m3 · m2 · m1"] --> B["BRPOP<br/>oldest out first (FIFO)"]
+</pre>
 <p class="cap">Blocking is the point: <code>BRPOP</code> lets an idle worker sleep on the socket instead of hammering Redis with "anything yet?" Near-zero latency when work arrives, near-zero load when it doesn't.</p>
 </div>
 
@@ -146,3 +154,6 @@
 <span id="s1">1.</span> List-based queue, <code>LPUSH</code>/<code>BRPOP</code> consumption, fair rotation — <a href="https://docs.celeryq.dev/projects/kombu/en/stable/_modules/kombu/transport/redis.html">kombu Redis transport source</a>; <a href="https://docs.celeryq.dev/projects/kombu/en/stable/reference/kombu.transport.redis.html">kombu Redis transport reference</a>.<br>
 <span id="s2">2.</span> Message envelope (headers / body / properties, protocol v2) — <a href="https://docs.celeryq.dev/en/stable/internals/protocol.html">Celery docs: Message Protocol</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

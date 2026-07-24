@@ -12,13 +12,14 @@
 <h2>The steps</h2>
 
 <div class="figure">
-<pre><code>  1. subclass APITestCase        gives you self.client (an APIClient)
-        │
-  2. build a URL                 reverse("account-list")
-        │
-  3. send a request              self.client.post(url, data, format="json")
-        │
-  4. assert on the response      status_code, then response.data / the DB</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. subclass APITestCase<br/>gives you self.client (an APIClient)"]
+  s2["2. build a URL<br/>reverse('account-list')"]
+  s3["3. send a request<br/>self.client.post(url, data, format='json')"]
+  s4["4. assert on the response<br/>status_code, then response.data / the DB"]
+  s1 --> s2 --> s3 --> s4
+</pre>
 <p class="cap">Arrange a request, act by sending it, assert on what came back. The same shape as any test, at the HTTP boundary.</p>
 </div>
 
@@ -132,3 +133,6 @@ response = view(request)</code></pre>
 <span id="s3">3.</span> <code>client.force_authenticate(user=...)</code> forces requests to be treated as authenticated, bypassing credentials: <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing (force_authenticate)</a>.<br>
 <span id="s4">4.</span> <code>APIRequestFactory</code> builds a request passed straight to a view; the standalone <code>force_authenticate(request, user=...)</code>: <a href="https://www.django-rest-framework.org/api-guide/testing">DRF: Testing (APIRequestFactory)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

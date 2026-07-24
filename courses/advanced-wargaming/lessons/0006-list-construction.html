@@ -14,16 +14,14 @@
 <h2>The steps — from thesis to reading the other list</h2>
 
 <div class="figure">
-<pre><code>  1. A THESIS         a list is a plan to score, not a pile of good units
-        │
-        ▼
-  2. HAMMER + ANVIL   does it contain both? (L4 as a build constraint)
-        │
-        ▼
-  3. THREAT SPECTRUM  can it hurt every target type? does it fold on one death?
-        │
-        ▼
-  4. READ THEIR LIST  capability-mapping, run before deployment begins</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. A THESIS<br/>a list is a plan to score, not a pile of good units"]
+  s2["2. HAMMER + ANVIL<br/>does it contain both? (L4 as a build constraint)"]
+  s3["3. THREAT SPECTRUM<br/>can it hurt every target type? does it fold on one death?"]
+  s4["4. READ THEIR LIST<br/>capability-mapping, run before deployment begins"]
+  s1 --> s2 --> s3 --> s4
+</pre>
 <p class="cap">List construction is every principle applied one layer earlier, before the game.</p>
 </div>
 
@@ -102,3 +100,6 @@
 <p class="src"><strong>Source</strong><br>
 <span id="s1">1.</span> "Now the general who wins a battle makes many calculations in his temple ere the battle is fought… Thus do many calculations lead to victory, and few calculations to defeat: how much more no calculation at all!" — Ch. I, <em>Laying Plans</em>, Sun Tzu, <em>The Art of War</em>, Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

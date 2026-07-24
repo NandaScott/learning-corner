@@ -12,11 +12,15 @@
 <h2>The steps</h2>
 
 <div class="figure">
-<pre><code>  1. build a QuerySet      Entry.objects.filter(...)   → no DB query yet
-  2. refine it (chain)     .filter(...).exclude(...)   → still no query
-  3. evaluate it           iterate / list() / print    → ONE query runs
-  4. reuse the same var    results are cached           → no new query
-  5. touch a related row   entry.blog                   → a NEW query, per row</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. build a QuerySet<br/>Entry.objects.filter(...)<br/>no DB query yet"]
+  s2["2. refine it (chain)<br/>.filter(...).exclude(...)<br/>still no query"]
+  s3["3. evaluate it<br/>iterate / list() / print<br/>ONE query runs"]
+  s4["4. reuse the same var<br/>results are cached<br/>no new query"]
+  s5["5. touch a related row<br/>entry.blog<br/>a NEW query, per row"]
+  s1 --> s2 --> s3 --> s4 --> s5
+</pre>
 <p class="cap">Steps 1 and 2 are free. Step 3 is the database hit. Step 5 is where the surprise cost hides.</p>
 </div>
 
@@ -122,3 +126,6 @@ b = e.blog   # no query; already loaded</code></pre>
 <span id="s2">2.</span> QuerySet caching after full evaluation; reuse a saved variable; slicing/indexing an unevaluated set can re-query: <a href="https://docs.djangoproject.com/en/5.2/topics/db/queries">Django docs: Making queries (Caching and QuerySets)</a>.<br>
 <span id="s3">3.</span> Related-object access hits the database; <code>select_related</code> (join, for FK/O2O) vs <code>prefetch_related</code> (separate query joined in Python, for M2M/reverse); the N+1 pattern: <a href="https://docs.djangoproject.com/en/5.2/ref/models/querysets">Django docs: QuerySet API</a> and <a href="https://docs.djangoproject.com/en/5.2/topics/db/optimization">Database access optimization</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

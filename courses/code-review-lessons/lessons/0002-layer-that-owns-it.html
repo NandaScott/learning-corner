@@ -12,17 +12,18 @@
 <p>The method also did little to earn its place on the model. A review comment noted that <code>sales_quote_context</code> did nothing but add to a dict. It stuffed <code>additional_notes</code> into a context dictionary. That is a view concern wearing a model method's clothes.</p>
 
 <div class="figure">
-<pre><code>            MODEL                          VIEW
-            ─────                          ────
-  cart.sales_quote_context()   ┐
-    build template context     │  ── the context and the render
-    stuff additional_notes     │     are one job, split in two
-                               ┘
-                                  render(template, context)
-
-  the caller must reach into the model to get a payload
-  that only the view will ever use
-</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph MODEL
+    direction TB
+    m1["cart.sales_quote_context()"] --> m2["build template context"] --> m3["stuff additional_notes"]
+  end
+  subgraph VIEW
+    direction TB
+    v1["render(template, context)"]
+  end
+  m3 -->|"caller reaches into the model for a<br/>payload only the view will ever use"| v1
+</pre>
 <p class="cap">One responsibility, prepare-and-render a template, with its two halves on different objects.</p>
 </div>
 
@@ -95,3 +96,6 @@
 <p class="src"><strong>Sources</strong><br>
 Mistake — from a real code review (identifying details removed for this public repo): context assembled on the model while rendering lived at the view; a model method that only built a template dict.<br>
 Principle — Martin, <em>Clean Code</em>, Ch.10 (cohesion / SRP); <a href="https://docs.djangoproject.com/en/stable/misc/design-philosophies/">Django design philosophies</a>.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

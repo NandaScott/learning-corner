@@ -14,16 +14,14 @@
 <h2>The steps — reading, the first-turn choice, and shaping turn one</h2>
 
 <div class="figure">
-<pre><code>  1. READ FIRST       mission + terrain before a model is placed
-        │
-        ▼
-  2. FIRST TURN       take it to strike, or give it to punish (L1)
-        │
-        ▼
-  3. EXPOSE vs HOLD   deployment as threat-range management
-        │
-        ▼
-  4. SHAPE TURN ONE   screening, zoning, reserves as pre-committed optionality</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. READ FIRST<br/>mission + terrain before a model is placed"]
+  s2["2. FIRST TURN<br/>take it to strike, or give it to punish (L1)"]
+  s3["3. EXPOSE vs HOLD<br/>deployment as threat-range management"]
+  s4["4. SHAPE TURN ONE<br/>screening, zoning, reserves as pre-committed optionality"]
+  s1 --> s2 --> s3 --> s4
+</pre>
 <p class="cap">Deployment is the game's first tempo decision and its first act of concentration.</p>
 </div>
 
@@ -103,3 +101,6 @@
 <span id="s1">1.</span> The mission determines which player takes the first turn each battle round; the detailed deployment procedure is part of the mission rules rather than the core rules. Units arriving from Reserves (including via deep strike) must be set up more than 9" horizontally from all enemy models. Warhammer 40,000 11th Edition Core Rules (<a href="https://wahapedia.ru/wh40k11ed/the-rules/core-rules/">Wahapedia 11th-ed mirror</a>; <a href="https://www.warhammer-community.com/en-gb/downloads/warhammer-40000/">official free download</a>).<br>
 <span id="s2">2.</span> "the victorious strategist only seeks battle after the victory has been won…" (Ch. IV, Tactical Dispositions); "Whoever is first in the field and awaits the coming of the enemy, will be fresh for the fight…" (Ch. VI, Weak Points and Strong), Sun Tzu, <em>The Art of War</em>, Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

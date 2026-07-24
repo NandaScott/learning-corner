@@ -18,12 +18,16 @@
 <p>One $100 US card payment, from capture to bank account.</p>
 
 <div class="figure">
-<pre><code>1. Capture books an entry     +$100 − fee → PENDING        (net at entry)
-2. Settlement clock runs      each entry has available_on   T+2 business days (US)
-3. Funds ripen                pending → AVAILABLE           at available_on, per entry
-4. Debits draw on available   refunds · disputes · transfers
-5. Payout sweeps              available → bank account      on the payout schedule
-6. Below zero                 refunds/disputes can overdraw  reserves · minimum balance · top-ups</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. Capture books an entry<br/>+$100 − fee → PENDING (net at entry)"]
+  s2["2. Settlement clock runs<br/>each entry has available_on, T+2 business days (US)"]
+  s3["3. Funds ripen<br/>pending → AVAILABLE at available_on, per entry"]
+  s4["4. Debits draw on available<br/>refunds · disputes · transfers"]
+  s5["5. Payout sweeps<br/>available → bank account, on the payout schedule"]
+  s6["6. Below zero<br/>refunds/disputes can overdraw: reserves · minimum balance · top-ups"]
+  s1 --> s2 --> s3 --> s4 --> s5 --> s6
+</pre>
 <p class="cap">Steps 1–3 are the days clock from Lesson 1, now with its actual mechanism: a per-transaction ripening timestamp, not one account-wide timer.</p>
 </div>
 
@@ -99,3 +103,6 @@
 <span id="s2">2.</span> Balance object and <code>balance.available</code> event — <a href="https://docs.stripe.com/api/balance">Stripe API reference: Balance</a>.<br>
 <span id="s3">3.</span> Payout schedules, settlement-vs-schedule distinction, first-payout delay — <a href="https://docs.stripe.com/payouts">Stripe docs: Receive payouts</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

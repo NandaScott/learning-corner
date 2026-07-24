@@ -18,23 +18,22 @@
 <p>One task, end to end, with every signal in order and the process it fires in. The grey handler calls are from Lesson 3, shown so you can see exactly where the signals sit relative to them.</p>
 
 <div class="figure">
-<pre><code>  ── PRODUCER process (whoever called .delay) ───────────────────────────
-     before_task_publish        ← message built, NOT yet on the broker
-        · · · LPUSH to Redis · · ·
-     after_task_publish         ← message now in the list
-
-  ── MAIN worker process · the Consumer (Lesson 2) ──────────────────────
-     task_received              ← message popped, Request built
-
-  ── CHILD process · the tracer (Lesson 3) ──────────────────────────────
-     task_prerun                ← FIRST thing in the trace
-       (before_start)           ← then the Lesson-3 handler
-       (run — your body)
-       (mark_as_* + on_* handler)
-     task_success │ task_retry │ task_failure     ← exactly one
-       (after_return)           ← terminal outcomes only (skipped on RETRY)
-     task_postrun               ← LAST thing; ALWAYS sent, even on retry
-  ─────────────────────────────────────────────────────────────────────</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph PROD["PRODUCER process — whoever called .delay"]
+    direction TB
+    bp["before_task_publish<br/>message built, NOT yet on the broker"] --> lp["· · · LPUSH to Redis · · ·"] --> ap["after_task_publish<br/>message now in the list"]
+  end
+  subgraph MAINP["MAIN worker process — the Consumer (Lesson 2)"]
+    direction TB
+    tr["task_received<br/>message popped, Request built"]
+  end
+  subgraph CHILDP["CHILD process — the tracer (Lesson 3)"]
+    direction TB
+    pre["task_prerun<br/>FIRST thing in the trace"] --> bs["(before_start) — then the Lesson-3 handler"] --> run["(run — your body)"] --> mk["(mark_as_* + on_* handler)"] --> one["task_success / task_retry / task_failure<br/>exactly one"] --> aret["(after_return)<br/>terminal outcomes only, skipped on RETRY"] --> post["task_postrun<br/>LAST thing; ALWAYS sent, even on retry"]
+  end
+  PROD --> MAINP --> CHILDP
+</pre>
 <p class="cap">Two ends to anchor on: <code>task_prerun</code> is the first thing the tracer does (before <code>before_start</code>), and <code>task_postrun</code> is the last (after <code>after_return</code>) and fires on <em>every</em> outcome.</p>
 </div>
 
@@ -79,16 +78,18 @@
 <p>Separate from any single task, these mark the worker process itself starting and stopping. The precise bit: some fire once in the main process, some fire <strong>once per child</strong>.</p>
 
 <div class="figure">
-<pre><code>  STARTUP
-    celeryd_init            ← the FIRST signal a worker sends (main process)
-    worker_init             ← before the worker starts (main process)
-    worker_process_init     ← in EACH pool child as it boots  ⚠ must not block >4s
-    worker_ready            ← worker is now accepting tasks (main process)
-
-  SHUTDOWN
-    worker_shutting_down    ← main process, shutdown begins
-    worker_process_shutdown ← in EACH pool child just before it exits (not guaranteed)
-    worker_shutdown         ← main process, final</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph STARTUP
+    direction TB
+    s1["celeryd_init<br/>the FIRST signal a worker sends (main process)"] --> s2["worker_init<br/>before the worker starts (main process)"] --> s3["worker_process_init<br/>in EACH pool child as it boots ⚠ must not block >4s"] --> s4["worker_ready<br/>worker is now accepting tasks (main process)"]
+  end
+  subgraph SHUTDOWN
+    direction TB
+    d1["worker_shutting_down<br/>main process, shutdown begins"] --> d2["worker_process_shutdown<br/>in EACH pool child just before it exits (not guaranteed)"] --> d3["worker_shutdown<br/>main process, final"]
+  end
+  STARTUP --> SHUTDOWN
+</pre>
 <p class="cap"><code>worker_process_init</code> / <code>worker_process_shutdown</code> fire in every child: the right place to open/close per-process resources like a DB connection that must not be shared across forked children.<sup><a href="#s4">4</a></sup></p>
 </div>
 
@@ -148,3 +149,6 @@
 <span id="s3">3.</span> Exact send order of <code>task_prerun</code> (before <code>before_start</code>), <code>task_success</code> (after <code>on_success</code>), and <code>task_postrun</code> (after <code>after_return</code>, all outcomes) — <a href="https://github.com/celery/celery/blob/main/celery/app/trace.py">celery/app/trace.py</a>; signal descriptions — <a href="https://docs.celeryq.dev/en/stable/userguide/signals.html#task-signals">Celery docs: Task Signals</a>.<br>
 <span id="s4">4.</span> <code>worker_process_init</code> / <code>worker_process_shutdown</code> dispatched in all pool child processes (init handlers must not block >4s); <code>celeryd_init</code> is the first worker signal — <a href="https://docs.celeryq.dev/en/stable/userguide/signals.html#worker-signals">Celery docs: Worker Signals</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

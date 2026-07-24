@@ -18,15 +18,21 @@
 <p>What happens between "confirm" and an answer, when 3DS is in play.</p>
 
 <div class="figure">
-<pre><code>1. Confirm            client confirms the intent        authorization begins
-2. 3DS data sent      Stripe → issuer's ACS             device, session, transaction data
-3. Issuer assesses    ACS scores the risk               picks a path:
-        ├── frictionless ── background check suffices ── no customer input
-        └── challenge ───── proof demanded ──────────── intent → requires_action
-4. Customer acts      completes code / biometric        (challenge path only)
-5. Outcome            authenticated → processing → succeeded / requires_capture
-                      failed        → requires_payment_method
-6. Liability shift    fraud-dispute liability moves to the issuer (rules below)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. Confirm<br/>client confirms the intent, authorization begins"]
+  s2["2. 3DS data sent<br/>Stripe → issuer's ACS (device, session, transaction data)"]
+  s3["3. Issuer assesses<br/>ACS scores the risk, picks a path"]
+  s1 --> s2 --> s3
+  s3 -->|"frictionless"| fr["background check suffices<br/>no customer input"]
+  s3 -->|"challenge"| ch["proof demanded<br/>intent → requires_action"]
+  ch --> s4["4. Customer acts<br/>completes code / biometric"]
+  fr --> s5["5. Outcome"]
+  s4 --> s5
+  s5 -->|"authenticated"| ok["processing → succeeded / requires_capture"]
+  s5 -->|"failed"| fail["→ requires_payment_method"]
+  ok --> s6["6. Liability shift<br/>fraud-dispute liability moves to the issuer"]
+</pre>
 <p class="cap">The frictionless path adds nothing visible. The challenge path is Lesson 2's <code>requires_action</code> state, lived from the inside.</p>
 </div>
 
@@ -101,3 +107,6 @@
 <span id="s1">1.</span> What 3DS is, SCA/PSD2 scope, authentication methods, network branding — <a href="https://docs.stripe.com/payments/3d-secure">Stripe docs: 3D Secure authentication</a>.<br>
 <span id="s2">2.</span> Frictionless vs challenge, ACS, API state mapping, <code>request_three_d_secure</code>, liability shift rules and exceptions — <a href="https://docs.stripe.com/payments/3d-secure/authentication-flow">Stripe docs: How 3D Secure works</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

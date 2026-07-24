@@ -10,13 +10,34 @@
 <p>Fetch directives are the "where may <em>this kind</em> of resource load from" rules. They're the bulk of CSP, and they share one behaviour: when the specific directive is absent, the browser walks a <strong>fallback list</strong> until it finds one that's present, and if it reaches the end with nothing, the fetch is allowed (L1's rule). <code>default-src</code> sits at the bottom of most of those lists. That's its entire job: it is the fallback for fetch directives, not a global "deny everything" switch.<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
-<pre><code>GROUP                DIRECTIVES                              falls back to
-scripts              script-src-elem, script-src-attr   →   script-src   →  default-src
-styles               style-src-elem, style-src-attr     →   style-src    →  default-src
-simple loaders       img-src, font-src, media-src,      →                   default-src
-                     connect-src, object-src, manifest-src
-nested contexts      frame-src   →  child-src           →                   default-src
-                     worker-src  →  child-src  →  script-src  →             default-src</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph SCRIPTS["scripts"]
+    direction TB
+    sse["script-src-elem"] --> ss["script-src"]
+    ssa["script-src-attr"] --> ss
+  end
+  subgraph STYLES["styles"]
+    direction TB
+    stse["style-src-elem"] --> sts["style-src"]
+    stsa["style-src-attr"] --> sts
+  end
+  subgraph LOADERS["simple loaders"]
+    direction TB
+    ld["img-src, font-src, media-src,<br/>connect-src, object-src, manifest-src"]
+  end
+  subgraph NESTED["nested contexts"]
+    direction TB
+    fr["frame-src"] --> chf["child-src"]
+    wk["worker-src"] --> chw["child-src"] --> wscr["script-src"]
+  end
+  D["default-src<br/>(fallback of last resort)"]
+  ss --> D
+  sts --> D
+  ld --> D
+  chf --> D
+  wscr --> D
+</pre>
 <p class="cap">Every fetch directive terminates at <code>default-src</code>, but the <em>paths</em> differ. The nested-context group has intermediate hops: that's where people mis-predict which rule wins.</p>
 </div>
 
@@ -49,9 +70,18 @@ nested contexts      frame-src   →  child-src           →                   
 <p>Framing and workers are the tier people get wrong, because <code>child-src</code> sits in the middle and the two consumers diverge:<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
-<pre><code>  &lt;iframe src&gt;              →  frame-src   →  child-src  →  default-src
-  new Worker(…)/SharedWorker →  worker-src  →  child-src  →  script-src  →  default-src
-                                                             └── note the extra hop ──┘</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph FRAME["an iframe element"]
+    direction TB
+    f1["frame-src"] --> f2["child-src"] --> f3["default-src"]
+  end
+  subgraph WORKER["new Worker / SharedWorker"]
+    direction TB
+    w1["worker-src"] --> w2["child-src"] --> w3["script-src<br/>(the extra hop)"] --> w4["default-src"]
+  end
+  FRAME ~~~ WORKER
+</pre>
 <p class="cap"><code>frame-src</code> and <code>worker-src</code> both prefer <code>child-src</code> when they're absent, but if <code>child-src</code> is <em>also</em> absent, they part ways: framing drops to <code>default-src</code>, whereas a worker drops to <code>script-src</code> first (a worker <em>is</em> executable script), and only then <code>default-src</code>.</p>
 </div>
 
@@ -119,3 +149,6 @@ nested contexts      frame-src   →  child-src           →                   
 <span id="s1">1.</span> Fetch-directive fallback lists; <code>frame-src</code> → <code>child-src</code> → <code>default-src</code> and <code>worker-src</code> → <code>child-src</code> → <code>script-src</code> → <code>default-src</code> (quoted in §1.3 Changes from Level 2); <code>default-src</code> as fetch-directive fallback, <a href="https://www.w3.org/TR/CSP3/#directives-fetch">W3C CSP Level 3 §6.1</a>.<br>
 <span id="s2">2.</span> The <code>script-src-elem</code>/<code>script-src-attr</code> and <code>style-src-elem</code>/<code>style-src-attr</code> split and their fallbacks, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#fetch_directives">MDN: Content-Security-Policy fetch directives</a>; <a href="https://www.w3.org/TR/CSP3/#directive-script-src-elem">W3C CSP3 §6.1</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -18,13 +18,17 @@
 <p>One payment request surviving a network failure.</p>
 
 <div class="figure">
-<pre><code>1. Generate key      client mints UUID v4              one key per logical operation
-2. Send              POST + Idempotency-Key header     (POST only; GET/DELETE need none)
-3. First arrival     Stripe executes the request       saves {status, body} under the key
-4. Failure           response lost in transit          client cannot know the outcome
-5. Retry, same key   Stripe finds the key              REPLAYS the saved response
-                                                       nothing re-executes
-6. Expiry            keys removable after 24h          same key later = brand-new request</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client
+  participant S as Stripe
+  C->>C: 1. Generate key — mint UUID v4, one key per logical operation
+  C->>S: 2. Send — POST + Idempotency-Key header (POST only, GET/DELETE need none)
+  S->>S: 3. First arrival — execute the request, save status + body under the key
+  S--xC: 4. Failure — response lost in transit, client cannot know the outcome
+  C->>S: 5. Retry, same key — Stripe finds the key, REPLAYS the saved response (nothing re-executes)
+  Note over C,S: 6. Expiry — keys removable after 24h, same key later = brand-new request
+</pre>
 <p class="cap">The stored response is the whole trick. Steps 3 and 5 are the same HTTP exchange from the client's view; only Stripe knows one executed and one replayed.</p>
 </div>
 
@@ -98,3 +102,6 @@
 <p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
 <span id="s1">1.</span> Storage semantics, replay including errors, 24-hour retention, POST-only scope, key generation — <a href="https://docs.stripe.com/api/idempotent_requests">Stripe API reference: Idempotent requests</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

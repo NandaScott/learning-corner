@@ -24,11 +24,12 @@ current:      def build(x):
 <h2>How to catch it — one question at the point of adding</h2>
 
 <div class="figure">
-<pre><code>you catch yourself adding a param / hook / layer "for later":
-
-  1. Ask     does any CURRENT caller need this?
-  2a. No  →  cut it. revisit when a real second use lands.
-  2b. Yes →  keep it — it's not speculative, it's used.</code></pre>
+<pre class="mermaid">
+flowchart TB
+  a{"does any CURRENT caller need this<br/>param / hook / layer 'for later'?"}
+  a -->|No| b["cut it — revisit when a<br/>real second use lands"]
+  a -->|Yes| c["keep it — not speculative, it's used"]
+</pre>
 <p class="cap">The whole test is "current caller, yes or no." Anticipated callers don't count.</p>
 </div>
 
@@ -90,3 +91,6 @@ current:      def build(x):
 <p class="src"><strong>Sources</strong><br>
 Pattern — a self-identified recurring habit: "stuck constantly trying to prepare and write for future code when I should be writing for the current design."<br>
 Principle — Fowler, <a href="https://martinfowler.com/bliki/Yagni.html">Yagni</a>.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

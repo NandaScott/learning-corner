@@ -18,15 +18,21 @@
 <p>With no pool, a naïve app runs this <em>entire</em> sequence for every request, then throws the backend away and starts over on the next one. The map is below, with each step explained underneath.</p>
 
 <div class="figure">
-<pre><code>1. TCP handshake       client ↔ postmaster   SYN / SYN-ACK / ACK  (1 round trip)
-2. (TLS handshake)     if sslmode on         encryption negotiated
-3. Startup packet      client → postmaster   "proto v3, user=X, db=Y"
-4. postmaster FORKS    →  new backend process   ← the expensive bit
-5. Authentication      backend ↔ client      challenge/response
-6. Backend setup       load role, session GUCs, warm catalog caches
-7. ReadyForQuery       backend → client      ...only now can you run SQL
-8. ── run the query ──
-9. Close               backend process dies, its ~5–10 MB freed</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client
+  participant P as postmaster
+  participant B as Backend process
+  C->>P: 1. TCP handshake (SYN / SYN-ACK / ACK, 1 round trip)
+  C->>P: 2. TLS handshake if sslmode on (encryption negotiated)
+  C->>P: 3. Startup packet (proto v3, user=X, db=Y)
+  P->>B: 4. FORK a new backend process (the expensive bit)
+  B->>C: 5. Authentication (challenge/response)
+  B->>B: 6. Backend setup (load role, session GUCs, warm catalog caches)
+  B->>C: 7. ReadyForQuery (only now can you run SQL)
+  C->>B: 8. run the query
+  B->>B: 9. Close (backend process dies, ~5–10 MB freed)
+</pre>
 <p class="cap">Steps 1–7 are pure overhead, paid before a single byte of your query is processed.</p>
 </div>
 
@@ -43,15 +49,11 @@
 <p>Now the postmaster <strong>forks</strong> a brand-new backend process to handle this one connection. This is the costliest step by far, and the part people miss when they imagine a connection is "just a socket."</p>
 
 <div class="figure">
-<pre><code>          ┌───────────────┐
-client ──▶ │  postmaster   │  (listens on 5432, accepts the socket)
-          └───────┬───────┘
-                  │ fork()           ← clones a whole process
-                  ▼
-          ┌───────────────┐
-          │ backend proc  │  new PID · own page tables · own file
-          │  (~5–10 MB)   │  descriptors · private memory segment
-          └───────────────┘  serves ONLY this connection, until it closes</code></pre>
+<pre class="mermaid">
+flowchart TB
+  C["client"] --> P["postmaster<br/>(listens on 5432, accepts the socket)"]
+  P -->|"fork() clones a whole process"| B["backend proc (~5–10 MB)<br/>new PID · own page tables<br/>own file descriptors · private memory<br/>serves ONLY this connection, until it closes"]
+</pre>
 <p class="cap"><code>fork()</code> clones an entire OS process rather than opening a handle. That's a heavy system call, and it's why a Postgres connection costs orders of magnitude more than a Redis one.</p>
 </div>
 
@@ -59,11 +61,16 @@ client ──▶ │  postmaster   │  (listens on 5432, accepts the socket)
 <p>The freshly-forked backend consults <code>pg_hba.conf</code> (host-based auth rules) to pick a method for this user + database + client IP, then runs it. The modern default is <strong>SCRAM-SHA-256</strong>: a challenge/response exchange where the password never crosses the wire.<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>backend → client   AuthenticationSASL          "I support SCRAM-SHA-256"
-client  → backend  SASLInitialResponse         client-first-message (client nonce)
-backend → client   AuthenticationSASLContinue  server-first-message (salt + nonce)
-client  → backend  SASLResponse                client-final-message (hashed proof)
-backend → client   AuthenticationSASLFinal     verifies, sends OK</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant B as backend
+  participant C as client
+  B->>C: AuthenticationSASL (I support SCRAM-SHA-256)
+  C->>B: SASLInitialResponse — client-first-message (client nonce)
+  B->>C: AuthenticationSASLContinue — server-first-message (salt + nonce)
+  C->>B: SASLResponse — client-final-message (hashed proof)
+  B->>C: AuthenticationSASLFinal (verifies, sends OK)
+</pre>
 <p class="cap">Four messages = several more network round trips. And SCRAM runs <strong>PBKDF2</strong>: thousands of hash iterations, made <em>deliberately</em> slow to resist brute-force, burning real CPU on both ends.</p>
 </div>
 
@@ -143,3 +150,6 @@ backend → client   AuthenticationSASLFinal     verifies, sends OK</code></pre>
 <span id="s2">2.</span> Startup packet & SCRAM-SHA-256 message flow — <a href="https://www.postgresql.org/docs/current/sasl-authentication.html">PostgreSQL docs: SASL Authentication</a>; <a href="https://www.postgresql.org/docs/current/protocol.html">Frontend/Backend Protocol</a>.<br>
 <span id="s3">3.</span> Context-switch and lock-contention costs — <a href="https://techcommunity.microsoft.com/blog/adforpostgresql/analyzing-the-limits-of-connection-scalability-in-postgres/1757266">Freund, Analyzing the Limits of Connection Scalability in Postgres</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

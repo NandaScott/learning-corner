@@ -30,12 +30,16 @@
 <p>Follow one connection through a sync Gunicorn deployment.</p>
 
 <div class="figure">
-<pre><code>1. Gunicorn forks W worker processes — each is a separate OS process
-2. A request hits worker #3 → Django opens a connection (pays the handshake once)
-3. Request ends → CONN_MAX_AGE > 0, not expired → worker KEEPS the connection open
-4. Next request on worker #3 → reuse it (optional health check first)
-5. Connection older than CONN_MAX_AGE → closed at request end, reopened next time
-6. Meanwhile workers #1, #2, #4 … each hold their OWN connection, independently</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. Gunicorn forks W worker processes<br/>(each a separate OS process)"]
+  s2["2. A request hits worker 3 → Django opens a connection<br/>(pays the handshake once)"]
+  s3["3. Request ends, CONN_MAX_AGE positive and not expired<br/>→ worker KEEPS the connection open"]
+  s4["4. Next request on worker 3 → reuse it<br/>(optional health check first)"]
+  s5["5. Connection older than CONN_MAX_AGE<br/>→ closed at request end, reopened next time"]
+  s6["6. Meanwhile the other workers each hold<br/>their OWN connection, independently"]
+  s1 --> s2 --> s3 --> s4 --> s5 --> s6
+</pre>
 </div>
 
 <h3>Step 1 — Each worker is its own process</h3>
@@ -61,10 +65,13 @@
 <p>Persistent connections trade away setup cost, but they do not reduce connection count, and they can <em>increase</em> the pressure on Lesson 2's <code>max_connections</code> ceiling.</p>
 
 <div class="figure">
-<pre><code>          ┌── worker 1 ──▶ conn ──┐
-gunicorn ─┼── worker 2 ──▶ conn ──┼──▶ Postgres   total backends held
-          ┼── worker 3 ──▶ conn ──┤                = W   (× threads, × app
-          └── worker W ──▶ conn ──┘                  instances behind an LB)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  G["gunicorn"] --> w1["worker 1"] --> c1["conn"] --> PG["Postgres"]
+  G --> w2["worker 2"] --> c2["conn"] --> PG
+  G --> w3["worker 3"] --> c3["conn"] --> PG
+  G --> wW["worker W"] --> cW["conn"] --> PG
+</pre>
 <p class="cap">No shared pool. Each worker pins its own backend. An idle worker with <code>CONN_MAX_AGE=None</code> still occupies a connection slot + ~5–10 MB on the server (Lesson 2) doing nothing.</p>
 </div>
 
@@ -119,3 +126,6 @@ gunicorn ─┼── worker 2 ──▶ conn ──┼──▶ Postgres   tota
 <span id="s1">1.</span> <code>CONN_MAX_AGE</code> semantics, <code>CONN_HEALTH_CHECKS</code>, <code>OPTIONS={"pool": True}</code>, ASGI guidance — <a href="https://docs.djangoproject.com/en/stable/ref/databases/#persistent-connections">Django docs: Databases — Persistent connections & Connection pool</a>; <a href="https://docs.djangoproject.com/en/stable/ref/settings/#conn-max-age">Django settings: <code>CONN_MAX_AGE</code></a>.<br>
 <span id="s2">2.</span> Per-worker connection isolation and the worker × thread arithmetic — <a href="https://devcenter.heroku.com/articles/python-concurrency-and-database-connections">Heroku Dev Center: Concurrency and Database Connections in Django</a>; <a href="https://dev.to/sbshobhit/understanding-django-gunicorn-and-database-connections-5g50">Understanding Django, Gunicorn, and Database Connections</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

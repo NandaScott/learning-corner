@@ -17,21 +17,26 @@
 <p>BigCommerce sorts a cart's rows into typed buckets, builds each row from a catalog variant (or from nothing, for a one-off), and freezes the details onto the row. Three things to hold:</p>
 
 <div class="figure">
-<pre><code>   CART.line_items
-   ├─ physical_items[]     ← variants with type "physical" (ship; need a consignment)
-   ├─ digital_items[]      ← variants with type "digital"  (no shipping)
-   ├─ gift_certificates[]  ← a stored-value certificate, not a catalog product
-   └─ custom_items[]       ← a row with NO catalog link (name + price typed in)
-
-   Building one physical row from the catalog:
-
-     product_id  ─┬─ + variant_id            → pick the SKU directly
-                  └─ + option_selections[]   → when the product has MODIFIERS
-                                               (encodes the variant AND the
-                                                modifier choices together)
-                          │
-                          ▼
-     the row captures name, sku, price, chosen options  ── frozen ──▶ snapshot</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph TYPES["CART.line_items · four typed buckets"]
+    direction TB
+    t1["physical_items[]<br/>physical variants (ship, need a consignment)"]
+    t2["digital_items[]<br/>digital variants (no shipping)"]
+    t3["gift_certificates[]<br/>stored value, not a catalog product"]
+    t4["custom_items[]<br/>NO catalog link (name + price typed in)"]
+    t1 ~~~ t2 ~~~ t3 ~~~ t4
+  end
+  subgraph BUILD["building one physical row from the catalog"]
+    direction TB
+    b1["product_id + quantity"]
+    b1 -->|"+ variant_id"| b2["pick the SKU directly"]
+    b1 -->|"+ option_selections[]"| b3["when the product has MODIFIERS:<br/>encodes the variant AND<br/>the modifier choices together"]
+    b2 --> b4["row captures name, sku, price,<br/>chosen options · frozen snapshot"]
+    b3 --> b4
+  end
+  TYPES ~~~ BUILD
+</pre>
 <p class="cap">Rows are typed by kind; each is built from a variant (or typed in), then its details are frozen onto the row.</p>
 </div>
 
@@ -150,3 +155,6 @@
 <span id="s1">1.</span> Cart <code>line_items</code> split into <code>physical_items</code> / <code>digital_items</code> / <code>gift_certificates</code> / <code>custom_items</code>; line-item <code>options</code> arrays; order products sub-resource — <a href="https://developer.bigcommerce.com/docs/rest-management/carts">BigCommerce Developer Center: Carts</a> and <a href="https://developer.bigcommerce.com/docs/rest-storefront/carts/cart-items">Cart Items</a>.<br>
 <span id="s2">2.</span> Adding rows: <code>product_id</code>/<code>quantity</code>/<code>variant_id</code>, the "omit <code>variant_id</code> and use <code>option_selections</code> to describe both the variant and the modifier selections" rule, and custom-item fields (<code>sku</code>, <code>name</code>, <code>quantity</code>, <code>list_price</code>; <code>image_url</code> accepted but not rendered) — <a href="https://developer.bigcommerce.com/docs/rest-management/carts/items">BigCommerce Developer Center: Cart Items — Add Cart Line Items</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

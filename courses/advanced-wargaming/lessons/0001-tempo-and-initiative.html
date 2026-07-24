@@ -16,19 +16,14 @@
 <h2>The steps — from a single activation to holding the rhythm</h2>
 
 <div class="figure">
-<pre><code>  1. INITIATIVE      who is setting the problem, who is only solving it
-        │
-        ▼
-  2. ACTION ECONOMY  an activation is a resource; remove a unit before it
-                     acts and you delete that resource — a double swing
-        │
-        ▼
-  3. FORCING         make threats they cannot ignore, so their turn is
-     REACTIONS       spent on your problems, not their plan
-        │
-        ▼
-  4. SEIZING IT      two routes to take initiative: the alpha strike,
-                     or bait-and-punish</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. INITIATIVE<br/>who is setting the problem, who is only solving it"]
+  s2["2. ACTION ECONOMY<br/>an activation is a resource; remove a unit before it acts and you delete that resource — a double swing"]
+  s3["3. FORCING REACTIONS<br/>make threats they cannot ignore, so their turn is spent on your problems, not their plan"]
+  s4["4. SEIZING IT<br/>two routes to take initiative: the alpha strike, or bait-and-punish"]
+  s1 --> s2 --> s3 --> s4
+</pre>
 <p class="cap">Steps 2–4 are the mechanism; step 1 is the state they produce. Tempo is that state, held across turns.</p>
 </div>
 
@@ -39,9 +34,18 @@
 <p>Each unit does its job once per turn, a move, a volley, a charge. That single <strong>activation</strong> is a resource, exactly like a command point or a wound. If you remove an enemy unit <em>before</em> it activates, you have not only denied its damage but deleted an entire activation from the opponent's turn. You got your unit's output and cancelled theirs in one action. That is a <strong>double swing</strong>, and it is the sharpest form of the <a href="../../wargaming/lessons/0002-the-economy-of-exchanges.html">economy of exchanges</a>: the best trade is one the opponent never gets to trade back.</p>
 
 <div class="figure">
-<pre><code>  Their unit alive into their turn:  [MOVE][SHOOT][CHARGE][FIGHT]  full output
-  You remove it first:               ✗  never activates            zero output
-                                     └─ the activation is deleted, not just damaged</code></pre>
+<pre class="mermaid">
+flowchart TB
+  subgraph ALIVE["Their unit alive into their turn"]
+    direction LR
+    a1["MOVE"] --> a2["SHOOT"] --> a3["CHARGE"] --> a4["FIGHT"] --> a5["full output"]
+  end
+  subgraph REMOVED["You remove it first"]
+    direction LR
+    r1["✗ never activates"] --> r2["zero output<br/>the activation is deleted, not just damaged"]
+  end
+  ALIVE ~~~ REMOVED
+</pre>
 <p class="cap">Denying damage subtracts from their turn. Deleting the activation subtracts the whole unit's turn.</p>
 </div>
 
@@ -119,3 +123,6 @@
 <span id="s1">1.</span> 40K is I-go-you-go ("the same player always takes the first turn in each battle round… once that player's turn has ended, their opponent takes their turn"); a turn runs Command → Movement → Shooting → Charge → Fight; the <em>Fight phase</em> alternates unit selection (players alternate selecting an eligible unit; Fights First units first); objective control = higher total Objective Control of models in range, re-checked at the end of each phase and turn. Warhammer 40,000 11th Edition Core Rules (<a href="https://www.warhammer-community.com/en-gb/downloads/warhammer-40000/">official free download</a>; <a href="https://wahapedia.ru/wh40k11ed/the-rules/core-rules/">Wahapedia 11th-ed mirror</a>).<br>
 <span id="s2">2.</span> "The clever combatant imposes his will on the enemy, but does not allow the enemy's will to be imposed on him"; "Appear at points which the enemy must hasten to defend; march swiftly to places where you are not expected"; "Whoever is first in the field and awaits the coming of the enemy, will be fresh for the fight; whoever is second in the field and has to hasten to battle will arrive exhausted" — all Ch. VI, <em>Weak Points and Strong</em>, Sun Tzu, <em>The Art of War</em>, Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

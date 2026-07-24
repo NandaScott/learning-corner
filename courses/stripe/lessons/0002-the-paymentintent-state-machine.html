@@ -22,25 +22,22 @@
 <p>The full machine. Statuses are exact API strings; every PaymentIntent you ever inspect is at exactly one of them.<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>          create (server, amount + currency)
-                      │
-                      ▼
-      ┌── requires_payment_method ◀───────────────┐
-      │               │  payment method attached  │
-      │               ▼                           │  attempt fails:
-      │    requires_confirmation                  │  back to the start
-      │               │  confirm                  │
-      │               ▼                           │
-      │      requires_action ── (only if the      │
-      │               │          issuer demands   │
-      │               │          e.g. 3D Secure)  │
-      │               ▼                           │
-      │          processing ──────────────────────┘
-      │               │
-      │               ├──▶ requires_capture ──▶ succeeded   (manual capture)
-      │               └──▶ succeeded                        (default)
-      │
-      └──▶ canceled   (terminal; reachable from the non-terminal states)</code></pre>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> requires_payment_method: create (server, amount + currency)
+  requires_payment_method --> requires_confirmation: payment method attached
+  requires_confirmation --> requires_action: confirm (issuer demands auth, e.g. 3D Secure)
+  requires_confirmation --> processing: confirm (no action needed)
+  requires_action --> processing: action completed
+  processing --> requires_capture: manual capture
+  requires_capture --> succeeded: capture
+  processing --> succeeded: default (automatic capture)
+  processing --> requires_payment_method: attempt fails, back to the start
+  requires_action --> requires_payment_method: attempt fails
+  requires_payment_method --> canceled: cancel
+  requires_capture --> canceled: hold expires
+  succeeded --> [*]
+</pre>
 <p class="cap">The happy path runs down the middle in seconds. The loop on the left is what makes the object worth having.</p>
 </div>
 
@@ -118,3 +115,6 @@
 <span id="s1">1.</span> Purpose of the object, create-then-confirm, client secret, one intent per cart, multiple Charges — <a href="https://docs.stripe.com/payments/payment-intents">Stripe docs: Payment Intents</a>.<br>
 <span id="s2">2.</span> Status definitions and transitions — <a href="https://docs.stripe.com/payments/paymentintents/lifecycle">Stripe docs: PaymentIntent lifecycle</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -12,13 +12,25 @@
 <p>The thing that breaks Lesson 4's trap: PgBouncer sits <em>below every worker and every app instance at once</em>. There's one shared pool for the whole fleet, not one per worker. So Postgres's backend count stops depending on how many workers or instances you run.</p>
 
 <div class="figure">
-<pre><code>  LESSON 4 (per-worker)                 LESSON 5 (pool below the fleet)
-  ─────────────────────                 ──────────────────────────────
-  worker 1 ─▶ conn ─┐                    worker 1 ─┐
-  worker 2 ─▶ conn ─┼─▶ Postgres         worker 2 ─┤        ┌──────────┐
-  worker 3 ─▶ conn ─┤   (W backends,     worker 3 ─┼──────▶ │ PgBouncer│─▶ Postgres
-  worker W ─▶ conn ─┘    grows with W)   worker W ─┘        └──────────┘   (~20 backends,
-                                         (1000s of cheap client conns)      FIXED)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph L4G["LESSON 4 — per-worker (W backends, grows with W)"]
+    direction TB
+    a1["worker 1"] --> ac1["conn"] --> APG["Postgres"]
+    a2["worker 2"] --> ac2["conn"] --> APG
+    a3["worker 3"] --> ac3["conn"] --> APG
+    aW["worker W"] --> acW["conn"] --> APG
+  end
+  subgraph L5G["LESSON 5 — pool below the fleet (~20 backends, FIXED)"]
+    direction TB
+    b1["worker 1"] --> PGB
+    b2["worker 2"] --> PGB
+    b3["worker 3"] --> PGB
+    bW["worker W"] --> PGB
+    PGB["PgBouncer<br/>(1000s of cheap client conns)"] --> BPG["Postgres"]
+  end
+  L4G ~~~ L5G
+</pre>
 <p class="cap">Many cheap client connections in; a small, fixed set of expensive server connections out.</p>
 </div>
 
@@ -32,12 +44,16 @@
 <p>How one request rides through PgBouncer. Notice that step 5, <em>when the backend is returned</em>, is what matters most.</p>
 
 <div class="figure">
-<pre><code>1. App workers connect to PgBouncer (cheap — no fork, no per-conn backend)
-2. A request begins its database work
-3. PgBouncer assigns a real Postgres backend from its small pool
-4. Queries run on that borrowed backend
-5. PgBouncer returns the backend to the pool  ← timing depends on the MODE
-6. Postgres only ever sees pool_size backends, no matter how many clients</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. App workers connect to PgBouncer<br/>(cheap — no fork, no per-conn backend)"]
+  s2["2. A request begins its database work"]
+  s3["3. PgBouncer assigns a real Postgres backend from its small pool"]
+  s4["4. Queries run on that borrowed backend"]
+  s5["5. PgBouncer returns the backend to the pool<br/>(timing depends on the MODE)"]
+  s6["6. Postgres only ever sees pool_size backends,<br/>no matter how many clients"]
+  s1 --> s2 --> s3 --> s4 --> s5 --> s6
+</pre>
 </div>
 
 <h3>Step 1 — Workers connect to PgBouncer</h3>
@@ -137,3 +153,6 @@ DATABASES["default"].update({
 <span id="s1">1.</span> PgBouncer architecture &amp; pooling modes (session/transaction/statement) and the session features transaction mode breaks — <a href="https://www.pgbouncer.org/features.html">PgBouncer: Features</a>; <a href="https://jpcamara.com/2023/04/12/pgbouncer-is-useful.html">PgBouncer is useful… and fraught with peril</a>.<br>
 <span id="s2">2.</span> Django <code>DISABLE_SERVER_SIDE_CURSORS</code> / transaction-pooling incompatibility — <a href="https://docs.djangoproject.com/en/stable/ref/databases/#transaction-pooling-and-server-side-cursors">Django docs: Transaction pooling and server-side cursors</a>; <a href="https://code.djangoproject.com/ticket/28062">Django ticket #28062</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

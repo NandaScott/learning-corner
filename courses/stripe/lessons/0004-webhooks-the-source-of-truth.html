@@ -18,12 +18,17 @@
 <p>One event, from state change to safely processed.</p>
 
 <div class="figure">
-<pre><code>1. State changes      intent hits succeeded            Stripe creates Event (unique id)
-2. Delivery           Stripe POSTs JSON → endpoint     HTTPS, Stripe-Signature header
-3. Verify             HMAC check on the signature      reject anything that fails
-4. Acknowledge        return 2xx FAST                  before any heavy logic
-5. (no 2xx?)          exponential-backoff retries      for up to 3 days (live mode)
-6. Process            dedupe by event id               assume no ordering</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant S as Stripe
+  participant E as Merchant endpoint
+  S->>S: 1. State change — intent hits succeeded, Stripe creates an Event (unique id)
+  S->>E: 2. Delivery — POST JSON over HTTPS, Stripe-Signature header
+  E->>E: 3. Verify — HMAC check on the signature, reject anything that fails
+  E->>S: 4. Acknowledge — return 2xx FAST, before any heavy logic
+  Note over S,E: no 2xx? exponential-backoff retries for up to 3 days (live mode)
+  E->>E: 6. Process — dedupe by event id, assume no ordering
+</pre>
 <p class="cap">Steps 3, 4, and 6 are the merchant's obligations. Getting any of them wrong produces a specific, classic bug.</p>
 </div>
 
@@ -110,3 +115,6 @@ verification:
 <p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
 <span id="s1">1.</span> Event object, delivery and 2xx requirement, retry schedule, ordering, deduplication, signature scheme and verification — <a href="https://docs.stripe.com/webhooks">Stripe docs: Webhooks</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

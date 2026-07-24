@@ -48,13 +48,15 @@ sample              first chars of the offending inline code (if 'report-sample'
 
 <h3>Step 4 — The rollout playbook</h3>
 <div class="figure">
-<pre><code>1. Report-Only the candidate policy      breaks nothing; collect real-traffic violations
-2. Triage the reports                     separate YOUR gaps from noise (browser
-                                          extensions inject junk you can't control)
-3. Fix legitimately-blocked things        add a nonce, refactor an inline handler,
-                                          hash a static block — don't just widen the policy
-4. Flip to enforcing                      move the cleaned policy to Content-Security-Policy
-5. Keep a Report-Only for the NEXT tightening   enforce today's, observe tomorrow's</code></pre>
+<pre class="mermaid">
+flowchart TB
+  r1["1. Report-Only the candidate policy<br/>breaks nothing, collect real-traffic violations"]
+  r2["2. Triage the reports<br/>separate YOUR gaps from noise<br/>(browser extensions inject junk you can't control)"]
+  r3["3. Fix legitimately-blocked things<br/>add a nonce, refactor an inline handler,<br/>hash a static block, don't just widen the policy"]
+  r4["4. Flip to enforcing<br/>move the cleaned policy to Content-Security-Policy"]
+  r5["5. Keep a Report-Only for the NEXT tightening<br/>enforce today's, observe tomorrow's"]
+  r1 --> r2 --> r3 --> r4 --> r5
+</pre>
 <p class="cap">Step 2 is where deployments stall: report-only endpoints get flooded with violations from browser extensions and injected content you don't own. Triage by <code>sourceFile</code>/<code>blockedURL</code>; don't loosen your policy to silence noise you can't fix.</p>
 </div>
 
@@ -112,3 +114,6 @@ sample              first chars of the offending inline code (if 'report-sample'
 <span id="s1">1.</span> Report-Only header, violation report fields (<code>effectiveDirective</code>, <code>blockedURL</code>, <code>disposition</code>, <code>sourceFile</code>/line/column, <code>sample</code>), <code>securitypolicyviolation</code> event, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy-Report-Only">MDN: CSP-Report-Only</a>; <a href="https://developer.mozilla.org/en-US/docs/Web/API/CSPViolationReport">MDN: CSPViolationReport</a>.<br>
 <span id="s2">2.</span> <code>report-to</code> via <code>Reporting-Endpoints</code> + Reporting API (<code>application/reports+json</code>), <code>report-uri</code> deprecated (<code>application/csp-report</code>, <code>{"csp-report":…}</code>), "browsers that support <code>report-to</code> ignore <code>report-uri</code>," send both in transition, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/report-to">MDN: report-to</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

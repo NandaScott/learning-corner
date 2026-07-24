@@ -21,18 +21,15 @@
 <p>The whole route, start to finish:</p>
 
 <div class="figure">
-<pre><code>scrambled 5x5
-   │
-1. CENTERS        make six 3×3 one-color blocks,
-   │              each matching its fixed middle piece
-   ▼
-2. EDGE PAIRING   glue each edge's 3 pieces (wing–midge–wing)
-   │              into 12 solid strips
-   ▼
-3. THE 3x3 STAGE  turn only the outer layers —
-   │              the cube now behaves as a 3x3
-   ▼
-solved</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s["scrambled 5x5"]
+  c["1. CENTERS<br/>make six 3x3 one-color blocks, each matching its fixed middle piece"]
+  e["2. EDGE PAIRING<br/>glue each edge's 3 pieces (wing-midge-wing) into 12 solid strips"]
+  t["3. THE 3x3 STAGE<br/>turn only the outer layers, the cube now behaves as a 3x3"]
+  d["solved"]
+  s --> c --> e --> t --> d
+</pre>
 <p class="cap">Two new stages, then a puzzle you already know. Lessons 2–5 teach stages 1 and 2; stage 3 is your existing skill.</p>
 </div>
 
@@ -141,3 +138,6 @@ x y z  whole-cube rotations              (same as 3x3)</code></pre>
 <span id="s1">1.</span> Reduction as the dominant method for 5x5+; stages (centers, edge matching, 3x3) — <a href="https://www.speedsolving.com/wiki/index.php/Reduction_Method">Speedsolving Wiki: Reduction Method</a>.<br>
 <span id="s2">2.</span> Method walkthrough, wide-move notation (<code>Rw</code>, <code>3Rw</code>), white-then-opposite center order — <a href="https://jperm.net/5x5">J Perm: How To Solve the 5x5 Rubik's Cube</a>; cross-checked against <a href="https://www.cubeskills.com/uploads/pdf/tutorials/beginners-method-for-solving-the-5x5-cube.pdf">CubeSkills: Beginner's Method for Solving the 5x5 Cube (PDF)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

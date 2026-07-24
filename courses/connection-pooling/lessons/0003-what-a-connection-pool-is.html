@@ -12,15 +12,22 @@
 <p>The shift in mental model is small but total: a connection stops being something you <em>create and destroy</em>, and becomes something you <em>borrow and return</em>. The pool opens its connections once, up front, and then those same backend processes are reused thousands of times.</p>
 
 <div class="figure">
-<pre><code>  WITHOUT pool                       WITH pool
-  ───────────                        ─────────
-  request → open conn → query        request ─┐
-          → close                             │   ┌──────────────┐
-  request → open conn → query        request ─┼─▶ │  POOL        │ ─▶ Postgres
-          → close                             │   │ [c1][c2][c3] │   (few real
-  request → open conn → query        request ─┘   └──────────────┘    backends)
-          → close
-  (pay setup EVERY time)             (open once, borrow/return forever)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph NOPOOL["WITHOUT pool — pay setup EVERY time"]
+    direction TB
+    w1["request"] --> w2["open conn"] --> w3["query"] --> w4["close"]
+    w4 -.->|"next request repeats"| w1
+  end
+  subgraph POOLED["WITH pool — open once, borrow/return forever"]
+    direction TB
+    r1["request"] --> POOL
+    r2["request"] --> POOL
+    r3["request"] --> POOL
+    POOL["POOL<br/>[c1] [c2] [c3]"] --> PG["Postgres<br/>(few real backends)"]
+  end
+  NOPOOL ~~~ POOLED
+</pre>
 <p class="cap">The pool sits between your app and Postgres, multiplexing many requests onto a small, fixed set of real connections.</p>
 </div>
 
@@ -29,14 +36,24 @@
 <p>Here's the full life of one request through a pool. We'll walk each step underneath.</p>
 
 <div class="figure">
-<pre><code>1. Pool init        on startup, open N connections, leave them idle
-2. Acquire          request asks the pool for a connection ("check out")
-3a.  → idle one?    hand it over instantly
-3b.  → all busy?    wait in a FIFO queue...
-3c.  → timeout?     ...until a slot frees OR the wait limit expires → error
-4. Use              run the query on the borrowed connection
-5. Reset            roll back any open txn, clear session state
-6. Release          return the connection to the pool ("check in"), still open</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. Pool init — on startup, open N connections, leave them idle"]
+  s2["2. Acquire — request asks the pool for a connection (check out)"]
+  s3{"3. A connection free?"}
+  i["3a. idle one — hand it over instantly"]
+  b["3b. all busy — wait in a FIFO queue"]
+  t["3c. timeout — wait limit expires, error"]
+  s4["4. Use — run the query on the borrowed connection"]
+  s5["5. Reset — roll back any open txn, clear session state"]
+  s6["6. Release — return to the pool (check in), still open"]
+  s1 --> s2 --> s3
+  s3 -->|"idle available"| i
+  s3 -->|"all busy"| b
+  b -->|"slot frees"| i
+  b -->|"wait limit expires"| t
+  i --> s4 --> s5 --> s6
+</pre>
 <p class="cap">The connection is never closed at step 6: that's the whole point. It goes back in the pool, warm, for the next request.</p>
 </div>
 
@@ -62,12 +79,14 @@
 <p>Before the connection goes back, the pool decides between two very different actions depending on the connection's health:</p>
 
 <div class="figure">
-<pre><code>return connection
-  ├─ connection broken?   → INVALIDATE: discard it, spawn a fresh one
-  │     (never clean a corpse — a dead socket can't be reset)
-  └─ connection healthy?  → RESET: clean it, return it to the pool
-        ├─ open / aborted transaction?  → ROLLBACK
-        └─ optional reset callback runs (must leave conn idle, else discarded)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  rc{"return connection"}
+  rc -->|"broken"| inv["INVALIDATE — discard it, spawn a fresh one<br/>(a dead socket cannot be reset)"]
+  rc -->|"healthy"| rst["RESET — clean it, return it to the pool"]
+  rst --> roll["open / aborted transaction → ROLLBACK"]
+  rst --> cb["optional reset callback runs<br/>(must leave conn idle, else discarded)"]
+</pre>
 <p class="cap"><strong>Reset</strong> = "clean it for reuse." <strong>Invalidate</strong> = "throw it away." A failed <em>query</em> triggers reset; a failed <em>connection</em> triggers invalidation.</p>
 </div>
 
@@ -154,3 +173,6 @@ ConnectionPool(conninfo, reset=full_reset)</code></pre>
 <span id="s2">2.</span> Pool-sizing rule of thumb — <a href="https://blog.levelupcoding.com/p/connection-pooling-clearly-explained">Connection Pooling Clearly Explained</a> (HikariCP's <code>cores × 2 + spindles</code> heuristic).<br>
 <span id="s4">4.</span> psycopg3 reset (ROLLBACK-only default), <code>reset</code> callback, <code>check</code>/<code>check_connection</code> liveness, broken-connection invalidation, <code>max_lifetime</code> — <a href="https://www.psycopg.org/psycopg3/docs/advanced/pool.html">psycopg3: Connection pools</a>; <a href="https://www.psycopg.org/psycopg3/docs/api/pool.html">psycopg3 pool API</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

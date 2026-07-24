@@ -8,18 +8,14 @@
 <h2>1 · Which pooling layer?</h2>
 
 <div class="figure">
-<pre><code>Are you on sync WSGI (Gunicorn/uWSGI)?
-│
-├─ Few workers, few instances, connection count comfortably under max_connections?
-│     → CONN_MAX_AGE = N (e.g. 60).  Cuts handshake cost. Done.
-│
-├─ Many workers/threads in ONE process group, want a real pool but no extra infra?
-│     → Django 5.1+  OPTIONS={"pool": True}.  Real pool, but still PER WORKER.
-│
-└─ Many workers AND/OR many instances → connection count approaching the ceiling?
-      → PgBouncer (transaction mode) below the whole fleet.  The structural fix.
-
-On ASGI/async? → disable CONN_MAX_AGE; use a pool (native or PgBouncer).</code></pre>
+<pre class="mermaid">
+flowchart TB
+  q{"On sync WSGI (Gunicorn/uWSGI)?"}
+  q -->|"few workers/instances, count well under max_connections"| a["CONN_MAX_AGE = N (e.g. 60)<br/>cuts handshake cost. Done."]
+  q -->|"many workers/threads in ONE process group, want a real pool, no extra infra"| b["Django 5.1+ OPTIONS={'pool': True}<br/>real pool, but still PER WORKER"]
+  q -->|"many workers and/or instances, count nearing the ceiling"| c["PgBouncer (transaction mode) below the whole fleet<br/>the structural fix"]
+  q -->|"on ASGI/async instead"| d["disable CONN_MAX_AGE, use a pool<br/>(native or PgBouncer)"]
+</pre>
 <p class="cap">Rule of thumb: <code>CONN_MAX_AGE</code> fixes <em>latency</em>; PgBouncer fixes <em>count</em>. Reach for PgBouncer when <code>workers × threads × instances</code> threatens <code>max_connections</code>.</p>
 </div>
 
@@ -93,3 +89,6 @@ DATABASES["default"]["CONN_MAX_AGE"] = 0          # don't double-pool</code></pr
   <span>Reference · Decision cheat-sheet</span>
   <span><a href="../lessons/0005-pgbouncer-and-pooling-modes.html">Lesson 5 ↗</a></span>
 </div>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -28,8 +28,11 @@
 <p>Do not try to predict the specific thing the opponent will do. Map what they <em>can</em> do: their threat ranges are visible on the table (Lesson 3), so their capabilities are legible in a way their intentions never are. Then assume they will make their <strong>best available move</strong>, best toward the mission, not the most violent or the most spectacular. Position so that you are fine against that best move, because being safe against their strongest play means you are automatically safe against every weaker one.</p>
 
 <div class="figure">
-<pre><code>  cover their BEST move  ─────▶  automatically covered against all worse moves
-  cover a GUESSED move   ─────▶  exposed the moment they do something better</code></pre>
+<pre class="mermaid">
+flowchart LR
+  A["Cover their BEST move"] -->|"automatically"| B["Covered against all worse moves"]
+  C["Cover a GUESSED move"] -->|"the moment they do better"| D["Exposed"]
+</pre>
 <p class="cap">A rational opponent is legible through the position they're in, because they're solving the same scoring problem you are. Their personality shrinks to a tiebreaker among the threats you couldn't fully cover.</p>
 </div>
 
@@ -106,3 +109,6 @@
 <span id="s2">2.</span> "If you know the enemy and know yourself, you need not fear the result of a hundred battles" — Ch. III (Attack by Stratagem).<br>
 <span id="s3">3.</span> "All warfare is based on deception" — Ch. I (Laying Plans). Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

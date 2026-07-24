@@ -26,20 +26,13 @@
 <p>Historically a merchant assembled the last three roles from separate vendors. Stripe collapses them: it is the gateway, the processor, and the acquirer in one provider, with direct integrations into the card networks.<sup><a href="#s1">1</a></sup> That is the answer to "what is Stripe" at the mechanism level, and it is why one API can span the whole path below.</p>
 
 <div class="figure">
-<pre><code>cardholder ── card details ──▶ merchant checkout page
-                                    │
-                                    ▼
-                            ┌───────────────┐
-                            │    Stripe     │  gateway + processor + acquirer
-                            └───────┬───────┘
-                                    │
-                            ┌───────▼───────┐
-                            │ card network  │  Visa / Mastercard rails
-                            └───────┬───────┘
-                                    │
-                            ┌───────▼───────┐
-                            │    issuer     │  the cardholder's bank
-                            └───────────────┘</code></pre>
+<pre class="mermaid">
+flowchart TB
+  ch["cardholder"] -->|"card details"| mc["merchant checkout page"]
+  mc --> S["Stripe<br/>gateway + processor + acquirer"]
+  S --> N["card network<br/>Visa / Mastercard rails"]
+  N --> I["issuer<br/>the cardholder's bank"]
+</pre>
 <p class="cap">The chain a payment message travels. Stripe occupies the middle three roles that merchants once bought separately.</p>
 </div>
 
@@ -48,14 +41,21 @@
 <p>The full path, checkout to bank deposit. The map first, then each step.</p>
 
 <div class="figure">
-<pre><code>1. Checkout          card details → Stripe          encrypted; never touch the merchant server
-2. Auth request      Stripe → network → issuer      "is this card good for $50?"
-3. Issuer decision   checks funds, fraud, auth      approves and places a HOLD on the funds
-4. Response relay    issuer → network → Stripe      merchant shows "success"  (seconds total)
-   ─────────────────── no money has moved yet ───────────────────
-5. Capture           merchant claims the hold       default: immediately on confirmation
-6. Settlement        issuer → network → acquirer    lands in the Stripe balance (pending → available)
-7. Payout            available balance → bank       on the merchant's payout schedule</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Cardholder
+  participant S as Stripe
+  participant I as Issuer
+  participant B as Merchant bank
+  C->>S: 1. Checkout — card details, encrypted, never touch the merchant server
+  S->>I: 2. Auth request via network — 'is this card good for $50?'
+  I->>I: 3. Decision — checks funds, fraud, auth, then places a HOLD on the funds
+  I->>S: 4. Response relay — merchant shows 'success' (seconds total)
+  Note over C,B: no money has moved yet
+  S->>S: 5. Capture — merchant claims the hold (default, on confirmation)
+  I->>S: 6. Settlement via network — lands in the Stripe balance (pending → available)
+  S->>B: 7. Payout — available balance to bank, on the payout schedule
+</pre>
 <p class="cap">Steps 1–4 take seconds. Steps 6–7 take days. Step 5 is the hinge between the two.</p>
 </div>
 
@@ -75,12 +75,12 @@
 <p>An authorization is a reservation, and reservations expire. <strong>Capture</strong> is the merchant's instruction to finalize the payment and take the held funds. By default Stripe captures immediately when the payment is confirmed, so steps 3 and 5 feel like one event. They are separable: a merchant can authorize now and capture later (a hotel holding a deposit, a store waiting to ship), in which case the hold stays valid for a fixed window, 7 days for most card-not-present payments.<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>authorize ──────────────── 7-day validity window ────────────────▶ expiry
-    │                                                                │
-    ├── capture (full or partial) → payment proceeds to settlement   │
-    │        (partial capture releases the rest of the hold)         │
-    │                                                                │
-    └── never captured ──────────────▶ hold released, payment CANCELED</code></pre>
+<pre class="mermaid">
+flowchart TB
+  a["authorize<br/>7-day validity window"]
+  a -->|"capture (full or partial)"| cap["payment proceeds to settlement<br/>(partial capture releases the rest of the hold)"]
+  a -->|"never captured, window expires"| exp["hold released, payment CANCELED"]
+</pre>
 <p class="cap">Most card payments allow exactly one capture per authorization. Capturing less than the authorized amount releases the remainder back to the cardholder.<sup><a href="#s2">2</a></sup></p>
 </div>
 
@@ -145,3 +145,6 @@
 <span id="s2">2.</span> Authorization holds, capture, validity windows, expiry and cancellation, partial capture — <a href="https://docs.stripe.com/payments/place-a-hold-on-a-payment-method">Stripe docs: Place a hold on a payment method</a>.<br>
 <span id="s3">3.</span> Pending vs available balance, settlement timing (T+2 US), payout schedules, first-payout delay — <a href="https://docs.stripe.com/payouts">Stripe docs: Receive payouts</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

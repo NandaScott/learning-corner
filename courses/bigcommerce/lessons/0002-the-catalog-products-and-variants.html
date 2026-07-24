@@ -17,22 +17,14 @@
 <p>BigCommerce models the catalog as "a store's collection of physical and digital products," where "products are the primary catalog entity."<sup><a href="#s1">1</a></sup> Under each product sit variants, the options that generate them, and modifiers. The four fit together like this:</p>
 
 <div class="figure">
-<pre><code>          PRODUCT  "T-Shirt"   ← the catalog entity (name, price, type)
-          ┌──────────────┴───────────────┐
-          │                              │
-   VARIANT OPTIONS                   MODIFIERS
-   the facets that build SKUs        change fulfillment, NOT the SKU
-   ┌──────────┬──────────┐          ┌─────────────────────────┐
-   Size: S M L  Color: R G B         "Monogram text: _______"
-          │                          "☑ add gift wrap (+$5)"
-          │ combinations auto-generate       │
-          ▼                                  │ no new SKU
-   VARIANTS (each has a SKU)                 │ no inventory tracked
-   ┌────────────┬────────────┐               ▼
-   S/Red  →  SKU TS-S-R      the same variant is picked off the
-   L/Blue →  SKU TS-L-B      shelf, then customized before shipping
-   … one per combination
-   (tracked, counted, restocked)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  P["PRODUCT (T-Shirt)<br/>catalog entity: name, price, type"]
+  P --> VO["VARIANT OPTIONS<br/>facets that build SKUs<br/>Size: S M L · Color: R G B"]
+  P --> MOD["MODIFIERS<br/>change fulfillment, NOT the SKU<br/>engraving text · gift-wrap (+$5)"]
+  VO -->|"combinations auto-generate"| V["VARIANTS · each has a SKU<br/>S/Red → TS-S-R · L/Blue → TS-L-B<br/>tracked, counted, restocked"]
+  MOD -->|"no new SKU · no inventory"| SAME["same variant picked off the shelf,<br/>then customized before shipping"]
+</pre>
 <p class="cap">Variant options build SKUs down the left. Modifiers hang off the product and never touch the SKU. That split is the whole lesson.</p>
 </div>
 
@@ -172,3 +164,6 @@
 <span id="s2">2.</span> Variant options (size/color) and their values, the inventory motivation ("I run out of small, red shirts"), modifier definition and examples — <a href="https://developer.bigcommerce.com/docs/store-management/catalog/products/variants">BigCommerce Developer Center: Variants, Variant Options, and Modifier Options</a>.<br>
 <span id="s3">3.</span> Catalog REST resources — Products, Product Variants, Product Variant Options, Product Modifiers — <a href="https://developer.bigcommerce.com/docs/rest-catalog">BigCommerce Developer Center: REST Catalog API reference</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

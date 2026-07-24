@@ -52,16 +52,21 @@ class MyView(View):
 <p>The routing side barely changes. In the URLconf you write <code>MyView.as_view()</code> where a function view would go. <code>as_view()</code> is a class method that bridges the URL resolver and the class: it returns a callable that, per request, instantiates the class, initializes it via <code>setup()</code>, and calls <code>dispatch()</code>. <code>dispatch()</code> looks at the request's HTTP method and routes to the handler of the same name.<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>  path("articles/&lt;int:pk&gt;/", MyView.as_view())
-        │
-        ▼   (per request)
-  as_view() → instantiate MyView → setup() → dispatch()
-        │
-        ▼
-  dispatch() reads request.method  ──▶ "GET"    → self.get(request, …)
-                                   ──▶ "POST"   → self.post(request, …)
-                                   ──▶ "DELETE" → self.delete(request, …)
-                                   ──▶ (not defined) → http_method_not_allowed()</code></pre>
+<pre class="mermaid">
+flowchart TB
+  u["URLconf entry<br/>MyView.as_view() at the route"]
+  a["per request: as_view()<br/>instantiate MyView, setup(), dispatch()"]
+  d{"dispatch() reads<br/>request.method"}
+  g["GET, self.get(request, …)"]
+  p["POST, self.post(request, …)"]
+  x["DELETE, self.delete(request, …)"]
+  n["not defined, http_method_not_allowed() (405)"]
+  u --> a --> d
+  d --> g
+  d --> p
+  d --> x
+  d --> n
+</pre>
 <p class="cap">The <code>request.method</code> check didn't vanish. It moved out of your view and into the framework's <code>dispatch()</code>, done once, correctly, for everyone.</p>
 </div>
 
@@ -130,3 +135,6 @@ class MyView(View):
 <span id="s2">2.</span> <code>as_view()</code> bridges resolver and class; per request it instantiates, calls <code>setup()</code>, then <code>dispatch()</code> routes by HTTP method: <a href="https://docs.djangoproject.com/en/5.2/topics/class-based-views/intro">Django docs: Class-based views (introduction)</a>.<br>
 <span id="s3">3.</span> Default <code>http_method_names</code> list; <code>http_method_not_allowed()</code> returning <code>HttpResponseNotAllowed</code> (405): <a href="https://docs.djangoproject.com/en/5.2/ref/class-based-views/base">Django docs: Base views (<code>View</code>)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -69,13 +69,16 @@
 <p>An <code>eta</code>/<code>countdown</code> task is pulled into a worker's memory and held there until its due time, and <strong>it is not acked until it starts executing</strong>.<sup><a href="#s4">4</a></sup> So its unacked ledger entry is live the entire time it waits.</p>
 
 <div class="figure">
-<pre><code>  task.apply_async(countdown=7200)    # run in 2 hours
-     t=0      worker A pops it, holds in memory, NOT acked
-              unacked_index entry timestamp = t=0
-     t=3600   visibility_timeout elapses. Worker B's restore loop sees an
-              entry older than 1h, assumes it's lost → LPUSH back onto queue
-     t=3600   worker B (or A) pops the "recovered" copy, ALSO holds it
-     t=7200   BOTH copies fire  →  task runs TWICE</code></pre>
+<pre class="mermaid">
+sequenceDiagram
+  participant A as Worker A
+  participant B as Worker B
+  Note over A,B: task.apply_async(countdown=7200) — run in 2 hours
+  A->>A: t=0 — pop it, hold in memory, NOT acked (unacked_index ts = 0)
+  B->>B: t=3600 — visibility_timeout elapses, restore loop sees entry older than 1h
+  B->>B: t=3600 — assumes lost, LPUSH back, pops the 'recovered' copy, ALSO holds it
+  Note over A,B: t=7200 — BOTH copies fire, task runs TWICE
+</pre>
 <p class="cap">No worker crashed. The task was simply scheduled longer than the visibility timeout, so the recovery loop mistook a waiting task for a lost one. This is the canonical Celery-on-Redis duplicate-execution bug.<sup><a href="#s4">4</a></sup></p>
 </div>
 
@@ -137,3 +140,6 @@
 <span id="s3">3.</span> <code>restore_at_shutdown = True</code>; clean channel close re-queues all unacked via <code>restore_unacked</code> — <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu/transport/redis.py, <code>QoS.restore_at_shutdown</code></a>; redelivery on worker shutdown — <a href="https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout">Celery docs: Redis</a>.<br>
 <span id="s4">4.</span> ETA/countdown tasks held in worker memory and not acknowledged until execution starts; may be redelivered if the delay exceeds <code>visibility_timeout</code> — <a href="https://docs.celeryq.dev/en/stable/userguide/calling.html#eta-and-countdown">Celery docs: Calling › ETA and Countdown</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -14,20 +14,18 @@
 <p>Run this before touching a model. Each question depends on the answer to the one above it:</p>
 
 <div class="figure">
-<pre><code>  1. VALUE          What moves the scoreboard this turn — mine up or theirs down?
-                       │  (gates everything: no value, no move)
-                       ▼
-  2. COST           Could I get the same score-effect cheaper?
-                       │  (exchange rate, opportunity cost)
-                       ▼
-  3. SPACE          What do I control vs expose — read one turn forward,
-                       │  against their best available option?
-                       ▼
-  4. CONCENTRATION  Am I bringing enough to remove it with margin, and not a scrap more?
-                       │  (the target band: floor and ceiling)
-                       ▼
-  5. TIMING         Do I have to commit now, or can I learn more first?
-                          (fire on the last effective moment)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  V["1. VALUE<br/>What moves the scoreboard this turn:<br/>mine up or theirs down?"]
+  C["2. COST<br/>Could I get the same score-effect cheaper?"]
+  S["3. SPACE<br/>What do I control vs expose: read one turn<br/>forward, against their best available option?"]
+  N["4. CONCENTRATION<br/>Am I bringing enough to remove it<br/>with margin, and not a scrap more?"]
+  T["5. TIMING<br/>Do I have to commit now, or can I learn more first?<br/>(fire on the last effective moment)"]
+  V -->|"gates everything: no value, no move"| C
+  C -->|"exchange rate, opportunity cost"| S
+  S --> N
+  N -->|"the target band: floor and ceiling"| T
+</pre>
 <p class="cap">If you feel lost mid-turn, drop to the top and walk down. The first question you can't answer cleanly is the one that's actually stuck.</p>
 </div>
 
@@ -105,3 +103,6 @@
 <p class="src"><strong>Sources</strong><br>
 <span id="s1">1.</span> "the victorious strategist only seeks battle after the victory has been won, whereas he who is destined to defeat first fights and afterwards looks for victory" — Sun Tzu, <em>The Art of War</em>, Ch. IV (Tactical Dispositions), Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -17,17 +17,23 @@
 <p>The three objects are the cart, the checkout, and the order. They describe the same purchase at three points in its life, and they even share an identity — the checkout is addressed by the same ID as the cart it grew from.<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>   ①  CART                    ②  CHECKOUT                     ③  ORDER
-   ─────────                  ────────────                    ─────────
-   line items                 cart + billing address          the durable record
-   prices, discounts          + consignment(s):               status: incomplete
-   NO customer data                address                          │
-        │                          line items                      │ payment
-        │  add a                    shipping option                 ▼
-        │  billing address     ────────────────────           Awaiting Fulfillment
-        └──────────────▶  every physical consignment  ──POST──▶
-                          needs a selected shipping         Create
-                          option before it can convert      Order</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph CART["① CART · container"]
+    direction TB
+    c1["line items<br/>prices, discounts<br/>NO customer data"]
+  end
+  subgraph CHK["② CHECKOUT · staging"]
+    direction TB
+    k1["cart + billing address<br/>+ consignment(s):<br/>address, line items, shipping option"]
+  end
+  subgraph ORD["③ ORDER · durable record"]
+    direction TB
+    o1["status: incomplete"] -->|"payment"| o2["Awaiting Fulfillment"]
+  end
+  CART -->|"add a billing address"| CHK
+  CHK -->|"resolve shipping · POST Create Order"| ORD
+</pre>
 <p class="cap">One purchase, three objects. The cart is disposable scratch space; the order is the permanent record. The checkout is the staging area in between.</p>
 </div>
 
@@ -163,3 +169,6 @@
 <span id="s2">2.</span> A cart is "a collection of items, prices, discounts, etc." and "does not contain customer-related data" — <a href="https://developer.bigcommerce.com/docs/rest-management/carts">BigCommerce Developer Center: Carts</a>.<br>
 <span id="s3">3.</span> Consignment definition and the conversion gate ("not eligible to become an order until each of its consignments contains a <code>selected_shipping_option</code>") — <a href="https://developer.bigcommerce.com/docs/storefront/cart-checkout/guide/consignments">BigCommerce Developer Center: Checkout Consignment guide</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

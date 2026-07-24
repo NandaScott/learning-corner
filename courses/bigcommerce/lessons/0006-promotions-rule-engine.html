@@ -15,21 +15,24 @@
 <p>A promotion holds an ordered list of rules. The documentation is precise about how they run: the <code>rules</code> field is "an ordered list of rules to be executed until the first applicable one applies a discount successfully and the rest will be skipped."<sup><a href="#s1">1</a></sup> Each rule is one action plus an optional condition:</p>
 
 <div class="figure">
-<pre><code>  PROMOTION
-   ├─ redemption_type: AUTOMATIC | COUPON      (Lesson 5 — gates the whole thing)
-   ├─ rules: [                                 ordered; FIRST applicable rule wins,
-   │    {                                        the rest are SKIPPED
-   │      condition: { … }   ── WHEN            cart / and / or / not
-   │      action:    { … }   ── WHAT            cart_value | cart_items | gift_item
-   │      apply_once, stop                                | shipping | fixed_price_set
-   │    }, … ]
-   ├─ can_be_used_with_other_promotions        ]  how it STACKS with
-   ├─ stop                                      ]  OTHER promotions
-   └─ status, max_uses, start/end_date, channels[], customer{group_ids}
-
-              condition matches?  ──yes──▶  apply action  ──▶  discount lands in
-                                                                cart discounts[] / coupons[]
-                                                                (Lesson 5)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph STRUCT["PROMOTION · structure"]
+    direction TB
+    s1["redemption_type: AUTOMATIC / COUPON<br/>gates the whole thing"]
+    s2["rules[] · ordered<br/>FIRST applicable rule wins, rest SKIPPED"]
+    s3["each rule:<br/>condition (WHEN): cart / and / or / not<br/>action (WHAT): cart_value, cart_items,<br/>gift_item, shipping, fixed_price_set<br/>apply_once, stop"]
+    s4["stacking with OTHER promotions:<br/>can_be_used_with_other_promotions, stop"]
+    s5["status, max_uses, start/end_date,<br/>channels[], customer.group_ids"]
+    s1 ~~~ s2 ~~~ s3 ~~~ s4 ~~~ s5
+  end
+  subgraph FLOW["evaluation"]
+    direction TB
+    f1{"condition matches?"} -->|"yes"| f2["apply action"]
+    f2 --> f3["discount lands in cart:<br/>discounts[] / coupons[]"]
+  end
+  STRUCT ~~~ FLOW
+</pre>
 <p class="cap">A promotion is a tiny rule DSL: ordered rules, each a guarded action, wrapped in stacking controls.</p>
 </div>
 
@@ -156,3 +159,6 @@
 <span id="s1">1.</span> <code>rules</code> = "an ordered list of rules to be executed until the first applicable one applies a discount successfully and the rest will be skipped"; the promotion object fields — <a href="https://developer.bigcommerce.com/docs/rest-management/promotions">BigCommerce Developer Center: Promotions (Create Promotion)</a>.<br>
 <span id="s2">2.</span> Condition types (<code>cart</code>/<code>and</code>/<code>or</code>/<code>not</code>, <code>minimum_spend</code>/<code>minimum_quantity</code>/item matchers), action types (<code>cart_value</code>/<code>cart_items</code> with <code>strategy</code>/<code>gift_item</code>/<code>shipping</code>/<code>fixed_price_set</code>), <code>fixed_amount</code>/<code>percentage_amount</code>, <code>apply_once</code>, rule &amp; promotion <code>stop</code>, <code>can_be_used_with_other_promotions</code>, priority — <a href="https://developer.bigcommerce.com/docs/store-operations/promotions">BigCommerce Developer Center: Promotions overview</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

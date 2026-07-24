@@ -14,16 +14,14 @@
 <h2>The steps — two roles, and why one needs the other</h2>
 
 <div class="figure">
-<pre><code>  1. TWO ROLES        anvil fixes; hammer strikes
-        │
-        ▼
-  2. HAMMER = ROLE    output · mobility · durability · cost (not a datasheet)
-        │
-        ▼
-  3. NEEDS AN ANVIL   unpinned, a mobile enemy just avoids the hammer
-        │
-        ▼
-  4. VS A GUNLINE     the anvil becomes objective pressure + space denial</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. TWO ROLES<br/>anvil fixes; hammer strikes"]
+  s2["2. HAMMER = ROLE<br/>output · mobility · durability · cost (not a datasheet)"]
+  s3["3. NEEDS AN ANVIL<br/>unpinned, a mobile enemy just avoids the hammer"]
+  s4["4. VS A GUNLINE<br/>the anvil becomes objective pressure + space denial"]
+  s1 --> s2 --> s3 --> s4
+</pre>
 <p class="cap">The hammer is the exciting half; the anvil is the load-bearing half.</p>
 </div>
 
@@ -102,3 +100,6 @@
 <p class="src"><strong>Source</strong><br>
 <span id="s1">1.</span> "In battle, there are not more than two methods of attack — the direct and the indirect; yet these two in combination give rise to an endless series of maneuvers"; "In all fighting, the direct method may be used for joining battle, but indirect methods will be needed in order to secure victory." — Ch. V, <em>Energy</em>, Sun Tzu, <em>The Art of War</em>, Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

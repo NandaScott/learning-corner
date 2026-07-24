@@ -23,18 +23,14 @@
 <p>The principle is one axiom plus two consequences that follow from how the score is kept:</p>
 
 <div class="figure">
-<pre><code>  AXIOM        value(action) = how much it moves the SCORE-DIFFERENCE
-               (my VP − their VP), and nothing else
-
-     │  because the score is a difference of two totals…
-     ▼
-  COROLLARY 1  deny a point  ==  score a point      (same currency)
-               choose whichever is cheaper right now
-
-     │  because the mission scores every round & they're proactive…
-     ▼
-  COROLLARY 2  no "doing nothing" while ahead        (a lead is a race,
-               a lead must be actively defended       not a bank balance)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  A["AXIOM<br/>value(action) = how much it moves the<br/>SCORE-DIFFERENCE (my VP minus their VP)<br/>and nothing else"]
+  C1["COROLLARY 1<br/>deny a point == score a point (same currency)<br/>choose whichever is cheaper right now"]
+  C2["COROLLARY 2<br/>no 'doing nothing' while ahead<br/>a lead is a race, actively defended,<br/>not a bank balance"]
+  A -->|"the score is a difference of two totals"| C1
+  C1 -->|"the mission scores every round and they are proactive"| C2
+</pre>
 <p class="cap">Everything below unpacks these three lines. It's the root the rest of the course hangs off.</p>
 </div>
 
@@ -118,3 +114,6 @@
 <span id="s1">1.</span> Win condition = Victory Points, delegated to the mission; scoring by controlling <em>terrain objectives</em> via total Objective Control (OC) of models in range, control recomputed at the end of each phase and turn; in 11th edition the primary mission is set by the players' <em>force dispositions</em>; only specific secondary missions reward destroying units, Warhammer 40,000 11th Edition Core Rules (<a href="https://www.warhammer-community.com/en-gb/downloads/warhammer-40000/">official free download</a>; <a href="https://wahapedia.ru/wh40k11ed/the-rules/core-rules/">Wahapedia 11th-ed mirror</a>). Verify exact VP values against the live mission rules before quoting numbers.<br>
 <span id="s2">2.</span> "supreme excellence consists in breaking the enemy's resistance without fighting" (Ch. III, Attack by Stratagem); "the victorious strategist only seeks battle after the victory has been won…" (Ch. IV, Tactical Dispositions), Sun Tzu, <em>The Art of War</em>, Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

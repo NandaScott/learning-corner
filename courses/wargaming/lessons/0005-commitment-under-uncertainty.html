@@ -34,12 +34,22 @@
 <p>An uncommitted unit is worth more than its datasheet, because it threatens several places at once.</p>
 
 <div class="figure">
-<pre><code>  uncommitted:   unit ──▶ threatens A
-                      ├──▶ threatens B      opponent must cover all three
-                      └──▶ threatens C
-
-  committed to A:  unit ──▶ A               B and C are now free for them
-</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph U["Uncommitted: opponent must cover all three"]
+    direction TB
+    u["unit"] --> a["threatens A"]
+    u --> b["threatens B"]
+    u --> c["threatens C"]
+  end
+  subgraph C["Committed to A: B and C now free for them"]
+    direction TB
+    u2["unit"] --> a2["A"]
+    b2["B (now free)"]
+    c2["C (now free)"]
+  end
+  U ~~~ C
+</pre>
 <p class="cap">While the unit is uncommitted the opponent has to respect every option; the instant it commits, the superposition collapses to one and the others vanish. That optionality is the resource you spend when you commit early.</p>
 </div>
 
@@ -113,3 +123,6 @@
 <p class="src"><strong>Sources</strong><br>
 <span id="s1">1.</span> "Energy may be likened to the bending of a crossbow; decision, to the releasing of a trigger"; "the energy developed by good fighting men is as the momentum of a round stone rolled down a mountain thousands of feet in height"; "The quality of decision is like the well-timed swoop of a falcon which enables it to strike and destroy its victim" — Sun Tzu, <em>The Art of War</em>, Ch. V (Energy), Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

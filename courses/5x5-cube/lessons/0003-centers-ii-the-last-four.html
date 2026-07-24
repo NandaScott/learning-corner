@@ -37,20 +37,17 @@
 <h2>The steps</h2>
 
 <div class="figure">
-  <pre><code>START  white + yellow held on LEFT / RIGHT
-       four open faces form a ring:   U  F  D  B
-   │
-1. adjacency   pick centers 3 &amp; 4 as two ADJACENT faces (e.g. U, then F)
-2. build 3     middle bar + 2 outer bars — round-trip each insert to
-   │           protect the held L/R centers
-3. build 4     same build, on a face next to #3
-   │           (now L, R and #3 are all off-limits)
-   ▼
-THE LAST TWO   the two open faces left are the last two centers —
-4. build 5     no free face to scratch-build on; stage the bar in the
-   │           space you have and round-trip it in
-5. build 6     the final pieces fall in as 5 completes;
-               awkward positions use the same engine</code></pre>
+  <pre class="mermaid">
+flowchart TB
+  start["START<br/>white + yellow held on LEFT / RIGHT, four open faces form a ring: U F D B"]
+  s1["1. adjacency<br/>pick centers 3 and 4 as two ADJACENT faces (e.g. U, then F)"]
+  s2["2. build 3<br/>middle bar + 2 outer bars, round-trip each insert to protect the held L/R centers"]
+  s3["3. build 4<br/>same build, on a face next to center 3 (now L, R and center 3 are all off-limits)"]
+  mid["THE LAST TWO<br/>the two open faces left are the last two centers"]
+  s4["4. build 5<br/>no free face to scratch-build on, stage the bar in the space you have and round-trip it in"]
+  s5["5. build 6<br/>the final pieces fall in as 5 completes, awkward positions use the same engine"]
+  start --> s1 --> s2 --> s3 --> mid --> s4 --> s5
+</pre>
   <p class="cap">
     One engine throughout. Steps 2–5 are all lift–park–restore; the only thing
     that changes down the list is how much free space you have to stage a bar.
@@ -285,3 +282,6 @@ THE LAST TWO   the two open faces left are the last two centers —
     >CubeSkills: Beginner's Method for Solving the 5x5 Cube (PDF)</a
   >, p.2.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

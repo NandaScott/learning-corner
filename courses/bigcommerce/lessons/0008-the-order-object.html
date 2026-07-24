@@ -37,17 +37,17 @@
 <p>The happy path threads a few of these, and the split between automatic and manual transitions is the thing to hold:</p>
 
 <div class="figure">
-<pre><code>   checkout converts                 payment confirmed              seller ships items
-        │                                  │                              │
-        ▼          (auto)                  ▼        (auto)                ▼   (seller action)
-   Incomplete/Pending ──▶ Awaiting Payment ──▶ Awaiting Fulfillment ──┬─▶ Partially Shipped ─▶ Shipped
-      (0 / 1)                  (7)                    (11)             │        (3)                (2)
-                                                                      └─▶ Completed (10, digital)
-
-   seller actions branch off at any point:  Refunded(4) · Partially Refunded(14)
-                                            Cancelled(5) · Declined(6) · Manual Verification(12)
-
-   ⚠ status does NOT auto-revert: "deleting a shipment does not move the order out of shipped status."</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s0["Incomplete / Pending<br/>(0 / 1)"] -->|"checkout converts (auto)"| s7["Awaiting Payment<br/>(7)"]
+  s7 -->|"payment confirmed (auto)"| s11["Awaiting Fulfillment<br/>(11)"]
+  s11 -->|"seller ships"| s3["Partially Shipped<br/>(3)"]
+  s3 --> s2["Shipped<br/>(2)"]
+  s11 -->|"digital"| s10["Completed<br/>(10)"]
+  s11 -.->|"seller action, any point"| branch["Refunded (4) · Partially Refunded (14)<br/>Cancelled (5) · Declined (6)<br/>Manual Verification (12)"]
+  note["status does NOT auto-revert:<br/>deleting a shipment does not move<br/>the order out of shipped status"]
+  s2 ~~~ note
+</pre>
 <p class="cap">Payment transitions are automatic (7 → 11). Fulfillment and refunds are seller actions. Nothing rewinds on its own.</p>
 </div>
 
@@ -174,3 +174,6 @@
 <span id="s4">4.</span> Create Order (<code>POST /v2/orders</code>): billing address + (products or consignments) required, custom products, guest <code>customer_id: 0</code>, shipping vs pickup mutually exclusive, editable via PUT — <a href="https://developer.bigcommerce.com/docs/rest-management/orders/orders">BigCommerce Developer Center: Create an Order</a>.<br>
 <span id="s5">5.</span> V2 order creation doesn't trigger the order email (create + convert a cart to send it); "once an order has products, a billing address, and a shipping address, you can create an order shipment"; status doesn't auto-revert — <a href="https://developer.bigcommerce.com/docs/store-operations/orders">BigCommerce Developer Center: Orders overview</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

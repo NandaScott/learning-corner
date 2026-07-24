@@ -14,16 +14,15 @@
 <h2>The steps</h2>
 
 <div class="figure">
-<pre><code>  1. edit a model            add/remove a field on the Python class
-        │
-  2. makemigrations          Django diffs models vs the last migration,
-        │                    writes a new migration file (e.g. 0002_...)
-        │
-  3. sqlmigrate  (optional)  see the SQL that file would run
-        │
-  4. migrate                 run the file's operations against the database
-        │
-  5. commit the file         the migration is checked into version control</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. edit a model<br/>add/remove a field on the Python class"]
+  s2["2. makemigrations<br/>Django diffs models vs the last migration,<br/>writes a new migration file (e.g. 0002_...)"]
+  s3["3. sqlmigrate (optional)<br/>see the SQL that file would run"]
+  s4["4. migrate<br/>run the file's operations against the database"]
+  s5["5. commit the file<br/>the migration is checked into version control"]
+  s1 --> s2 --> s3 --> s4 --> s5
+</pre>
 <p class="cap">Step 2 records the intent as a file; step 4 executes it. The two are separate on purpose.</p>
 </div>
 
@@ -118,3 +117,6 @@
 <span id="s2">2.</span> <code>makemigrations</code> writes files from model changes; <code>sqlmigrate</code> prints the SQL; <code>migrate</code> applies unapplied files, tracking what is done: <a href="https://docs.djangoproject.com/en/5.2/intro/tutorial02">Django docs: Tutorial 2</a>.<br>
 <span id="s3">3.</span> Reversing to a target migration unapplies later ones: <a href="https://docs.djangoproject.com/en/5.2/topics/migrations">Django docs: Migrations (reversing)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

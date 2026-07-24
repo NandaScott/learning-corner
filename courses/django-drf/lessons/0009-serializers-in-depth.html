@@ -22,15 +22,15 @@
 <p>When you call <code>is_valid()</code> (Lesson 5), DRF runs validation in layers, from narrow to wide. Two of those layers are yours to customize.</p>
 
 <div class="figure">
-<pre><code>  incoming request.data
-        │
-  1. per-field type/format checks   (built in: is this an int? a valid date?)
-        │
-  2. validate_&lt;field&gt;()             (your rule for ONE field)
-        │
-  3. validate()                     (your rule ACROSS fields)
-        │
-  validated_data  →  create() / update()  →  saved object</code></pre>
+<pre class="mermaid">
+flowchart TB
+  d["incoming request.data"]
+  s1["1. per-field type/format checks<br/>(built in: is this an int? a valid date?)"]
+  s2["2. validate_FIELD()<br/>(your rule for ONE field)"]
+  s3["3. validate()<br/>(your rule ACROSS fields)"]
+  o["validated_data, create() / update(), saved object"]
+  d --> s1 --> s2 --> s3 --> o
+</pre>
 <p class="cap">Field checks first, then your field-level rules, then your object-level rule. Only data that clears all three reaches <code>validated_data</code>.</p>
 </div>
 
@@ -129,3 +129,6 @@
 <span id="s3">3.</span> Object-level validation via <code>validate(self, data)</code> for multi-field rules: <a href="https://www.django-rest-framework.org/api-guide/serializers">DRF: Serializers (object-level validation)</a>.<br>
 <span id="s4">4.</span> Writable nested serializers require overriding <code>create()</code>/<code>update()</code>: <a href="https://www.django-rest-framework.org/api-guide/relations">DRF: Serializer relations (writable nested)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

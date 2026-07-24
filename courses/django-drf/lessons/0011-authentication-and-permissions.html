@@ -10,15 +10,15 @@
 <p>Two different questions, often confused. <strong>Authentication</strong> identifies the request: it decides <em>who</em> is calling and attaches that identity as <code>request.user</code>. <strong>Permission</strong> (authorization) decides <em>whether</em> that identity may proceed. DRF runs them in a fixed sequence, and authentication always goes first: it runs at the very start of the view, before the permission and throttling checks, and before any of your code.<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
-<pre><code>  request
-    │
-  1. authentication   → sets request.user, request.auth   (who?)
-    │
-  2. permission       → allowed? if not, raise            (may they?)
-    │
-  3. throttling       → under the rate limit? if not, raise (how often?)
-    │
-  4. your view / action runs</code></pre>
+<pre class="mermaid">
+flowchart TB
+  r["request"]
+  a["1. authentication<br/>sets request.user, request.auth (who?)"]
+  p["2. permission<br/>allowed? if not, raise (may they?)"]
+  t["3. throttling<br/>under the rate limit? if not, raise (how often?)"]
+  v["4. your view / action runs"]
+  r --> a --> p --> t --> v
+</pre>
 <p class="cap">A fixed pipeline. Each stage can stop the request before your code runs. Authentication first, because permission needs to know who the user is.<sup><a href="#s1">1</a></sup></p>
 </div>
 
@@ -132,3 +132,6 @@
 <span id="s6">6.</span> Custom permission with <code>has_object_permission</code> and <code>SAFE_METHODS</code>; <code>obj.owner == request.user</code>: <a href="https://www.django-rest-framework.org/tutorial/4-authentication-and-permissions">DRF: Tutorial 4</a>.<br>
 <span id="s7">7.</span> <code>UserRateThrottle</code> keys on user id (IP for anonymous), rate like <code>"60/min"</code>: <a href="https://www.django-rest-framework.org/api-guide/throttling">DRF: Throttling</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

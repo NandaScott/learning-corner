@@ -16,22 +16,15 @@
 <p>This all happens inside one child process, synchronously, in one thread.<sup><a href="#s2">2</a></sup> Here's the timeline of one execution.</p>
 
 <div class="figure">
-<pre><code>  child process · trace_task(uuid, args, kwargs)
-  ─────────────────────────────────────────────────────────────────
-  1.  before_start(task_id, args, kwargs)     ← blocks; run() waits for it
-  2.  retval = run(*args, **kwargs)           ← YOUR @task function body
-        │
-        ├── returned normally ─────────▶  3a. backend.mark_as_done → SUCCESS
-        │                                  4a. on_success(retval, …)
-        │
-        ├── called self.retry() ───────▶  3b. backend.mark_as_retry → RETRY
-        │                                  4b. on_retry(exc, …)
-        │
-        └── raised an exception ───────▶  3c. backend.mark_as_failure → FAILURE
-                                           4c. on_failure(exc, …, einfo)
-  ─────────────────────────────────────────────────────────────────
-  5.  after_return(status, retval, …)   ← runs for SUCCESS / FAILURE only
-                                           SKIPPED for RETRY (and IGNORED/REJECTED)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  BS["1. before_start(task_id, args, kwargs)<br/>blocks; run() waits for it"] --> RUN["2. retval = run(*args, **kwargs)<br/>YOUR @task function body"]
+  RUN -->|returned normally| S1["3a. mark_as_done → SUCCESS"] --> S2["4a. on_success(retval, …)"]
+  RUN -->|called self.retry| R1["3b. mark_as_retry → RETRY"] --> R2["4b. on_retry(exc, …)"]
+  RUN -->|raised an exception| F1["3c. mark_as_failure → FAILURE"] --> F2["4c. on_failure(exc, …, einfo)"]
+  S2 --> AR["5. after_return(status, retval, …)<br/>SUCCESS / FAILURE only, SKIPPED for RETRY / IGNORED / REJECTED"]
+  F2 --> AR
+</pre>
 <p class="cap">Exactly one of the 3/4 branches fires per run. Step 3 (record state) always precedes step 4 (the handler): the backend is updated <em>before</em> your handler sees the outcome.</p>
 </div>
 
@@ -81,12 +74,21 @@
 <p>Alongside the method calls, the task moves through <strong>states</strong>, the thing <code>AsyncResult.state</code> reports. The handler outcomes above are the transitions into the terminal states.</p>
 
 <div class="figure">
-<pre><code>  PENDING ──▶ RECEIVED ──▶ (STARTED) ──▶ ┬─▶ SUCCESS
-   │            │                        ├─▶ FAILURE
-   │            │                        └─▶ RETRY ──┐
-   │            │                                    │ re-published as a new delivery
-   │            └◀───────────────────────────────────┘
-   └─ REVOKED (cancelled before it ran)</code></pre>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> PENDING
+  PENDING --> RECEIVED
+  RECEIVED --> STARTED
+  STARTED --> SUCCESS
+  STARTED --> FAILURE
+  STARTED --> RETRY
+  RETRY --> RECEIVED: re-published as a new delivery
+  PENDING --> REVOKED: cancelled before it ran
+  note right of STARTED
+    STARTED only recorded if
+    task_track_started is on (default off)
+  end note
+</pre>
 <p class="cap">PENDING is implicit: it means "no record exists," so an unknown/typo'd id also reads PENDING. RECEIVED is set when the consumer picks the message up (Lesson 2). STARTED is only recorded if <code>task_track_started</code> is enabled (default off).<sup><a href="#s4">4</a></sup></p>
 </div>
 
@@ -149,3 +151,6 @@
 <span id="s3">3.</span> <code>before_start</code> (added 5.2) runs before and blocks <code>run()</code>; handler signatures — <a href="https://docs.celeryq.dev/en/stable/reference/celery.app.task.html">celery.app.task — Task reference</a>.<br>
 <span id="s4">4.</span> States and <code>task_track_started</code> (STARTED only when enabled; PENDING is implicit) — <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#states">Celery docs: Tasks › States</a>; <a href="https://docs.celeryq.dev/en/stable/reference/celery.states.html">celery.states</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -15,13 +15,18 @@
 <p>Middleware is listed in the <code>MIDDLEWARE</code> setting, and Django applies it top-down during the request phase and in reverse during the response phase. Each layer wraps the view like an onion. A request travels inward through every layer to the view; the response travels back outward through the same layers in reverse:<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>  request ─▶ Security ─▶ Session ─▶ Auth ─▶ Csrf ─▶ [ VIEW ]
-                                                        │
-  response ◀─ Security ◀─ Session ◀─ Auth ◀─ Csrf ◀────┘
-
-  request phase:  top-down through MIDDLEWARE
-  response phase: bottom-up (reverse)
-  the view sits at the center; every layer wraps it</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph REQ["request phase: top-down through MIDDLEWARE"]
+    direction TB
+    r0["request"] --> r1["Security"] --> r2["Session"] --> r3["Auth"] --> r4["Csrf"] --> rv["[ VIEW ]"]
+  end
+  subgraph RESP["response phase: bottom-up (reverse)"]
+    direction TB
+    pv["[ VIEW ]"] --> p4["Csrf"] --> p3["Auth"] --> p2["Session"] --> p1["Security"] --> p0["response"]
+  end
+  rv --> pv
+</pre>
 <p class="cap">In through the list, out through it backward. The view is the innermost point.<sup><a href="#s2">2</a></sup></p>
 </div>
 
@@ -48,10 +53,11 @@
 <p>A middleware does not have to call <code>get_response</code>. If a layer returns a response on its own, without calling the next step, the request never reaches the inner layers or the view, and only the layers that already ran on the way in will run on the way out:<sup><a href="#s2">2</a></sup></p>
 
 <div class="figure">
-<pre><code>  request ─▶ Security ─▶ Auth ──✗ returns 403 here
-                                 (view and inner layers never run;
-                                  response goes back out through
-                                  Security only)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  r["request"] --> s["Security"] --> a["Auth"]
+  a --> x["✗ returns 403 here<br/>view and inner layers never run,<br/>response goes back out through Security only"]
+</pre>
 <p class="cap">This is how a middleware blocks a request early: return a response instead of calling <code>get_response</code>.<sup><a href="#s2">2</a></sup></p>
 </div>
 
@@ -125,3 +131,6 @@
 <span id="s4">4.</span> The default <code>MIDDLEWARE</code> stack and why order matters (session before auth, security near the top): <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware</a> and <a href="https://docs.djangoproject.com/en/5.2/ref/middleware">Middleware reference (ordering)</a>.<br>
 <span id="s5">5.</span> Optional hooks <code>process_view</code>, <code>process_exception</code>, <code>process_template_response</code>; <code>process_exception</code> for view exceptions, run in reverse: <a href="https://docs.djangoproject.com/en/5.2/topics/http/middleware">Django docs: Middleware (other hooks)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

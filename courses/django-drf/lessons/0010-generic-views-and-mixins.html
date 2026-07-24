@@ -12,15 +12,18 @@
 <h2>The steps: climbing the abstraction ladder</h2>
 
 <div class="figure">
-<pre><code>  APIView                         you write get()/post() and all the logic      (L5)
-     │  + queryset, serializer_class, get_object()
-  GenericAPIView                  knows the objects + the serializer
-     │  + mixins (list/create/retrieve/update/destroy)
-  GenericAPIView + mixins         behavior exists; you wire get()→list()
-     │  pre-combined
-  concrete generics               e.g. ListCreateAPIView; set 2 attributes
-     │  as a viewset
-  ModelViewSet + router           all six actions, routed as data           (L6)</code></pre>
+<pre class="mermaid">
+flowchart TB
+  a["APIView<br/>you write get()/post() and all the logic (L5)"]
+  g["GenericAPIView<br/>knows the objects + the serializer"]
+  gm["GenericAPIView + mixins<br/>behavior exists, you wire get() to list()"]
+  cg["concrete generics<br/>e.g. ListCreateAPIView, set 2 attributes"]
+  mv["ModelViewSet + router<br/>all six actions, routed as data (L6)"]
+  a -->|"+ queryset, serializer_class, get_object()"| g
+  g -->|"+ mixins (list/create/retrieve/update/destroy)"| gm
+  gm -->|"pre-combined"| cg
+  cg -->|"as a viewset"| mv
+</pre>
 <p class="cap">Each rung removes code. Same machinery underneath: the verb dispatch from Lesson 3, carrying the DRF objects from Lesson 5.</p>
 </div>
 
@@ -149,3 +152,6 @@ class SnippetDetail(generics.RetrieveUpdateDestroyAPIView):
 <span id="s4">4.</span> Use <code>get_queryset()</code> rather than <code>self.queryset</code> (evaluated once, cached); optimize with <code>select_related</code>/<code>prefetch_related</code>: <a href="https://www.django-rest-framework.org/api-guide/generic-views">DRF: Generic views (get_queryset)</a>.<br>
 <span id="s5">5.</span> <code>ModelViewSet</code> from <code>queryset</code> + <code>serializer_class</code>: <a href="https://www.django-rest-framework.org/api-guide/viewsets">DRF: ViewSets (ModelViewSet)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

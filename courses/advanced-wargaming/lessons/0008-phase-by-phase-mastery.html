@@ -14,16 +14,14 @@
 <h2>The steps — the phase, the spacing, the geometry, the model</h2>
 
 <div class="figure">
-<pre><code>  1. MOVEMENT FIRST   the most important, least flashy phase — no dice
-        │
-        ▼
-  2. COHERENCY        within 2" of one model, 9" of every other — spread vs bunch
-        │
-        ▼
-  3. CHARGE GEOMETRY  2D6 into engagement range; pile-in / consolidate 3"
-        │
-        ▼
-  4. THE MODEL        each base's spot decides what's in range and exposed</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. MOVEMENT FIRST<br/>the most important, least flashy phase — no dice"]
+  s2["2. COHERENCY<br/>within 2″ of one model, 9″ of every other — spread vs bunch"]
+  s3["3. CHARGE GEOMETRY<br/>2D6 into engagement range; pile-in / consolidate 3″"]
+  s4["4. THE MODEL<br/>each base's spot decides what's in range and exposed"]
+  s1 --> s2 --> s3 --> s4
+</pre>
 <p class="cap">The dice phases mostly confirm what the movement phase already decided.</p>
 </div>
 
@@ -103,3 +101,6 @@
 <span id="s1">1.</span> Coherency (every model within 2" horizontally of at least one other model in the unit and within 9" horizontally of every other); engagement range = within 2" horizontally; charge move = roll 2D6 for the maximum distance, ending within engagement range of each charge target; Pile In and Consolidate = up to 3"; units arriving from Reserves set up more than 9" horizontally from enemy models. Warhammer 40,000 11th Edition Core Rules (<a href="https://wahapedia.ru/wh40k11ed/the-rules/core-rules/">Wahapedia 11th-ed mirror</a>; <a href="https://www.warhammer-community.com/en-gb/downloads/warhammer-40000/">official free download</a>).<br>
 <span id="s2">2.</span> "The difficulty of tactical maneuvering consists in turning the devious into the direct, and misfortune into gain"; "Let your rapidity be that of the wind, your compactness that of the forest." — Ch. VII, <em>Maneuvering</em>, Sun Tzu, <em>The Art of War</em>, Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -15,18 +15,28 @@
 <p>BigCommerce defines a consignment as "a list of physical products that will travel together to the purchaser, and it specifies how those items can and will ship."<sup><a href="#s1">1</a></sup> Three things make it work: an allocation of line items, a destination, and a fulfillment method whose options the server generates.</p>
 
 <div class="figure">
-<pre><code>  CHECKOUT
-   ├─ consignment A ──▶ address 1  + lineItems[…]  + selectedShippingOption   ┐
-   ├─ consignment B ──▶ address 2  + lineItems[…]  + selectedShippingOption   │ ≥ 1 per address
-   └─ consignment C ──▶ pickupOption(location) + lineItems[…]                  ┘ (pickup = BOPIS)
-
-   creating a consignment (address + items)  ──generates──▶  availableShippingOptions[]
-                                                             (based on the destination + weight)
-                                              ──choose one──▶ selectedShippingOption   ← Lesson 1's gate
-
-   convert to ORDER  ──▶  /orders/{id}/consignments  (object structure):
-                          { shipping:[…], pickups:[…], downloads:[…], email:{…} }
-                          each shipping consignment tracks items_total / items_shipped</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph CHK["CHECKOUT · consignments (≥ 1 per address)"]
+    direction TB
+    a["consignment A → address 1<br/>+ lineItems[] + selectedShippingOption"]
+    b["consignment B → address 2<br/>+ lineItems[] + selectedShippingOption"]
+    c["consignment C → pickupOption(location)<br/>+ lineItems[] · pickup = BOPIS"]
+    a ~~~ b ~~~ c
+  end
+  subgraph OPT["shipping options"]
+    direction TB
+    o1["create a consignment<br/>(address + items)"] -->|"generates"| o2["availableShippingOptions[]<br/>from destination + weight"]
+    o2 -->|"choose one"| o3["selectedShippingOption<br/>Lesson 1's conversion gate"]
+  end
+  subgraph ORD["convert to ORDER"]
+    direction TB
+    r1["/orders/{id}/consignments<br/>object structure:<br/>shipping[], pickups[], downloads[], email{}"]
+    r2["each shipping consignment tracks<br/>items_total / items_shipped"]
+    r1 ~~~ r2
+  end
+  CHK ~~~ OPT ~~~ ORD
+</pre>
 <p class="cap">A consignment plans one shipment. Multiple consignments split a cart; the object persists onto the order as the fulfillment record.</p>
 </div>
 
@@ -157,3 +167,6 @@
 <span id="s2">2.</span> Shipping-option object fields (<code>id</code>/<code>type</code>/<code>description</code>/<code>cost</code>/<code>transitTime</code>/<code>isRecommended</code>), camelCase note, pickup required fields (<code>pickupOption</code> + <code>lineItems</code>) — <a href="https://developer.bigcommerce.com/docs/rest-storefront/checkouts/consignments">BigCommerce Developer Center: Create Checkout Consignment (Storefront)</a>.<br>
 <span id="s3">3.</span> Order consignments object structure (<code>shipping</code>/<code>pickups</code>/<code>downloads</code>/<code>email</code>), <code>items_total</code>/<code>items_shipped</code>, <code>consignment_structure=object</code>, legacy array deprecated 1 Feb 2026 — <a href="https://developer.bigcommerce.com/docs/rest-management/orders">BigCommerce Developer Center: Orders — Get Order (consignments include)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

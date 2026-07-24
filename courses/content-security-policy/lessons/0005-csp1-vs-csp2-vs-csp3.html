@@ -10,17 +10,14 @@
 <p>"CSP" isn't one spec. It's three levels, each a near-superset of the last, published years apart. Knowing which directive arrived in which level is the surface answer to "CSP1 vs CSP2 vs CSP3." The deeper answer is <em>why</em> each level happened, and that why is the same each time: the previous level left a way for injected script to run.<sup><a href="#s1">1</a></sup></p>
 
 <div class="figure">
-<pre><code> 2011            2012                    2016                         2016 → today
- ─┬──────────────┬───────────────────────┬────────────────────────────┬──────────▶
-  │              │                        │                            │
- prefixed       CSP 1.0                 CSP Level 2                   CSP Level 3
- headers        (W3C Candidate Rec)     (W3C Recommendation,          (W3C Working Draft,
- X-Content-     — stalled at CR;        15 Dec 2016 — first REC)      still evolving)
- Security-      superseded by L2        nonces, hashes,               'strict-dynamic',
- Policy (FF)                            frame-ancestors,              report-to, *-src-elem/attr,
- X-WebKit-CSP                           form-action, base-uri,        rebased on Fetch,
- (Chrome/                               child-src, plugin-types       deprecations
- Safari)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  y2011["2011<br/>prefixed headers<br/>X-Content-Security-Policy (Firefox)<br/>X-WebKit-CSP (Chrome/Safari)"]
+  y2012["2012<br/>CSP 1.0<br/>W3C Candidate Rec<br/>(stalled at CR, superseded by L2)"]
+  y2016["2016<br/>CSP Level 2<br/>W3C Recommendation, 15 Dec 2016 (first REC)<br/>nonces, hashes, frame-ancestors,<br/>form-action, base-uri, child-src, plugin-types"]
+  today["2016 → today<br/>CSP Level 3<br/>W3C Working Draft (still evolving)<br/>'strict-dynamic', report-to,<br/>*-src-elem/attr, rebased on Fetch, deprecations"]
+  y2011 --> y2012 --> y2016 --> today
+</pre>
 <p class="cap">Origin: proposed as "Content Restrictions" (Hansen, 2004), shipped experimentally behind vendor prefixes in 2011, standardized as 1.0 in 2012. Note CSP 1.0 <em>never</em> became a full Recommendation: it stalled at Candidate Recommendation and CSP2 was the first to reach REC.<sup><a href="#s2">2</a></sup></p>
 </div>
 
@@ -117,3 +114,6 @@
 <span id="s2">2.</span> Origin timeline (prefixed <code>X-Content-Security-Policy</code>/<code>X-WebKit-CSP</code>, 2011; "Content Restrictions" proposal 2004), <a href="https://en.wikipedia.org/wiki/Content_Security_Policy">Wikipedia: Content Security Policy</a>. Publication status: CSP 1.0 Candidate Recommendation, 15 Nov 2012 (<a href="https://www.w3.org/TR/2012/CR-CSP-20121115/">/TR/2012/CR-CSP-20121115/</a>); CSP2 Recommendation, 15 Dec 2016 (<a href="https://www.w3.org/TR/2016/REC-CSP2-20161215/">/TR/2016/REC-CSP2-20161215/</a>); CSP3 Working Draft (<a href="https://www.w3.org/TR/CSP3/">/TR/CSP3/</a>).<br>
 <span id="s3">3.</span> CSP 1.0 directive set and keywords, <a href="https://www.w3.org/TR/2012/CR-CSP-20121115/">W3C CSP 1.0</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

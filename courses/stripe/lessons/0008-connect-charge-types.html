@@ -12,15 +12,26 @@
 <p>The differences all follow from one primitive: <em>which account the charge is created on</em>. The charge's account is where the funds land first (that account's Lesson 6 ledger), whose balance refunds are debited from, and who the dispute machinery bills. Everything in the comparison table falls out of that single placement decision, plus one follow-up: whether funds move onward in the same operation or a separate one.</p>
 
 <div class="figure">
-<pre><code>direct           customer ──▶ CONNECTED ACCOUNT balance
-                                   │ application fee ──▶ platform balance
-
-destination      customer ──▶ PLATFORM balance
-                                   │ transfer (same operation, minus cut) ──▶ connected account
-
-separate         customer ──▶ PLATFORM balance
-charges &                          │ transfer #1 (later, any amount) ──▶ connected account A
-transfers                          └ transfer #2 ──────────────────────▶ connected account B</code></pre>
+<pre class="mermaid">
+flowchart LR
+  subgraph DIRECT["direct"]
+    direction TB
+    d1["customer"] --> d2["CONNECTED ACCOUNT balance"]
+    d2 -->|"application fee"| d3["platform balance"]
+  end
+  subgraph DEST["destination"]
+    direction TB
+    e1["customer"] --> e2["PLATFORM balance"]
+    e2 -->|"transfer (same operation, minus cut)"| e3["connected account"]
+  end
+  subgraph SEP["separate charges and transfers"]
+    direction TB
+    f1["customer"] --> f2["PLATFORM balance"]
+    f2 -->|"transfer #1 (later, any amount)"| f3["connected account A"]
+    f2 -->|"transfer #2"| f4["connected account B"]
+  end
+  DIRECT ~~~ DEST ~~~ SEP
+</pre>
 <p class="cap">Three placements of one payment. Read each arrow as a balance-transaction entry from Lesson 6.</p>
 </div>
 
@@ -99,3 +110,6 @@ dispute debits        configurable  platform        platform</code></pre>
 <p class="src"><strong>Sources</strong> (Stripe documentation only, per this course's sourcing rule)<br>
 <span id="s1">1.</span> All three charge types, settlement country, fee and refund and dispute placement, application fees, <code>transfer_data</code>, multi-account transfers, balance-monitoring caveat, decision guidance — <a href="https://docs.stripe.com/connect/charges">Stripe docs: Create a charge</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

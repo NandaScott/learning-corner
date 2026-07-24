@@ -14,16 +14,15 @@
 <h2>The steps</h2>
 
 <div class="figure">
-<pre><code>  1. request arrives:  GET /articles/2026/
-        │
-  2. URL resolver scans urlpatterns top-to-bottom for a match
-        │
-  3. match found → Django calls the view, passing the
-     HttpRequest plus any captured path pieces as kwargs
-        │
-  4. view runs its logic (query models, pick a template…)
-        │
-  5. view returns an HttpResponse; Django sends it to the client</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. request arrives<br/>GET /articles/2026/"]
+  s2["2. URL resolver scans urlpatterns<br/>top-to-bottom for a match"]
+  s3["3. match found, Django calls the view<br/>passing the HttpRequest plus any<br/>captured path pieces as kwargs"]
+  s4["4. view runs its logic<br/>(query models, pick a template)"]
+  s5["5. view returns an HttpResponse<br/>Django sends it to the client"]
+  s1 --> s2 --> s3 --> s4 --> s5
+</pre>
 <p class="cap">Two objects define the whole cycle: HttpRequest in at step 3, HttpResponse out at step 5.</p>
 </div>
 
@@ -105,3 +104,6 @@ def year_archive(request, year):
 <span id="s1">1.</span> HttpRequest in, HttpResponse out; the view's responsibility: <a href="https://docs.djangoproject.com/en/5.2/ref/request-response">Django docs: Request and response objects (quick overview)</a>.<br>
 <span id="s2">2.</span> <code>path()</code>, route converters, captured kwargs, the <code>view</code> argument accepting a function / <code>as_view()</code> / <code>include()</code>: <a href="https://docs.djangoproject.com/en/5.2/ref/urls">Django docs: URL dispatcher (<code>django.urls</code> functions)</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -18,20 +18,13 @@
 <p>Follow one message through the ledger. A message is only ever in <em>one</em> of three places: the queue list, the unacked ledger, or gone.</p>
 
 <div class="figure">
-<pre><code>  1. BRPOP "celery"            ── pops the message OFF the list (destructive)
-                                  the queue list no longer has it
-  2. QoS.append(tag, msg)      ── record it as in-flight, in TWO keys:
-        HSET unacked  tag → dumps([raw_message, exchange, routing_key])
-        ZADD unacked_index  tag → time()         (delivery timestamp)
-  ───────────────────────────────────────────────────────────────────
-        ( task runs — Lesson 3 )
-  ───────────────────────────────────────────────────────────────────
-  3a. ack(tag)                 ── done: delete the copy, atomically
-        pipeline:  ZREM unacked_index tag   +   HDEL unacked tag
-        → message no longer exists ANYWHERE
-
-  3b. reject(tag, requeue=True) ── put it back:
-        restore_by_tag(tag, leftmost=True)  →  LPUSH back onto "celery"</code></pre>
+<pre class="mermaid">
+flowchart TB
+  b["1. BRPOP 'celery'<br/>pops the message OFF the list (destructive)"] --> q["2. QoS.append(tag, msg) — record in-flight in TWO keys<br/>HSET unacked · ZADD unacked_index tag→time()"]
+  q --> run["task runs (Lesson 3)"]
+  run -->|"3a. ack: done"| ack["ack(tag), atomically<br/>pipeline: ZREM unacked_index + HDEL unacked<br/>message no longer exists ANYWHERE"]
+  run -->|"3b. reject requeue=True"| rej["restore_by_tag(tag, leftmost=True)<br/>LPUSH back onto 'celery'"]
+</pre>
 <p class="cap">Default keys are literally <code>unacked</code> (a HASH) and <code>unacked_index</code> (a ZSET). The hash holds the message body; the sorted set holds <em>when</em> it was handed out.<sup><a href="#s2">2</a></sup></p>
 </div>
 
@@ -118,3 +111,6 @@
 <span id="s2">2.</span> <code>QoS.append</code> (HSET <code>unacked</code> + ZADD <code>unacked_index</code>), <code>ack</code> (pipelined ZREM+HDEL), <code>reject</code>/<code>restore_by_tag</code> (LPUSH to head); default key names <code>unacked</code> / <code>unacked_index</code> — <a href="https://github.com/celery/kombu/blob/main/kombu/transport/redis.py">kombu/transport/redis.py, <code>QoS</code> class</a>.<br>
 <span id="s3">3.</span> Default <code>task_acks_late=False</code> acknowledges before execution; late-ack acknowledges after completion — <a href="https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-acks-late">Celery docs: Configuration › task_acks_late</a>; <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html#Task.acks_late">Tasks › Task.acks_late</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -23,17 +23,16 @@
 <p>This is the algorithm the browser runs for one request, say the page contains <code>&lt;script src="https://cdn.example.com/app.js"&gt;</code>. Each step is below.</p>
 
 <div class="figure">
-<pre><code>1. parse            header → list of directives                once, when the response arrives
-2. a request happens  &lt;script src=…&gt;  →  request type "script"    the browser is about to fetch
-3. find governing     type "script" → look for script-src-elem   the ONE directive that applies
-   directive          → script-src → default-src
-4. fallback chain     if that directive is absent, walk the       absence ≠ "blocked"
-                      chain; if nothing matches AND no
-                      default-src → ALLOW (unrestricted)
-5. match source list  compare the request against each source     allowed if it matches ANY
-                      expression in the winning directive          expression
-6. allow / block      match → load it.  no match → block the       + fire a violation report
-                      fetch, and report the violation               and a SecurityPolicyViolationEvent</code></pre>
+<pre class="mermaid">
+flowchart TB
+  s1["1. parse<br/>header → list of directives<br/>(once, when the response arrives)"]
+  s2["2. a request happens<br/>a script element → request type 'script'"]
+  s3["3. find the governing directive<br/>script-src-elem → script-src → default-src<br/>(the ONE directive that applies)"]
+  s4["4. fallback chain<br/>directive absent? walk the chain<br/>nothing matches and no default-src → ALLOW"]
+  s5["5. match source list<br/>compare request to each source expression<br/>(allowed if it matches ANY)"]
+  s6["6. allow / block<br/>match → load it · no match → block + report"]
+  s1 --> s2 --> s3 --> s4 --> s5 --> s6
+</pre>
 <p class="cap">Steps 3–4 pick <em>which</em> rule applies. Step 5 applies it. Every subresource, every inline block, every form submission runs this same loop.</p>
 </div>
 
@@ -55,10 +54,16 @@
 <p>If the specific directive isn't present in the policy, the browser walks a <strong>fallback chain</strong>. For a <code>&lt;script&gt;</code> element that's <code>script-src-elem</code> → <code>script-src</code> → <code>default-src</code>. Whichever it finds first governs; <code>default-src</code> is the fallback of last resort.</p>
 
 <div class="figure">
-<pre><code>  &lt;script src&gt;      →  script-src-elem  ?  →  script-src  ?  →  default-src  ?  →  (nothing)
-                                                                                    │
-  found any of these?  ── yes ──▶  use it as the governing directive                 ▼
-                       ── no  ──────────────────────────────────────────────▶  ALLOW (no rule covers this)</code></pre>
+<pre class="mermaid">
+flowchart LR
+  req["a script request"] --> c1{"script-src-elem<br/>present?"}
+  c1 -->|yes| use["use it as the<br/>governing directive"]
+  c1 -->|no| c2{"script-src<br/>present?"}
+  c2 -->|yes| use
+  c2 -->|no| c3{"default-src<br/>present?"}
+  c3 -->|yes| use
+  c3 -->|no| allow["ALLOW<br/>(no rule covers this request)"]
+</pre>
 <p class="cap">If none of the chain is present, the request is <strong>allowed</strong> rather than blocked. CSP restricts only what a directive actually covers. A policy of just <code>script-src 'self'</code> says nothing about images: images load from anywhere. <code>default-src</code> is how you make the policy default-<em>deny</em> across types you didn't name explicitly.</p>
 </div>
 
@@ -124,3 +129,6 @@
 <span id="s1">1.</span> Per-fetch enforcement model, policy = list of directives, source-list matching, spec rebased on Fetch, <a href="https://www.w3.org/TR/CSP3/">W3C CSP Level 3</a>; readable overview, <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy">MDN: Content-Security-Policy</a> (directive categories &amp; fallback behaviour).<br>
 <span id="s2">2.</span> Violation reporting, <code>SecurityPolicyViolationEvent</code>, <code>report-uri</code>/<code>report-to</code> endpoints, <a href="https://www.w3.org/TR/CSP3/#reporting">W3C CSP Level 3 §Reporting</a>; <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP">MDN CSP guide</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

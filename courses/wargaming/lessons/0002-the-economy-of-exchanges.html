@@ -16,21 +16,19 @@
 <p>The principle is a purchase, a way to price it, two ways to misprice it, and a spending rule:</p>
 
 <div class="figure">
-<pre><code>  EVERY ACTION = a purchase
-     spends: models · points · CP · activations · board space · TIME (never refunded)
-        │
-        ▼
-  PRICE IT BY  exchange rate = score-difference gained  per  resource spent
-        │       (not by whether your models survived)
-        │
-        ├─ misprice A — the corpse count:  a unit that DIES can still WIN its trade
-        │               if what it bought (a turn, a position) beat what it cost
-        │
-        └─ misprice B — overpaying:  winning the fight but spending a premium
-                        resource on a cheap problem  →  its true cost is what it
-                        could have done elsewhere (opportunity cost)
-        ▼
-  SPENDING RULE: pay the minimum that gets the effect, guard the surplus</code></pre>
+<pre class="mermaid">
+flowchart TB
+  P["EVERY ACTION = a purchase<br/>spends: models, points, CP, activations,<br/>board space, TIME (never refunded)"]
+  R["PRICE IT BY exchange rate<br/>= score-difference gained per resource spent<br/>(not by whether your models survived)"]
+  A["Misprice A: the corpse count<br/>a unit that DIES can still WIN its trade<br/>if what it bought (a turn, a position)<br/>beat what it cost"]
+  B["Misprice B: overpaying<br/>winning the fight but spending a premium<br/>resource on a cheap problem, so its true<br/>cost is what it could have done elsewhere<br/>(opportunity cost)"]
+  S["SPENDING RULE<br/>pay the minimum that gets the effect,<br/>guard the surplus"]
+  P --> R
+  R --> A
+  R --> B
+  A --> S
+  B --> S
+</pre>
 <p class="cap">Both mispricings survive because the fight looks won in each. The scoreboard, and the resources you have left, tell a different story.</p>
 </div>
 
@@ -113,3 +111,6 @@
 <p class="src"><strong>Sources</strong><br>
 <span id="s1">1.</span> "There is no instance of a country having benefited from prolonged warfare"; "One cartload of the enemy's provisions is equivalent to twenty of one's own, and likewise a single picul of his provender is equivalent to twenty from one's own store" — Sun Tzu, <em>The Art of War</em>, Ch. II (Waging War), Lionel Giles translation: <a href="https://www.gutenberg.org/files/132/132-h/132-h.htm">Project Gutenberg #132</a> / <a href="https://classics.mit.edu/Tzu/artwar.html">MIT Internet Classics Archive</a>.
 </p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>
