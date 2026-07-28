@@ -1,0 +1,132 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8 — The design note</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 4 · Lesson 8 · Synthesis</p>
+<h1>The design note</h1>
+<p class="lede">Everything in this course happens before the first line of code or not at all. Ten minutes, plain English, no code: entities, invariants, lifecycle, boundaries, options, choice. Then one question at the end that decides whether the design is finished.</p>
+
+<h2>The concept</h2>
+
+<p>The seven preceding lessons are analysis tools. This one is the practice that puts them in front of the keyboard, which is the only place they pay. A design note is a short written artefact for any non-trivial ticket, written before code, in prose, deliberately without code.</p>
+
+<p>Prose is part of the mechanism rather than a formatting preference. Sentences make vagueness visible in a way a class diagram does not: a rule you cannot state as a sentence is a rule you have not decided yet, and it will get decided implicitly by whatever gets typed first.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  a["ENTITIES<br/>the real distinct things:<br/>concepts, not tables"] --> b["INVARIANTS<br/>what must always be true?"]
+  b --> c["LIFECYCLE<br/>which states, which<br/>legal transitions, which<br/>data is state-specific"]
+  c --> d["BOUNDARIES<br/>the ONLY thing allowed<br/>to change each state"]
+  d --> e["OPTIONS + CHOICE<br/>two or more approaches,<br/>tradeoffs, and the pick"]
+  e --> f["THE LAST QUESTION<br/>what makes the wrong<br/>thing IMPOSSIBLE,<br/>not merely unlikely?"]
+</pre>
+<p class="cap">The order is not arbitrary: each section constrains the next, and the last question audits all of them.</p>
+</div>
+
+<h3>Step 1 — Entities, as concepts rather than tables</h3>
+<p>List the real, distinct things in the problem. The parenthetical in the template does the work: <em>not tables, concepts</em>. Starting from tables imports whatever merges the schema already made, which is the merged-entity fault from <a href="0002-where-shape-shows-up.html">Lesson 2</a> arriving pre-installed.</p>
+
+<p>The check from <a href="0003-illegal-states-unrepresentable.html">Lesson 3</a> applies here: if two of your listed things are distinguished only by a flag, they are one entity in the code and two in the domain, and the rest of the note will generate fake rules about which fields are required when.</p>
+
+<h3>Step 2 — Invariants, as always-true sentences</h3>
+<p>Write what can never be violated, at any point. Each one as a sentence with no "when" and no "before", per <a href="0006-invariants-convention-vs-structure.html">Lesson 6</a>'s step 1. This section is short and it is the one that most often turns out to be empty on first pass and non-empty on second, which is worth taking as a signal rather than as a relief.</p>
+
+<h3>Step 3 — Lifecycle, if there is one</h3>
+<p>Which states can this thing be in, which transitions between them are legal, and which data is only valid or relevant in certain states. That third question is the one that produces a discriminated union directly: any field that is meaningful in some states and not others belongs to the states where it is meaningful.</p>
+
+<p>"If applicable" is real. Plenty of tickets have no lifecycle, and inventing one produces a state machine over something that was a value. The tell that there is no lifecycle: nothing in the ticket describes a transition, only a computation.</p>
+
+<h3>Step 4 — Boundaries, and the word "only"</h3>
+<p>What is the only thing allowed to change each piece of state, and where does one concept's responsibility end and the next begin. Writing "only" forces the question from <a href="0002-where-shape-shows-up.html">Lesson 2</a>: nominating an owner is easy, and the design content is whether anything enforces the nomination.</p>
+
+<p>This section is where the enforcement mechanism gets chosen, so it is where the door list from <a href="0006-invariants-convention-vs-structure.html">Lesson 6</a> gets written down. If an invariant from step 2 has no owner named here, it is currently enforced by convention, and the note has just told you that.</p>
+
+<h3>Step 5 — Options and the choice</h3>
+<p>At least two approaches, each with its tradeoffs, then the chosen one and why. Two matters: a note with one option is a justification rather than a design, and the second option is what makes the tradeoffs of the first visible.</p>
+
+<p>This is also where <a href="0007-correctness-vs-visibility.html">Lesson 7</a>'s two axes belong. If the options differ in how visible an enforcement is rather than in whether it holds, say so in the tradeoff line. Recording that the correctness question was settled and the visibility question was a deliberate choice is what stops the argument being re-litigated later as though it were about correctness.</p>
+
+<h3>Step 6 — The last question, which is the gate</h3>
+<p><em>What would make the wrong thing impossible, not just unlikely, here?</em></p>
+
+<p>This is the most important line in the template. If it cannot be answered, the design is not finished, even when it is completely clear how to start typing. Those two feelings are easy to confuse, because knowing how to start is what "ready" normally feels like.</p>
+
+<p>Answering it requires everything above: which wrong thing (from entities and invariants), which mechanism (from boundaries), and impossible rather than unlikely (the distinction from <a href="0001-two-kinds-of-correct.html">Lesson 1</a>). An honest answer of "nothing available makes it impossible, so we are enforcing it by convention and accepting that" is a legitimate answer. What is not legitimate is not noticing.</p>
+
+<div class="figure">
+<pre><code>the note's sections map to the course
+─────────────────────────────────────────────────────────────
+Entities        → L2 (entities axis), L3 (flag = two things merged)
+Invariants      → L2 (rules vs workflows), L6 (state as always-true)
+Lifecycle       → L3 (state per case; transitions in one place)
+Boundaries      → L2 (authority), L6 (doors), L5 (honest signatures)
+Options         → L7 (say which axis a tradeoff is on)
+Last question   → L1 (impossible vs unlikely: the whole point)
+</code></pre>
+<p class="cap">Every section is one of the earlier lessons, asked as a question you have to answer in writing.</p>
+</div>
+
+<h2>Practice: four exercises</h2>
+
+<p>The note is a habit, and habits need reps that are not the real thing. Four, in increasing cost:</p>
+
+<p><strong>1. Retro-fit a past ticket.</strong> Pick something already shipped and write the note <em>after the fact</em>, describing the code as it actually is. The gaps between what the note says and what the code does are the conceptual mismatches, measured rather than guessed. This is the highest-information exercise here because the answer is checkable.</p>
+
+<p><strong>2. The "what's impossible" audit.</strong> Pick any function touched this week. Ask what wrong input or combination <em>should</em> be impossible, then determine whether it actually is impossible or merely untested. Five minutes, and it is <a href="0005-kill-the-flag.html">Lesson 5</a>'s call-space enumeration applied without ceremony.</p>
+
+<p><strong>3. Ask a reviewer the model question.</strong> In the next review: "before you looked at my code, what shape did you expect this to have?" That surfaces someone else's pre-keyboard model directly, which is the one thing no book supplies, because it is normally discarded the moment the code is read.</p>
+
+<p><strong>4. Spot the flag.</strong> Find a boolean or string-enum flag in a codebase you work in that changes which fields are valid or required. Almost always <a href="0003-illegal-states-unrepresentable.html">Lesson 3</a> or <a href="0005-kill-the-flag.html">Lesson 5</a> in disguise. Sketch the discriminated-union version on paper, not in code, since the point is the reflex rather than the refactor.</p>
+
+<h2>Why it matters</h2>
+
+<p>Every lesson in this course describes a fix that is cheap before code and expensive after. Splitting an entity is a paragraph in a note and a migration in production. Adding a chokepoint is a design decision on day one and an audit of every existing call site on day two hundred. The note is the mechanism that moves the decision to the cheap side, and ten minutes is the whole cost.</p>
+
+<p>The compounding effect is the vocabulary. Written notes make shape arguable, and arguable is what shape needs, because these are judgment calls with real tradeoffs rather than rules to apply. A team that can say "that is an invariant, not a lifecycle rule" or "we agree on correctness and disagree on visibility" resolves in minutes what otherwise circles, and the notes are how the phrases get into circulation.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Shape isn't about how the code is written. It's about whether the code makes the domain's rules hard to break, by making the wrong thing structurally impossible instead of just discouraged. Ten minutes of prose before typing, and one question at the end: what would make the wrong thing impossible here, not just unlikely?
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is writing the note and stopping at "chosen approach and why", which feels finished because a decision got made. The last question is the gate, and skipping it is how a note becomes a record of a preference. The other trap is treating clarity about how to start typing as evidence the design is done. Those are different states that feel identical, and the last question is the only thing that reliably tells them apart.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Name the design note's sections in order, and say why the order matters.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Entities, invariants, lifecycle (if applicable), boundaries, options with tradeoffs, chosen approach and why, then the last question. Each constrains the next: entities determine which invariants are real rather than artefacts of a merge, invariants and lifecycle determine what boundaries must enforce, and the last question audits all of it.</p></details>
+  <p>② What is the last question, and what does it mean when you cannot answer it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">"What would make the wrong thing impossible, not just unlikely, here?" Not being able to answer means the design is not finished, even when it is entirely clear how to start typing. Knowing how to start is what "ready" normally feels like, which is exactly why the question has to be asked explicitly.</p></details>
+  <p>③ Which exercise gives checkable feedback rather than an opinion, and why?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Retro-fitting the note to something already shipped. The code exists, so the gaps between what the note says the design should be and what the code actually does are measurable rather than hypothetical. Each gap is a conceptual mismatch that was made without being noticed.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Start the reading path: Ousterhout, <em>A Philosophy of Software Design</em>. Short, closest direct match to this whole course, and Chs. 2 and 4 are cited throughout it. Then Vernon, <em>Domain-Driven Design Distilled</em> for entities and invariants as formal vocabulary; Wlaschin, <em>Domain Modeling Made Functional</em> for the same ideas via types; Normand, <em>Grokking Simplicity</em> for the "what varies versus what is stable" muscle. The full path with links is in <a href="../RESOURCES.md">RESOURCES.md</a>.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> The most useful thing to bring next is a real design note on a real ticket, especially one where the last question has no good answer, because that is where the interesting tradeoffs live. Next: the interleaved quiz, which drills all eight cold. Then the printable template, kept next to the keyboard.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0007-correctness-vs-visibility.html">← Lesson 7</a></span>
+  <span><a href="../reference/design-note.html">Template ↗</a></span>
+  <span><a href="0009-interleaved-review.html"><em>Next: Lesson 9 — Interleaved review →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+The design-note template, the four exercises, the reading path, and the one-line summary quoted in the key line are from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.<br>
+Section-by-section grounding: Ousterhout, <em>A Philosophy of Software Design</em>, Chs. 2 and 4; Vernon, <em>Domain-Driven Design Distilled</em>, Ch. 5; the primary sources cited in <a href="0003-illegal-states-unrepresentable.html">L3</a> through <a href="0007-correctness-vs-visibility.html">L7</a>.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

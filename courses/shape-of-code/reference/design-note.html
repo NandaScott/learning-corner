@@ -1,0 +1,172 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — Design Note Template &amp; Shape Smells</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Reference</p>
+<h1>Design note template</h1>
+<p class="lede">The compressed payoff of the eight lessons. Ten minutes, plain English, no code yet, before writing anything on a non-trivial ticket. Print it. The table at the bottom is the smell list for when the note is already written and something still feels wrong.</p>
+
+<h2>The template</h2>
+
+<div class="figure">
+<pre><code>### Design note: [ticket/feature name]
+
+**Entities involved:**
+- What are the real, distinct things here? (Not tables — concepts.)
+
+**Invariants (must always be true):**
+- What rules can never be violated, at any point?
+
+**Lifecycle (if applicable):**
+- What states can this thing be in?
+- What are the legal transitions between them?
+- What data is only valid/relevant in certain states?
+
+**Boundaries:**
+- What's the only thing allowed to change each piece of state?
+- Where does one concept's responsibility end and the next begin?
+
+**Approach considered:**
+1. [Option A] — tradeoffs:
+2. [Option B] — tradeoffs:
+
+**Chosen approach and why:**
+
+**What would make the wrong thing impossible (not just unlikely) here?**
+</code></pre>
+<p class="cap">Copy this verbatim into the ticket or a scratch file. The last line is the gate.</p>
+</div>
+
+<h2>What each section is asking</h2>
+
+<table>
+  <tr><th>Section</th><th>What it is really asking</th><th>Fails when</th></tr>
+  <tr>
+    <td><strong>Entities</strong></td>
+    <td>Do the code's things match the domain's things? Start from concepts, because starting from tables imports whatever merges the schema already made.</td>
+    <td>Two listed things are distinguished only by a flag. That is one entity in the code and two in the domain. <a href="../lessons/0002-where-shape-shows-up.html">L2</a>, <a href="../lessons/0003-illegal-states-unrepresentable.html">L3</a></td>
+  </tr>
+  <tr>
+    <td><strong>Invariants</strong></td>
+    <td>What must be true in every state, at every moment, including in code written next year by someone who never heard the rule.</td>
+    <td>The sentence contains a "when", a "before", or a verb aimed at a developer. That is an instruction, so it is already a convention. <a href="../lessons/0006-invariants-convention-vs-structure.html">L6</a></td>
+  </tr>
+  <tr>
+    <td><strong>Lifecycle</strong></td>
+    <td>Which states, which legal transitions, and which data is valid in only some states. That last question hands you a discriminated union directly.</td>
+    <td>You invent a state machine over something that was a value. The tell for no lifecycle: the ticket describes a computation, not a transition. <a href="../lessons/0003-illegal-states-unrepresentable.html">L3</a></td>
+  </tr>
+  <tr>
+    <td><strong>Boundaries</strong></td>
+    <td>What is the <em>only</em> thing allowed to change each piece of state, and what enforces that. Write the door list here.</td>
+    <td>An invariant from the section above has no owner named here. It is currently enforced by convention, and the note just said so. <a href="../lessons/0002-where-shape-shows-up.html">L2</a>, <a href="../lessons/0006-invariants-convention-vs-structure.html">L6</a></td>
+  </tr>
+  <tr>
+    <td><strong>Options</strong></td>
+    <td>At least two approaches with tradeoffs. The second is what makes the first one's tradeoffs visible.</td>
+    <td>One option, which makes the note a justification rather than a design. Also: a tradeoff about visibility written as though it were about correctness. <a href="../lessons/0007-correctness-vs-visibility.html">L7</a></td>
+  </tr>
+  <tr>
+    <td><strong>The last question</strong></td>
+    <td>What makes the wrong thing impossible rather than unlikely. Requires every section above: which wrong thing, by which mechanism, and impossible or merely discouraged.</td>
+    <td>It cannot be answered. The design is unfinished, however clear it is how to start typing. "Nothing makes it impossible, so we accept a convention" is a legitimate answer; not noticing is not. <a href="../lessons/0001-two-kinds-of-correct.html">L1</a>, <a href="../lessons/0008-the-design-note.html">L8</a></td>
+  </tr>
+</table>
+
+<h2>Shape smells: tell, diagnosis, move</h2>
+
+<p>For code that already exists, or a note that is written and still feels wrong. Each row is a tell you can spot in under a minute.</p>
+
+<table>
+  <tr><th>Tell</th><th>Diagnosis → move</th></tr>
+
+  <tr>
+    <td>A field's meaning depends on another field's value. A record with a <code>kind</code> or <code>status</code> plus optional fields.</td>
+    <td>Two entities merged behind a flag. Count what the type permits against what the domain allows, then split into one case per state, each carrying only its own fields. Keep transition rules in one function. <a href="../lessons/0003-illegal-states-unrepresentable.html">L3</a></td>
+  </tr>
+
+  <tr>
+    <td>A parameter is optional in the signature and mandatory in one branch of the body.</td>
+    <td>A flag that changes what the rest of the signature means. Split into one function per branch, each taking exactly its own inputs. Keep the mechanism shared underneath; the target is the branch. <a href="../lessons/0005-kill-the-flag.html">L5</a></td>
+  </tr>
+
+  <tr>
+    <td>A check returns <code>None</code>, <code>void</code>, or <code>bool</code>, and the same check reappears downstream.</td>
+    <td>Validation discarding its own proof. Name the fact it proved, return a frozen type that carries it, and parse where the raw input actually enters. Then delete the downstream re-checks. <a href="../lessons/0004-parse-dont-validate.html">L4</a></td>
+  </tr>
+
+  <tr>
+    <td>A service function takes <code>dict</code> and re-checks fields a serializer already validated.</td>
+    <td>The DRF dict gap: <code>.validated_data</code> is a plain mapping, so the proof stopped at the view. Build a frozen dataclass from it at the boundary and let inner layers take that type. <a href="../lessons/0004-parse-dont-validate.html">L4</a></td>
+  </tr>
+
+  <tr>
+    <td>Documentation or a review comment says "always remember to X first."</td>
+    <td>An invariant stored in people's heads. State it as an always-true sentence, enumerate the entry points, wrap each one, then audit for the door you forgot. <a href="../lessons/0006-invariants-convention-vs-structure.html">L6</a></td>
+  </tr>
+
+  <tr>
+    <td>The correct behaviour lives in one shared helper that everyone is supposed to call.</td>
+    <td>Convention with better ergonomics. Enforcement is beside the path, not on it. Move it to the chokepoint: middleware for HTTP, an app-wide task base for workers. <a href="../lessons/0006-invariants-convention-vs-structure.html">L6</a></td>
+  </tr>
+
+  <tr>
+    <td>Several unrelated functions can each mutate the same piece of state.</td>
+    <td>Diffuse authority, so "how did this become wrong" has no single answer. Narrow the aperture to one owner through which all changes pass, which is also the only place a rule check can live. <a href="../lessons/0002-where-shape-shows-up.html">L2</a></td>
+  </tr>
+
+  <tr>
+    <td>Every new edge case arrives as a surprise and is fixed by another branch elsewhere.</td>
+    <td>The patch test failing. The structure does not distinguish cases the domain distinguishes. Find the missing distinction and put it in the type or the signature, so the next fix falls out. <a href="../lessons/0001-two-kinds-of-correct.html">L1</a></td>
+  </tr>
+
+  <tr>
+    <td>Adding a new state or kind compiles, passes tests, and touches nothing.</td>
+    <td>No exhaustiveness. The consumers that must decide are silent until production. Switch over a union so the compiler hands you the worklist before merge. <a href="../lessons/0003-illegal-states-unrepresentable.html">L3</a></td>
+  </tr>
+
+  <tr>
+    <td>A rule is enforced structurally, and a reviewer objects that they cannot see it.</td>
+    <td>A visibility objection, not a correctness one. Name the split out loud, then buy visibility with a loud name, an invariant test, and docs at the chokepoint. Never a redundant call-site check. <a href="../lessons/0007-correctness-vs-visibility.html">L7</a></td>
+  </tr>
+
+  <tr>
+    <td>A rule is enforced twice, once at the chokepoint and once "for clarity" at each call site.</td>
+    <td>Signal inversion. The call-site check becomes the norm, so safe paths look wrong and bypassed paths look safe. Keep enforcement in exactly one place and buy visibility elsewhere. <a href="../lessons/0007-correctness-vs-visibility.html">L7</a></td>
+  </tr>
+
+  <tr>
+    <td>A test asserts that the middleware calls the enforcement, not that the rule holds.</td>
+    <td>Testing the mechanism. Rewrite it to enter through each door and assert the invariant, so it fails when a new unprotected door appears. <a href="../lessons/0006-invariants-convention-vs-structure.html">L6</a></td>
+  </tr>
+</table>
+
+<h2>Four practice reps</h2>
+
+<table>
+  <tr><th>#</th><th>Exercise</th><th>Why</th></tr>
+  <tr><td><strong>1</strong></td><td>Retro-fit the note to something already shipped, describing the code as it actually is.</td><td>The gaps between note and code are the conceptual mismatches, measured rather than guessed. The only rep here with a checkable answer.</td></tr>
+  <tr><td><strong>2</strong></td><td>Pick a function touched this week. What wrong input or combination <em>should</em> be impossible, and is it, or is it merely untested?</td><td>Five minutes, no ceremony. It is the call-space enumeration applied on the spot.</td></tr>
+  <tr><td><strong>3</strong></td><td>Ask a reviewer: "before you looked at my code, what shape did you expect this to have?"</td><td>Someone else's pre-keyboard model, which is normally discarded the moment the code is read. No book supplies this.</td></tr>
+  <tr><td><strong>4</strong></td><td>Find a flag in a codebase you work in that changes which fields are valid or required. Sketch the union version on paper.</td><td>Paper, not code. The point is the reflex, not the refactor.</td></tr>
+</table>
+
+<div class="callout interview">
+  <span class="tag">The one-line summary</span>
+  Shape isn't about how the code is written. It's about whether the code makes the domain's rules hard to break, by making the wrong thing structurally impossible instead of just discouraged.
+</div>
+
+<div class="ask-teacher">
+  <strong>Using this.</strong> Bring a filled-in note, especially one where the last question has no good answer. That is where the interesting tradeoffs live, and it is the fastest way to sharpen the habit.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="glossary.html">Glossary ↗</a></span>
+  <span><a href="../lessons/0008-the-design-note.html">Lesson 8 ↗</a></span>
+  <span><a href="../lessons/0009-interleaved-review.html">Quiz ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+The template, the four exercises, and the one-line summary are reproduced from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.<br>
+The smell table compresses Lessons 1 through 7, each grounded in the primary source cited in that lesson. Full citations in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>

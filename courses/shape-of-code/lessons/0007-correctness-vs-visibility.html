@@ -1,0 +1,129 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 7 — Correctness and visibility are two axes</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 4 · Lesson 7</p>
+<h1>Correctness and visibility are two axes</h1>
+<p class="lede">Structural enforcement is invisible at the call site: read a task's code and the protection is nowhere on the page. That is a real cost, and it is a discoverability cost, not a correctness one. Design arguments stall on the two being treated as one.</p>
+
+<h2>The concept</h2>
+
+<p><a href="0006-invariants-convention-vs-structure.html">Lesson 6</a> moved an invariant from memory into structure using middleware and a task base class. Both enforce correctly. Both are also invisible where the code runs: open the task, read every line, and nothing mentions the search path. The guarantee is real and it is somewhere else.</p>
+
+<p>The objection "I cannot see the protection happening" is legitimate and it is about a different property. Two designs can both correctly enforce an invariant and still reasonably disagree about how visible the enforcement should be. Holding those apart is the single most useful move available in a stalled design discussion.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  a["1. two axes: it holds<br/>vs a reader can see it"] --> b["2. implicit enforcement:<br/>correct, and invisible<br/>at the call site"]
+  b --> c["3. say which axis<br/>you are arguing on"]
+  c --> d["4. buy visibility, keep<br/>the structure"]
+  d --> e["5. accept the residue:<br/>modules hide on purpose"]
+</pre>
+<p class="cap">Step 3 is the one that unsticks arguments. Steps 4 and 5 are what to do afterwards.</p>
+</div>
+
+<h3>Step 1 — Two questions, asked separately</h3>
+<p>The correctness question: <em>can the invariant be violated by code someone writes later?</em> This has a yes or no answer, and <a href="0001-two-kinds-of-correct.html">Lesson 1</a>'s one question is how it gets asked.</p>
+
+<p>The visibility question: <em>can a reader of this code tell that the invariant is being enforced?</em> This is a matter of degree, it trades against other things, and no amount of it changes the answer to the first question.</p>
+
+<p>Both matter. They are not ranked against each other in general, only in specific cases, and mixing them produces the two symmetric mistakes in the next step.</p>
+
+<h3>Step 2 — The two symmetric mistakes</h3>
+<p>Treating invisibility as incorrectness: "the task does not reset the search path, so the task is wrong." The task is not wrong. It is protected by something the reader cannot see, and the complaint is that they cannot see it. Acting on this mistake usually means adding a redundant per-call-site reset, which restores the convention this design existed to remove, and now the codebase has both.</p>
+
+<p>Treating structural correctness as the end of the conversation: "it cannot be violated, so there is nothing to discuss." A guarantee nobody can find is a guarantee people work around. The reader who cannot see why a query is safe will either add their own defensive reset, or refactor in a way that steps outside the chokepoint, because nothing told them a chokepoint existed. Correctness that is undiscoverable erodes, not because the mechanism fails but because people build around it.</p>
+
+<div class="figure">
+<pre><code>              can a reader see the enforcement?
+              ─────────────────────────────────
+              visible                invisible
+        ┌────────────────────┬────────────────────┐
+correct │ explicit decorator │ middleware /       │
+        │ at each def; loud  │ app-wide task base │
+        │ names; asserted    │ ← where Lesson 6   │
+        │ in a test          │   landed           │
+        ├────────────────────┼────────────────────┤
+  not   │ a documented       │ "everyone must     │
+correct │ convention + a     │ remember to..."    │
+        │ lint rule          │                    │
+        └────────────────────┴────────────────────┘
+</code></pre>
+<p class="cap">Two axes, four quadrants. Most design arguments are two people pointing at different axes.</p>
+</div>
+
+<h3>Step 3 — Name the split out loud</h3>
+<p>The move: state which axis each side is on. "We agree the invariant must be structurally enforced. We are disagreeing about how visible the enforcement should be at the call site." Naming it that way often unsticks an argument that had been circling, because it converts one unresolvable dispute into two tractable ones, each with a different kind of evidence behind it.</p>
+
+<p>It also stops the worse outcome, which is the correctness question being decided by whoever cares more about visibility. Once separated, the correctness question can be settled first, on its own terms, and visibility becomes a design task on top of a settled guarantee rather than an argument against it.</p>
+
+<h3>Step 4 — Buy visibility without giving up structure</h3>
+<p>Visibility is not all-or-nothing, and it is usually cheap once the axes are separate. Options, roughly in order of cost:</p>
+
+<p><strong>Name the thing loudly.</strong> A base class called <code>TenantScopedTask</code> puts the guarantee in the one line every task author does write. This is close to free and it is the option most often skipped.</p>
+
+<p><strong>Make it explicit at the definition, not the call.</strong> A decorator on the function is visible where the function is defined, while still being on the path. This costs the app-wide default: something must ensure it is applied, which trades a little correctness for visibility, and that trade should be made knowingly rather than by accident.</p>
+
+<p><strong>Write the invariant test.</strong> <a href="0006-invariants-convention-vs-structure.html">Lesson 6</a>'s step 5, read as documentation: a test named for the rule, entering through each door, is the most discoverable form the rule can take, because it is the artefact a developer finds when they change the behaviour.</p>
+
+<p><strong>Document at the chokepoint, and point to it.</strong> One explanation where the enforcement lives, referenced from the base class docstring, so a reader who does ask "how is this safe" finds the answer in one hop rather than a search.</p>
+
+<p>What none of these do is add a redundant check at the call site. That is the one option that pays for visibility with the correctness property that was the point.</p>
+
+<h3>Step 5 — Accept the residue: hiding is what modules are for</h3>
+<p>Some invisibility is not a defect to be fixed. Ousterhout's argument for deep modules is that the best modules offer a lot of functionality through a simple interface, and that a shallow module with a complex interface and little behind it fails precisely because it does not hide much.<sup><a href="#s1">1</a></sup> Information hiding means a caller does not see the mechanism, which is the same sentence as "the enforcement is invisible at the call site", said approvingly.</p>
+
+<p>So the goal is not maximum visibility. It is that the reader who needs to know can find out, cheaply, without every reader paying for that access on every line. A chokepoint with a loud name, an invariant test, and one page of explanation is a deep module doing its job. A chokepoint nobody can locate is the same mechanism with the discoverability work skipped.</p>
+
+<h2>Why it matters</h2>
+
+<p>Conflating the axes is what makes shape arguments feel like personality clashes. One person is answering "can this break" and the other is answering "can I tell what is going on", both are right about their own question, and the discussion has no way to converge because nobody has said which question is being answered. Separating them costs one sentence.</p>
+
+<p>The asymmetry is worth keeping in mind. Correctness is binary and load-bearing: get it wrong and the invariant fails. Visibility is a gradient and it is about the cost of future work: get it wrong and people are slower and eventually route around the mechanism. Settle correctness first, then spend on visibility, and do not trade the first for the second by accident.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  "Can this be violated?" and "can a reader see that it cannot?" are different questions with different kinds of answer. Settle correctness first, then buy visibility with loud names, an invariant test, and one page at the chokepoint. Never buy it with a redundant check at the call site.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is answering the visibility objection by adding an explicit reset at each call site "for clarity", keeping the middleware as a safety net. That reads as belt and braces and it reinstates the convention the structure replaced: the call-site reset is now the thing people learn to do, so a path that omits it looks wrong even though it is safe, and a path that includes it looks safe even where the chokepoint was bypassed. The signal inverts. Buy visibility with names, tests, and documentation, and leave the enforcement in exactly one place.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① State the two axes as questions, and say what kind of answer each has.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Correctness: can the invariant be violated by code written later? Binary, yes or no. Visibility: can a reader of this code tell the invariant is enforced? A matter of degree that trades against other things. No amount of the second changes the first.</p></details>
+  <p>② A colleague says the task is wrong because it does not reset the search path. What is the reply, and what should not be done?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The task is protected by the app-wide base class, so the invariant holds; the complaint is that the enforcement is not visible at the call site, which is discoverability. Name the split out loud, then buy visibility with a loud base-class name, an invariant test, and documentation at the chokepoint. Do not add a per-call-site reset, which reinstates the convention and inverts the signal about which paths are safe.</p></details>
+  <p>③ Why is maximum visibility not the goal?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because hiding mechanism is what modules are for. Ousterhout's deep modules offer a lot of behaviour through a simple interface, and a caller not seeing the mechanism is information hiding working as intended. The goal is that a reader who needs to know can find out cheaply, not that every reader sees everything on every line.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Ousterhout, <em>A Philosophy of Software Design</em>, Ch. 4 "Modules Should Be Deep". Read it for the deep-versus-shallow distinction and for the point that interface complexity is what a caller must know. It is the strongest available argument that the invisibility in step 5 is a feature, which is what makes it useful for calibrating how much of step 4 to actually buy.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Worth bringing: a live disagreement where the axes are tangled, since the sorting is faster with someone else doing it. Next, and last: the ten-minute written design note that puts all of this in front of the keyboard instead of behind it, and the single question at the end of it that decides whether the design is finished.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0006-invariants-convention-vs-structure.html">← Lesson 6</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0008-the-design-note.html"><em>Next: Lesson 8 — The design note →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Ousterhout, <em>A Philosophy of Software Design</em>, Ch. 4 "Modules Should Be Deep": the best modules provide a lot of functionality through a simple interface; a shallow module has a relatively complex interface and not much functionality, so it hides little complexity.<br>
+The correctness / visibility split, and the "name the axis out loud" move, are from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -1,0 +1,138 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3 — Make illegal states unrepresentable</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 2 · Lesson 3</p>
+<h1>Make illegal states unrepresentable</h1>
+<p class="lede">A status field plus a set of optional fields quietly permits every combination of the two, most of which are nonsense. Splitting one type into one case per state removes the nonsense from the language, not from the code review.</p>
+
+<h2>The concept</h2>
+
+<p>This is the entities axis from <a href="0002-where-shape-shows-up.html">Lesson 2</a>, and the phrase to say out loud in a design discussion. Yaron Minsky coined it for OCaml at Jane Street, in his Effective ML guest lectures and the Jane Street writing around them.<sup><a href="#s1">1</a></sup> Say "making illegal states unrepresentable" and most senior engineers will know exactly what you mean, which is a large part of why it is worth knowing the phrase and not merely the idea.</p>
+
+<p>The principle: model the data so that values which make no sense in the domain cannot be constructed. Not rejected at runtime. Not caught by a test. Not expressible.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  a["1. spot the flag plus<br/>optional-field encoding"] --> b["2. count what the type<br/>permits vs the domain"]
+  b --> c["3. split: one case per<br/>state, own fields only"]
+  c --> d["4. narrowing hands each<br/>case its own fields"]
+  d --> e["5. transition rules in<br/>ONE function, not in<br/>every consumer"]
+</pre>
+<p class="cap">The five steps. Step 2 is the one that turns a hunch into an argument.</p>
+</div>
+
+<h3>Step 1 — Spot the flag-plus-optionals encoding</h3>
+<p>The wrong shape is one entity, a flag, and scattered trust:</p>
+
+<div class="figure">
+<pre><code>type Order = {
+  status: string;                 // "pending" | "paid" | "shipped" | "cancelled"
+  trackingNumber?: string;
+};
+
+// somewhere, someone has to remember:
+if (order.status === 'shipped' &amp;&amp; !order.trackingNumber) { /* uh oh */ }
+</code></pre>
+<p class="cap">The comment is the specification. That is the problem, not the style.</p>
+</div>
+
+<p>The TypeScript handbook names this exact failure, using a shape with <code>kind: "circle" | "square"</code> and optional <code>radius</code> and <code>sideLength</code>: "The problem with this encoding of <code>Shape</code> is that the type-checker doesn't have any way to know whether or not <code>radius</code> or <code>sideLength</code> are present based on the <code>kind</code> property."<sup><a href="#s2">2</a></sup> Even after checking <code>kind === "circle"</code>, reading <code>radius</code> is still an error, because nothing connected the two fields.</p>
+
+<h3>Step 2 — Count what the type permits</h3>
+<p>This is the step that converts taste into arithmetic, and it is the one to do out loud in a review. The <code>Order</code> above has a <code>status: string</code>, so it permits every string, and an independent optional tracking number, so it permits present or absent. The type therefore describes an unbounded set of orders, of which exactly four are legal states, and among those four the tracking number is required in one and meaningless in three.</p>
+
+<p>Every combination the type permits and the domain forbids is a bug someone has to be prevented from writing, by hand, forever. That count is the cost of the encoding, and it is not a rhetorical point: it is the number of "uh oh" comments the codebase will eventually need.</p>
+
+<h3>Step 3 — Split into one case per state</h3>
+<p>Give each state its own case, carrying exactly the fields that state actually has:</p>
+
+<div class="figure">
+<pre><code>type Order =
+  | { status: 'pending' }
+  | { status: 'paid';      paidAt: Date }
+  | { status: 'shipped';   trackingNumber: string }
+  | { status: 'cancelled'; reason: string };
+</code></pre>
+<p class="cap">Four cases, four legal states. The illegal combinations are no longer values that can be built.</p>
+</div>
+
+<p>Note what left the type. There is no longer any way to have a shipped order without a tracking number, because <code>trackingNumber</code> does not exist outside the shipped case. There is no longer a cancelled order without a reason. The "uh oh" check has nothing left to check, so it can be deleted rather than maintained.</p>
+
+<h3>Step 4 — Narrowing hands each consumer only its own fields</h3>
+<p>The handbook's definition: "When every type in a union contains a common property with literal types, TypeScript considers that to be a <em>discriminated union</em>, and can narrow out the members of the union."<sup><a href="#s2">2</a></sup> Checking <code>order.status === 'shipped'</code> narrows the type to that case, and only inside that branch is <code>trackingNumber</code> reachable. Outside it, reading the field is a compile error rather than <code>undefined</code> at runtime.</p>
+
+<p>The second benefit is exhaustiveness. A consumer that switches on <code>status</code> can be made to fail compilation when a fifth state is added, so the new state surfaces as a list of every place that must decide about it. Compare the flag encoding, where adding a state changes nothing and is discovered in production.</p>
+
+<div class="figure">
+<pre><code>flag encoding                        discriminated union
+──────────────────────────           ──────────────────────────
+add status 'refunded'                add case { status:'refunded'; ... }
+  → compiles                           → every exhaustive switch
+  → all tests pass                       fails to compile
+  → nothing tells you which           → the compiler hands you the
+    of 30 call sites care                exact list of sites to decide
+  → found in production                 → decided before merge
+</code></pre>
+<p class="cap">The union turns "add a state" from a search problem into a worklist.</p>
+</div>
+
+<h3>Step 5 — Keep the transition knowledge, in one place</h3>
+<p>The union removes illegal <em>states</em>. It does not by itself remove illegal <em>transitions</em>: nothing above prevents building a shipped order directly from a cancelled one. Something still has to know the legal order of states, pending to paid to shipped, and that is fine. It is real domain knowledge and it has to live somewhere.</p>
+
+<p>The design requirement is that it live in <em>one</em> place, a transition function that is the only way orders change state, rather than smeared across every function that happens to touch an order. That is the boundaries axis from <a href="0002-where-shape-shows-up.html">Lesson 2</a> doing its job: concentrating authority is what makes a single legal-transition check possible.</p>
+
+<h2>Why it matters</h2>
+
+<p>The flag encoding and the union encoding are equally functionally correct on the day they are written. They diverge on everything after that day. Under the flag, each new consumer must independently rediscover which field combinations are real, and each new state is invisible to the compiler, so correctness is maintained by a distributed act of remembering. Under the union, the compiler holds the domain rule and reports every site that needs to change, so correctness survives people leaving.</p>
+
+<p>Applying <a href="0001-two-kinds-of-correct.html">Lesson 1</a>'s question to the flag version: the rule is "a shipped order has a tracking number", and yes, anyone can violate it by writing new code elsewhere, and nothing stops them. Applying it to the union: the rule is the same, and no, they cannot, because the value does not exist. Same behaviour today, different structure, and the difference is entirely about code that has not been written yet.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A flag plus optional fields permits every combination of the two, and the domain allows a handful. Split into one case per state, each carrying only its own fields, and the illegal combinations stop being values that can be built. Keep transition rules in one function, not in every consumer.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is keeping the flag encoding and adding a runtime guard or a validation function that rejects the bad combinations. That is strictly better than nothing and it is still convention: the illegal value remains constructible, so the guard has to be called everywhere, forever, by everyone. The distinction is whether the wrong thing is <em>rejected</em> or <em>unrepresentable</em>. A second trap in the other direction: assuming the union also handles transitions. It does not, and a union with transition logic copied into six consumers has traded one shape problem for another.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What is the argument that turns "I dislike this type" into something a colleague can check?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Count what the type permits against what the domain allows. A <code>status: string</code> with an independent optional field permits unboundedly many values, of which four are legal states, with the optional field required in one and meaningless in the rest. Each permitted-but-illegal combination is a bug someone must be prevented from writing by hand.</p></details>
+  <p>② A discriminated union is in place. What still has to be designed, and where does it go?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Legal transitions. The union removes illegal states, not illegal state changes. Transition knowledge is real domain knowledge and belongs in one transition function that is the only way the state changes, not copied into every consumer that touches the object.</p></details>
+  <p>③ Adding a fifth state to the flag version compiles and passes tests. Why is that the problem rather than the point?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because the consumers that need to decide about the new state are silent. With an exhaustive switch over a union, adding a case fails compilation at every site that must choose, which converts "find the thirty places" into a worklist handed to you before merge. Under the flag it is found in production.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  The TypeScript Handbook, "Narrowing", section on discriminated unions: <a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html">typescriptlang.org/docs/handbook/2/narrowing.html</a>. It walks the exact optional-fields-to-union transformation with the compiler's errors shown at each stage, which is worth more than an abstract statement of the principle. For the idea in its home language, Minsky's Jane Street post; for a version that reads as domain modelling rather than type theory, Wlaschin's "Designing with types: Making illegal states unrepresentable".
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Python has no discriminated union with the same enforcement, and the honest translation is worth asking about: what <code>Literal</code>, <code>Union</code>, and a type checker actually buy, and where a frozen dataclass plus a constructor has to take over. Next: the boundary where loose input becomes trusted data, and why validating it is not the same as parsing it.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-where-shape-shows-up.html">← Lesson 2</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-parse-dont-validate.html"><em>Next: Lesson 4 — Parse, don't validate →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Minsky, "Effective ML revisited", Jane Street blog, 9 March 2011, which carries a "Make illegal states unrepresentable" section: <a href="https://blog.janestreet.com/effective-ml-revisited/">blog.janestreet.com/effective-ml-revisited</a>. The slogan comes from his Effective ML guest lectures at Harvard.<br>
+<span id="s2">2.</span> TypeScript Handbook, "Narrowing": <a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html">typescriptlang.org/docs/handbook/2/narrowing.html</a>. Quotations verified against the page, including the <code>Shape</code> / <code>kind</code> example and the definition of a discriminated union.<br>
+Also: Wlaschin, "Designing with types: Making illegal states unrepresentable", <a href="https://fsharpforfunandprofit.com/posts/designing-with-types-making-illegal-states-unrepresentable/">fsharpforfunandprofit.com</a>.<br>
+The order-status example is the classic case as stated in this repo's source notes, from a real design conversation. Identifying details removed for this public repo.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

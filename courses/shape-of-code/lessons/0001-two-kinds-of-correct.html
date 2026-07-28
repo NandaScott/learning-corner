@@ -1,0 +1,112 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — Two kinds of correct</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 1 · Lesson 1</p>
+<h1>Two kinds of correct</h1>
+<p class="lede">Code can pass every test and still be built wrong. "Produces the right output" and "makes the wrong output hard to produce" are different properties, and only one of them shows up in a test run.</p>
+
+<h2>The concept</h2>
+
+<p>There are two kinds of correct, and conflating them is what lets a structural problem ship.</p>
+
+<p><strong>Functionally correct</strong> means the code produces the right output for the inputs it was given. It passes the tests. It does what the ticket asked. This is a claim about behaviour on the inputs someone thought to write down.</p>
+
+<p><strong>Conceptually correct</strong> means the code's <em>structure</em> matches the real structure of the problem, so that wrong states, wrong combinations, and rule violations are hard or impossible to create by accident. Not avoided because everyone remembers to avoid them. Not caught by a test that happens to exist. Impossible, or at least loudly difficult, to write in the first place.</p>
+
+<p>The second is a claim about the code that does not exist yet. That is why no test can report on it. A test exercises what was written; conceptual correctness is about what a future colleague, or a future you, will be permitted to write next Tuesday without anything objecting.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  t["ticket says: do X"] --> f["code does X, tests pass<br/>= functionally correct"]
+  f --> q{"can later code, written<br/>elsewhere, break the<br/>rule this code guards?"}
+  q -->|"no, structure forbids it"| ok["conceptually correct"]
+  q -->|"yes, only convention<br/>stops it"| bad["shape problem<br/>ships green"]
+</pre>
+<p class="cap">Both branches pass the test suite. Only the question tells them apart.</p>
+</div>
+
+<h3>Step 1 — Functional correctness is a claim about tested inputs</h3>
+<p>A green suite says: for these inputs, this output. It is a real and necessary claim, and it is narrower than it feels. The suite cannot fail on a combination nobody constructed, and it cannot fail on a code path nobody has written. Working code is therefore evidence about the present and silence about the future.</p>
+
+<h3>Step 2 — Conceptual correctness is a claim about what can be written at all</h3>
+<p>Shift the question from "what does this code do" to "what does this code permit." A function taking a status string permits every string. A record with an optional field permits the combination where the field is absent and the state requires it. A rule enforced by a comment permits every caller who does not read the comment. In each case the permitted-but-wrong thing has not happened yet, which is exactly why nothing is red.</p>
+
+<h3>Step 3 — The tell is the patch test</h3>
+<p>Functionally correct code that is conceptually wrong has a signature failure mode. It works today, and every new edge case arrives as a surprise. The fix is a bolt-on: another <code>if</code>, another flag, another special case, in another place. What does not happen is the fix falling naturally out of the existing structure.</p>
+
+<p>Ousterhout catalogues this under the symptoms of complexity: <em>change amplification</em>, where a simple change requires edits in many places, and <em>unknown unknowns</em>, where there is something you need to know and no way to discover what it is until a bug appears after your change.<sup><a href="#s1">1</a></sup> A wrong shape produces both, and produces them steadily rather than all at once, which is why it is easy to absorb as normal.</p>
+
+<div class="figure">
+<pre><code>right shape                          wrong shape
+─────────────────────────            ─────────────────────────
+new edge case arrives                new edge case arrives
+  → the structure already            → nothing in the structure
+    distinguishes the cases            distinguishes the cases
+  → fix falls out: fill in           → fix bolts on: another if,
+    the case that was always           another flag, another
+    there, unhandled                   place to remember
+  → one place changes                → n places change, and you
+                                       find n-1 of them
+</code></pre>
+<p class="cap">Where the fix lands is the diagnostic. Falling out means the structure knew about the case. Bolting on means it did not.</p>
+</div>
+
+<h3>Step 4 — The one question</h3>
+<p>One question does the work, and it is worth memorising verbatim, because it is short enough to ask in a meeting:</p>
+
+<p><em>What rule is this code trying to guarantee, and could someone violate that rule by writing new code elsewhere, without the compiler or the structure stopping them?</em></p>
+
+<p>If the answer is yes, that is a shape problem. Notice what the question forces: first name the rule, which is often the harder half. Code that cannot state the rule it guards has no defence against violating it, because nobody knows what they would be violating.</p>
+
+<h2>Why it matters</h2>
+
+<p>A shape problem is not a style problem, and the two get treated the same because both surface at review time as "this could be nicer." Style is how the code reads. Shape is what the code permits. Renaming a variable, extracting a helper, or tightening a docstring improves how a wrong shape reads while leaving every wrong thing it permits exactly as writable as before. That is why a shape problem survives a review that only checks readability, and survives it looking better than it went in.</p>
+
+<p>The practical payoff is where the correction gets made. A shape problem found at design time is a different sentence in a document. Found after the code is in production and three callers depend on the loose signature, it is a migration. The cost of the fix grows with the number of places that learned to depend on the wrong shape, which is why the question above is worth asking before the first line rather than at review.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Functional correctness is about the inputs you tested. Conceptual correctness is about the code nobody has written yet. Ask: what rule is this guarding, and could new code elsewhere break it without anything stopping them?
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating clean code as conceptually correct code. Well-named, well-factored, fully tested code can still hand a caller a signature that accepts an impossible combination, or a record that can hold a state its fields contradict. Clean Code is largely about legibility, which is a real axis and a different one. A tidy wrong shape is a wrong shape that reads well.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① State the one question, as close to verbatim as you can.</p>
+  <details><summary>show answer</summary>
+  <p class="a">"What rule is this code trying to guarantee, and could someone violate that rule by writing new code elsewhere, without the compiler or the structure stopping them?" Yes means a shape problem.</p></details>
+  <p>② A module is fully tested, has no duplication, and every name reveals intent. Can it still be conceptually wrong? Why can the test suite not tell you?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Yes. Tests report on inputs and paths that exist. Conceptual correctness is about what future code is <em>permitted</em> to write, so the failing case has not been constructed yet and nothing is red. Legibility and structural safety are separate axes.</p></details>
+  <p>③ What is the tell that distinguishes a shape problem from an ordinary bug?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Where the fix lands. A shape problem is fixed by bolting on another <code>if</code>, flag, or special case in another place, and the next edge case feels like a surprise. With the right shape the fix falls out of the existing structure and touches one place. Ousterhout's change amplification and unknown unknowns are the same symptom described from the outside.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Ousterhout, <em>A Philosophy of Software Design</em>, Ch. 2 "The Nature of Complexity". Twelve pages, and the most useful twelve in the book for this course. It gives the three symptoms (change amplification, cognitive load, unknown unknowns) and the two root causes (dependencies and obscurity), which is the vocabulary for describing what a wrong shape costs before you can point at a bug.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask if the line between a shape problem and a bug is unclear on a specific piece of code. Bring the code. The one question usually settles it in a sentence, and where it does not, the disagreement itself is informative. Next: the three places shape actually shows up, so a vague "this feels wrong" becomes a located claim.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-where-shape-shows-up.html"><em>Next: Lesson 2 — Where shape shows up →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Ousterhout, <em>A Philosophy of Software Design</em>, Ch. 2 "The Nature of Complexity": complexity manifests as change amplification, cognitive load, and unknown unknowns, and is caused by dependencies and obscurity.<br>
+The functional / conceptual split, and the one question, are from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -1,0 +1,149 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4 — Parse, don't validate</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 2 · Lesson 4</p>
+<h1>Parse, don't validate</h1>
+<p class="lede">A validator learns something true about its input and then throws that knowledge away, which is why the same check reappears in every function downstream. A parser learns the same thing and returns a value that carries the proof.</p>
+
+<h2>The concept</h2>
+
+<p><a href="0003-illegal-states-unrepresentable.html">Lesson 3</a> shaped data that is already inside the system. This lesson is about the boundary where untrusted input becomes trusted data, which is the boundaries axis from <a href="0002-where-shape-shows-up.html">Lesson 2</a> applied to information rather than to authority.</p>
+
+<p>Alexis King's formulation is the canonical one, and the whole argument sits in a pair of function signatures.<sup><a href="#s1">1</a></sup> A validator takes the input and returns nothing: it either raises or it does not. A parser takes the input and returns a <em>different type</em>, one that can only hold valid data. King's summary of what parsing is: "a function that consumes less-structured input and produces more-structured output."</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  a["1. tell: a check that<br/>returns nothing"] --> b["2. name what the check<br/>proved, as a fact"]
+  b --> c["3. return a TYPE that<br/>carries that proof"]
+  c --> d["4. parse at the edge:<br/>as far up as possible,<br/>but no further"]
+  d --> e["5. downstream takes it<br/>and stops re-checking"]
+</pre>
+<p class="cap">Step 3 is the whole move. Steps 4 and 5 are what it buys.</p>
+</div>
+
+<h3>Step 1 — The signature tell: a check that returns nothing</h3>
+<p>King's advice is to "treat functions that return <code>m ()</code> with suspicion", which in a Python or TypeScript codebase reads as: be suspicious of a check whose return type is <code>None</code>, <code>void</code>, or <code>bool</code>.<sup><a href="#s1">1</a></sup> Such a function establishes a fact and then discards it. The caller knows the fact only for as long as it stays on that line, and every function it calls afterwards knows nothing.</p>
+
+<div class="figure">
+<pre><code>def validate_non_empty(items: list[str]) -> None:      # proves something, returns nothing
+    if not items:
+        raise ValueError("empty")
+
+def parse_non_empty(items: list[str]) -> NonEmpty:     # proves something, returns the proof
+    if not items:
+        raise ValueError("empty")
+    return NonEmpty(head=items[0], rest=items[1:])
+</code></pre>
+<p class="cap">Same check, same raise. The difference is entirely in the return type, and that is the whole lesson.</p>
+</div>
+
+<p>Whether the check raises or returns a boolean is not the distinction. Both discard the knowledge. The distinction is whether anything downstream can tell, from a type, that the check happened.</p>
+
+<h3>Step 2 — Name what the check proved</h3>
+<p>Before writing a type, say the fact in words. "This list is not empty." "This string is a well-formed email address." "This path points at a file that exists." "This user ID belongs to the current tenant." A check that cannot be summarised as a single fact is usually several checks, which is useful to discover here rather than later.</p>
+
+<p>The naming step is also where fake proofs get caught. "This input has been validated" is not a fact about the data; it is a fact about the code's history, and it cannot be encoded in a type because it is not a property of the value.</p>
+
+<h3>Step 3 — Return a type that carries the proof</h3>
+<p>The type does not need to be clever. It needs to be a distinct type that only the parser can produce, so that possessing one is evidence.</p>
+
+<div class="figure">
+<pre><code>@dataclass(frozen=True)
+class TenantScopedUserId:
+    value: int
+
+def parse_user_id(raw: object, tenant: Tenant) -> TenantScopedUserId:
+    ...                                   # all the checking happens once, here
+    return TenantScopedUserId(user_id)
+
+def send_invoice(user_id: TenantScopedUserId) -> None:
+    ...        # cannot be called with an arbitrary int; nothing to re-check
+</code></pre>
+<p class="cap">A function taking <code>TenantScopedUserId</code> states its precondition in its signature instead of trusting its callers.</p>
+</div>
+
+<p>Frozen matters. If the value can be mutated after construction, the proof expires without anything saying so, and the type is documentation rather than a guarantee. King makes the point directly in his closing advice: avoid denormalized, mutable representations of data.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 4 — Push the parse to the edge, but no further</h3>
+<p>Parse as early as the data arrives, so the region of the program handling untrusted values is as small as possible. King's version: "push the burden of proof upward as far as possible, but no further."<sup><a href="#s1">1</a></sup></p>
+
+<p>The second half is the part that gets dropped and matters. Pushing a proof further up than the data warrants forces every caller to supply evidence it may not have, and the usual result is a function that reconstructs the parsed type from nothing to satisfy a signature, which is worse than not having asked. The right edge is the point where the raw input actually enters, not the outermost function you can reach.</p>
+
+<p>The failure mode this prevents has a name from the security literature, which King quotes: <em>shotgun parsing</em>, "a programming antipattern whereby parsing and input-validating code is mixed with and spread across processing code."<sup><a href="#s1">1</a></sup> The consequence is that processing begins before validation finishes, so the program can act on input it later rejects.</p>
+
+<h3>Step 5 — The stack this actually runs on: where DRF stops helping</h3>
+<p>A DRF serializer is a parser in every respect but the one that counts. The documentation describes deserialization in two stages: parse a stream into Python native datatypes, then "restore those native datatypes into a dictionary of validated data", and <code>.validated_data</code> holds the result.<sup><a href="#s2">2</a></sup></p>
+
+<p>A dictionary. The serializer does the full parse, proves every field, and then hands back an untyped mapping, so the proof stops at the view boundary. A service function taking <code>data: dict</code> cannot tell a validated payload from any other dict, and its author reasonably re-checks the fields it depends on. That is shotgun parsing reintroduced one layer down, by the framework's own return type.</p>
+
+<div class="figure">
+<pre><code>proof discarded at the view            proof carried past the view
+──────────────────────────            ──────────────────────────
+s = OrderSerializer(data=request.data) s = OrderSerializer(data=request.data)
+s.is_valid(raise_exception=True)       s.is_valid(raise_exception=True)
+place_order(s.validated_data)          cmd = PlaceOrder(**s.validated_data)
+                                       place_order(cmd)
+
+def place_order(data: dict):           def place_order(cmd: PlaceOrder):
+    # any dict at all; the author          # only constructible from a
+    # re-checks what it needs             # parsed payload; nothing to
+                                          # re-check
+</code></pre>
+<p class="cap">One extra line at the boundary. It is the line that keeps the parse from being wasted.</p>
+</div>
+
+<p>The fix is small: construct a frozen dataclass, one per command or query, from <code>validated_data</code>, and let everything inward take that type. The serializer keeps doing the checking, which it is good at. The dataclass carries the result, which the dict cannot.</p>
+
+<h2>Why it matters</h2>
+
+<p>Re-validation looks like diligence and behaves like a shape problem. Every function that re-checks its input is a function whose signature was not honest about what it required, and the checks drift: one call site tightens a rule, another does not, and the difference is invisible because both are individually correct. The tell from <a href="0001-two-kinds-of-correct.html">Lesson 1</a> is exactly what shows up, a new edge case handled by another check in another place.</p>
+
+<p>Parsing also relocates the error. Under validation, a bad value can travel deep into the system and fail somewhere with no useful context, possibly after partial work. Under parsing it fails at the boundary, where the raw input is still in scope and a specific message is possible. Same rejection, and the difference in debuggability is not small.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A validator returns nothing, so the fact it established survives one line. A parser returns a type that carries the proof, so every function downstream states its precondition in its signature instead of re-checking. Parse at the edge, once, and let the type travel.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "we validate once, at the entry point." That fixes where the check runs and not what comes out of it: if the entry point still passes a plain dict or a bare string inward, nothing downstream can distinguish checked data from unchecked, so the re-checks come back and the discipline decays. Parsing is defined by the return type differing, not by the check being early. On this stack that is precisely the DRF gap, since <code>.validated_data</code> is a dict, so "the serializer validated it" is exactly the near-miss with a framework behind it.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What single feature of a function's signature tells you it validates rather than parses?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The return type. Returning <code>None</code>, <code>void</code>, or <code>bool</code> means the fact it proved is discarded at the end of the call. A parser returns a distinct type that only it can construct, so holding that type is evidence the check happened. Raising instead of returning false changes nothing about this.</p></details>
+  <p>② "Push the burden of proof upward as far as possible, but no further." What does the second half prevent?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Demanding proof from callers that have no way to supply it. Pushed too far, a function requires a parsed type from a caller that never saw the raw input, and the usual result is fabricating the type to satisfy the signature, which destroys the guarantee. The right edge is where the raw input actually enters the program.</p></details>
+  <p>③ A DRF serializer validated the payload. Why is passing <code>validated_data</code> inward still the wrong shape, and what is the one-line fix?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>.validated_data</code> is a plain dict, so the proof does not cross the view boundary and a service function cannot tell a validated payload from any other mapping, which invites re-checking. Build a frozen dataclass from it at the boundary and let inner layers take that type.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  King, "Parse, don't validate" (5 November 2019): <a href="https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/">lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/</a>. The examples are Haskell and the argument is language-independent; read to the closing list of seven principles, which is the most compressed statement of the discipline anywhere. For the stack-specific half, the DRF serializers guide, particularly what <code>.validated_data</code> is.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> The interesting case is where parsing is genuinely not worth it: a single-use internal helper, or a field whose validity is not a property of the value. Ask, and bring the case, because the answer depends on how far the value travels. Next: the same structural fix applied to a parameter list, using the document-validation function from the original conversation.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0003-illegal-states-unrepresentable.html">← Lesson 3</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-kill-the-flag.html"><em>Next: Lesson 5 — Kill the flag that changes what's required →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> King, "Parse, don't validate", 5 November 2019: <a href="https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/">lexi-lambda.github.io</a>. Verified against the post: the <code>validateNonEmpty</code> / <code>parseNonEmpty</code> pair, "parsing is just a function that consumes less-structured input and produces more-structured output", "push the burden of proof upward as far as possible, but no further", "treat functions that return <code>m ()</code> with suspicion", "avoid denormalized, mutable representations", and the shotgun-parsing definition King quotes from the LangSec literature.<br>
+<span id="s2">2.</span> Django REST Framework, "Serializers": <a href="https://www.django-rest-framework.org/api-guide/serializers/">django-rest-framework.org/api-guide/serializers/</a>. Deserialization described as parsing a stream to native datatypes then restoring those to a dictionary of validated data; <code>.validated_data</code> holds that dictionary; <code>is_valid(raise_exception=True)</code> raises <code>ValidationError</code>.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

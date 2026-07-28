@@ -1,0 +1,143 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6 — Invariants: convention or structure</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 3 · Lesson 6</p>
+<h1>Invariants: convention or structure</h1>
+<p class="lede">"Everyone must remember to do X first" is a rule stored in people's heads. It holds until the next person writes the next code path. Moving it into the structure means enumerating the entry points, because entry points are finite and future call sites are not.</p>
+
+<h2>The concept</h2>
+
+<p>The highest-stakes axis from <a href="0002-where-shape-shows-up.html">Lesson 2</a>. An invariant must hold in every state the system is ever in, which means it has no natural check site the way a transition does. The design question is therefore not "when do we check this" but "what makes it impossible not to."</p>
+
+<p>The worked case, from the original conversation, is tenant isolation on a multi-tenant Postgres schema layout. The invariant: <em>a query must never execute against another tenant's data.</em> Not a lifecycle rule, not a rule about a change. An always-true rule.</p>
+
+<p>The mechanism it rests on is the Postgres search path. An unqualified table name is resolved by walking a list of schemas: "The system determines which table is meant by following a <em>search path</em>, which is a list of schemas to look in. The first matching table in the search path is taken to be the one wanted."<sup><a href="#s1">1</a></sup> Point the search path at a tenant's schema with <code>SET search_path TO tenant_x, public;</code> and every unqualified query in that session reads that tenant's tables. Which is exactly why forgetting to set it is not a degraded query. It is a correct query against the wrong tenant.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  a["1. state it as an<br/>always-true sentence"] --> b["2. enumerate the ENTRY<br/>POINTS into the system"]
+  b --> c["3. enforce at each door,<br/>not at each call site"]
+  c --> d["4. audit: any path in<br/>that skips a chokepoint?"]
+  d --> e["5. test the invariant,<br/>not the implementation"]
+</pre>
+<p class="cap">Step 2 is the move. It replaces an unbounded set of call sites with a bounded set of doors.</p>
+</div>
+
+<h3>Step 1 — State the invariant precisely</h3>
+<p>Write it as a sentence that is true at all times, with no "when" and no "before". "A query must never execute against another tenant's data" qualifies. "Reset the search path before querying" does not: that is an instruction, and an instruction is already a convention wearing the invariant's clothes. If the sentence contains a verb aimed at a developer, it has not been stated as an invariant yet.</p>
+
+<p>The precision pays off immediately, because the sentence determines what counts as a violation. "Never executes against another tenant's data" makes an unqualified query in a session with the wrong search path a violation even if it returns plausible results, which is the case a looser statement would miss.</p>
+
+<h3>Step 2 — Enumerate the entry points, not the call sites</h3>
+<p>The convention-based design asks every function that runs a query to reset the search path first. That set is unbounded: it includes every function that exists and every function anyone will write. No audit can complete over it, and it grows fastest exactly when the team is busiest.</p>
+
+<p>The set of ways execution <em>enters</em> the system is small, knowable, and changes rarely. On this stack: an HTTP request, a background task, a management command, a shell session, a scheduled job. Five doors, and the list can be written on one line and checked.</p>
+
+<div class="figure">
+<pre><code>convention                            structure
+──────────────────────────            ──────────────────────────
+every function that queries           every way execution enters
+must remember to reset first
+                                      ┌─ HTTP request  → middleware
+  f1  f2  f3  f4 ... fN  f(N+1)       ├─ Celery task   → task base class
+   ↑   ↑   ↑   ↑        ↑             ├─ mgmt command  → base command
+   each one, forever,                 ├─ shell         → explicit context mgr
+   including the ones                 └─ scheduled job → runs as a task
+   not written yet
+                                      finite. auditable. done.
+unbounded set. no audit can
+complete over it.
+</code></pre>
+<p class="cap">The whole fix is trading an unbounded set for a bounded one.</p>
+</div>
+
+<h3>Step 3 — Put enforcement at each entry point</h3>
+<p>Each door gets a wrapper that establishes the invariant before any application code runs, and the wrapper is on the path rather than beside it.</p>
+
+<p>For HTTP, that is middleware. Django's contract is a callable taking <code>get_response</code>, whose <code>__call__(request)</code> runs once per request with the code before <code>get_response(request)</code> executing "for each request before the view (and later middleware) are called."<sup><a href="#s2">2</a></sup> Ordering matters and is documented: on the request phase Django applies <code>MIDDLEWARE</code> top-down, so tenant resolution must sit above anything that queries tenant data.</p>
+
+<div class="figure">
+<pre><code>class TenantSchemaMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        tenant = resolve_tenant(request)
+        with tenant_schema(tenant):          # SET search_path, restore on exit
+            return self.get_response(request)
+</code></pre>
+<p class="cap">No view can run outside the context manager, because the view is called from inside it.</p>
+</div>
+
+<p>For workers, that is a task base class. Celery documents both the per-task and the app-wide form: <code>@app.task(base=MyTask)</code> sets one task's base class, and <code>Celery('tasks', task_cls='your.module.path:DatabaseTask')</code> sets it for the whole app, with <code>before_start()</code> among the documented lifecycle handlers.<sup><a href="#s3">3</a></sup> The app-wide form is the one that matters here: with <code>task_cls</code>, a task written next year gets the enforcement without its author knowing the enforcement exists.</p>
+
+<p>Whether the mechanism is a middleware, a base class, a decorator, or a context manager is not the design decision. The design decision is that it sits on the only path in.</p>
+
+<h3>Step 4 — Audit for bypasses</h3>
+<p>Structural enforcement is only as good as the completeness of the door list, so the audit is part of the design rather than a follow-up. The question for each door: can application code run through it without passing the wrapper?</p>
+
+<p>The failure cases are specific and worth checking by name. A task that does not inherit the base, in a codebase using per-task <code>base=</code> instead of app-wide <code>task_cls</code>. A management command that queries directly. A raw connection or a second database alias that skips the layer the wrapper hooks. A middleware ordered below something that already queried. Each is a real door that was not on the list.</p>
+
+<p>Postgres offers a sharp reminder here that the search path is a trust boundary in its own right. The documentation's own caveat: "adding a schema to <code>search_path</code> effectively trusts all users having <code>CREATE</code> privilege on that schema", because a user able to create like-named objects in a schema on your path "can take control and execute arbitrary SQL functions as though you executed them."<sup><a href="#s1">1</a></sup> A design that writes the search path per request should be deliberate about what else is on that path.</p>
+
+<h3>Step 5 — Test the invariant, not the implementation</h3>
+<p>A test asserting that the middleware calls <code>SET search_path</code> tests the implementation, and it stays green when someone adds a sixth door. A test asserting the invariant looks different: enter through each door, run a query that would read the wrong tenant's rows if the invariant were broken, and assert it does not.</p>
+
+<p>Written that way, the test fails when a new entry point appears without enforcement, which is the actual thing being guarded against. That is the difference between a test that documents the mechanism and a test that defends the rule.</p>
+
+<h2>Why it matters</h2>
+
+<p>The guarantee moves from "everyone remembers" to "structurally cannot happen", and the two are not points on one scale. A convention's reliability decays with team turnover, deadline pressure, and code volume, which are the conditions under which a tenant-isolation failure is worst. Structural enforcement is indifferent to all three, because the new author never had to know.</p>
+
+<p>This is the property the formal-methods tradition calls correctness by construction, and the practical claim attached to it is that prevention is cheaper than detection: Amey's report on a commercial deployment of the approach attributes the savings largely to the elimination of retesting caused by finding and fixing defects.<sup><a href="#s4">4</a></sup> The same economics show up here in miniature. A door has a one-time cost. A convention has a recurring cost paid by every future author, plus the cost of the one time it fails.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A convention asks an unbounded set of future call sites to remember. Structure enumerates the finite set of entry points and enforces at each one, so the rule holds for code whose author never heard of it. Name the invariant, list the doors, wrap each door, then audit for the door you forgot.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is a helper that does the right thing, which everyone is supposed to call. It is convention with better ergonomics: the guarantee still depends on remembering, and the unbounded set of future call sites is untouched. The test is whether the enforcement sits <em>on</em> the only path in or <em>beside</em> it as something available to be used. A second trap is declaring victory after wrapping the obvious door. Middleware covers HTTP and covers nothing else, and the paths that skip it (workers, management commands, the shell, a raw connection) are precisely where the rule is least likely to be remembered.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Why is "enumerate the entry points" the move, rather than "audit the call sites"?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Call sites are unbounded: every function that queries today plus every one anyone writes later, so no audit over them can complete. Entry points are how execution enters the system (request, task, management command, shell, scheduled job), which is a small list that changes rarely and can be checked. The fix is trading an unbounded set for a bounded one.</p></details>
+  <p>② A shared helper resets the search path correctly and every developer is told to call it. Structural or convention?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Convention, with better ergonomics. The guarantee still depends on remembering, and a new code path that skips the helper is not stopped by anything. Structural means the enforcement is on the only path in, so code cannot run without it. Beside the path is not on it.</p></details>
+  <p>③ Middleware now covers every HTTP request. What is still exposed, and what closes it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Every non-HTTP door: Celery tasks, management commands, the shell, scheduled jobs, and anything using a raw connection or a different database alias. For workers, an app-wide task base via Celery's <code>task_cls</code> so tasks written later inherit it automatically, rather than per-task <code>base=</code> which each author must remember.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  The PostgreSQL documentation on schemas: <a href="https://www.postgresql.org/docs/current/ddl-schemas.html">postgresql.org/docs/current/ddl-schemas.html</a>. Read the search-path section and then the security caveat at the end of the page, in that order. Understanding that an unqualified name resolves against a mutable list, first match wins, is what makes the whole class of tenant-isolation bug obvious rather than surprising. For the enforcement side, the Django middleware guide and the Celery tasks guide, specifically <code>task_cls</code>.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> The interesting follow-up is the door list for a specific codebase, since it is never quite the five above and the missing one is the interesting one. Ask, and bring the deployment shape. Next: the objection that structural enforcement is invisible at the call site, which is a real cost and a different axis from correctness.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0005-kill-the-flag.html">← Lesson 5</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-correctness-vs-visibility.html"><em>Next: Lesson 7 — Correctness and visibility are two axes →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> PostgreSQL 18 documentation, "Schemas": <a href="https://www.postgresql.org/docs/current/ddl-schemas.html">postgresql.org/docs/current/ddl-schemas.html</a>. Search-path resolution ("the first matching table in the search path is taken to be the one wanted"), <code>SET search_path TO myschema,public;</code>, the default <code>"$user", public</code>, and the security caveat quoted here, all verified against the page.<br>
+<span id="s2">2.</span> Django 6.0 documentation, "Middleware": <a href="https://docs.djangoproject.com/en/stable/topics/http/middleware/">docs.djangoproject.com/en/stable/topics/http/middleware/</a>. The <code>get_response</code> / <code>__call__(request)</code> contract, once-per-request execution before the view, and top-down <code>MIDDLEWARE</code> ordering on the request phase.<br>
+<span id="s3">3.</span> Celery 5.6.3 documentation, "Tasks": <a href="https://docs.celeryq.dev/en/stable/userguide/tasks.html">docs.celeryq.dev/en/stable/userguide/tasks.html</a>. <code>@app.task(base=MyTask)</code>, the app-wide <code>task_cls</code> argument, and <code>before_start()</code> as a documented lifecycle handler.<br>
+<span id="s4">4.</span> Amey, "Correctness by Construction: Better Can Also Be Cheaper", <em>CrossTalk</em>, March 2002: the reported savings came largely from eliminating retesting caused by the detection and correction of defects.<br>
+The tenant-isolation example is from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

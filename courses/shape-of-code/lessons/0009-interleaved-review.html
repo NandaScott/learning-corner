@@ -1,0 +1,375 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 9 — Interleaved review</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Lesson 9 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading the lessons builds <em>fluency</em>, the feeling of knowing. Retrieving each judgment cold, with all eight shuffled together, builds <em>storage strength</em>: the reflex that fires in a design discussion, where there is no time to look anything up.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all eight lessons and <strong>shuffled</strong> every run, by design. Interleaving the principles, rather than reviewing one lesson at a time, is harder, and that difficulty is what makes them stick.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <strong>near-miss</strong>, the version that sounds right and is subtly wrong, because near-misses are what actually get proposed in design conversations. Answer from memory before reading the feedback. Then hit <em>Shuffle &amp; retry</em>, and run it again in a few days. The spacing is the second half of durable memory.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Say which one. It is worth re-explaining a different way, or drilling that one distinction on its own. The real test is not this quiz: it is the next non-trivial ticket, where the <a href="../reference/design-note.html">design note</a> gets written before the code and the last question either has an answer or does not.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0008-the-design-note.html">← Lesson 8</a></span>
+  <span><a href="../reference/design-note.html">Template ↗</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving and spacing as desirable difficulties — Bjork &amp; Bjork; research summaries at <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a>.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// 4 options each. options[0] is correct; options[1] is a deliberate near-miss
+// (right idea, subtly wrong). The engine shuffles option order on render, so
+// position never leaks the answer.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "State the one question to ask of any non-trivial piece of code.",
+    options: [
+      "What rule is this guarding, and can new code elsewhere violate it unstopped?",
+      "What inputs could break this, and is each one covered by a test?",
+      "What is the simplest structure that still satisfies the ticket's requirements?",
+      "What will this code need to support once the next feature arrives?"
+    ], answer: 0,
+    explain: "The near-miss is about tested inputs, which is functional correctness. The one question is about code that does not exist yet. (<a href='0001-two-kinds-of-correct.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Why can no test suite report on conceptual correctness?",
+    options: [
+      "Tests cover written paths; conceptual correctness is about what future code may write",
+      "Tests only check outputs, so structural properties need static analysis instead",
+      "Test suites are always incomplete, so some illegal combination stays uncovered",
+      "Conceptual correctness is subjective, so no automated check can decide it"
+    ], answer: 0,
+    explain: "The near-miss says the suite is merely incomplete. The point is categorical: the failing case has not been constructed, because nobody wrote the code that would construct it. (<a href='0001-two-kinds-of-correct.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "What is the tell that separates a shape problem from an ordinary bug?",
+    options: [
+      "The fix bolts on another branch elsewhere instead of falling out of the structure",
+      "The bug reappears in a slightly different form after each attempted fix",
+      "The failure only shows up in production and never in the test environment",
+      "Reviewers keep suggesting the same rename or extraction on every pass"
+    ], answer: 0,
+    explain: "The near-miss (recurring regressions) is one possible symptom. The diagnostic is where the fix lands: bolted on in n places, or falling out of a structure that already knew about the case. (<a href='0001-two-kinds-of-correct.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "A module is fully tested, has no duplication, and every name reveals intent. What follows?",
+    options: [
+      "Nothing about shape; legibility and structural safety are separate axes",
+      "It is probably conceptually correct too, since both come from careful design",
+      "It is conceptually correct, because clean code prevents illegal states by construction",
+      "Shape can be judged from the tests, since good tests document the real rules"
+    ], answer: 0,
+    explain: "The near-miss makes shape a likely side effect of tidiness. A tidy wrong shape is a wrong shape that reads well; Clean Code is largely about legibility. (<a href='0001-two-kinds-of-correct.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Name the three places shape problems show up.",
+    options: [
+      "Entities, boundaries and authority, invariants",
+      "Entities, lifecycles, validation rules",
+      "Types, functions, and modules",
+      "Naming, layering, and test coverage"
+    ], answer: 0,
+    explain: "The near-miss swaps boundaries for lifecycles and invariants for validation rules, which loses the two most useful distinctions: who may write, and always-true versus at-a-transition. (<a href='0002-where-shape-shows-up.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Why are invariants the highest-stakes of the three axes?",
+    options: [
+      "They must hold in every state, so no single check site is ever sufficient",
+      "They are the hardest to test, so violations reach production more often",
+      "They usually involve security, and security failures cost the most",
+      "They are written down least often, so teams forget they exist"
+    ], answer: 0,
+    explain: "The near-miss is about testability. The structural point: a transition rule has an obvious home (the code making the change); an invariant has none, so without structure it lives in memory. (<a href='0002-where-shape-shows-up.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Why work the axes in the order entities, then boundaries, then invariants?",
+    options: [
+      "A merged entity manufactures fake invariants that a split deletes instead of enforcing",
+      "Entities are the easiest to fix, so doing them first builds momentum for the rest",
+      "Invariants depend on the database schema, which cannot change until entities do",
+      "Boundaries are only visible once every entity has been fully specified"
+    ], answer: 0,
+    explain: "The near-miss orders by difficulty. The real reason is causal: building enforcement for a rule that only exists because two things were merged makes the merge permanent. (<a href='0002-where-shape-shows-up.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "What is the design content of the boundaries question, beyond naming an owner?",
+    options: [
+      "Whether the permitted writer is the only possible writer, and what enforces that",
+      "Whether the owner is at the correct architectural layer for that kind of state",
+      "Whether the owner's interface is small enough to be understood in one reading",
+      "Whether every writer goes through a documented and reviewed helper function"
+    ], answer: 0,
+    explain: "The near-miss is a layering question, which is real and different. The word carrying the weight is 'only': nominating an owner is free, and enforcement is the design. (<a href='0002-where-shape-shows-up.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "What argument turns \"I dislike this type\" into something a colleague can check?",
+    options: [
+      "Count the values the type permits against the states the domain actually allows",
+      "Show that the optional field is undocumented and its rule lives in a comment",
+      "Point out that a future state will require touching every consumer of the type",
+      "Demonstrate a test that fails when the optional field is left unset"
+    ], answer: 0,
+    explain: "The near-miss is true and rhetorical. The count is arithmetic: each permitted-but-illegal combination is a bug someone must be prevented from writing by hand. (<a href='0003-illegal-states-unrepresentable.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A discriminated union replaces the status-plus-optional-field record. What still needs designing?",
+    options: [
+      "Legal transitions, concentrated in one function rather than spread over consumers",
+      "Runtime validation of each case, since the compiler cannot check data from the wire",
+      "An exhaustive switch in every consumer, so new states cannot be silently ignored",
+      "A migration for existing rows, since the old records may hold illegal combinations"
+    ], answer: 0,
+    explain: "The near-miss (parse at the boundary) is a real and separate concern. The union removes illegal states, not illegal state changes; transition knowledge belongs in one place. (<a href='0003-illegal-states-unrepresentable.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "Adding a fifth status to the flag encoding compiles and passes every test. Why is that bad?",
+    options: [
+      "The consumers that must decide about the new state stay silent until production",
+      "The new status string may be misspelled at one call site and never caught",
+      "The optional fields now permit even more illegal combinations than before",
+      "The test suite gives false confidence, so more tests are needed per state"
+    ], answer: 0,
+    explain: "The near-miss is a typo risk. The structural loss is the worklist: an exhaustive switch over a union fails at every site that must choose, before merge. (<a href='0003-illegal-states-unrepresentable.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "You keep the flag encoding and add a guard that rejects the illegal combinations. Verdict?",
+    options: [
+      "Better than nothing and still convention, since the illegal value stays constructible",
+      "Equivalent to the union, because both stop the illegal combination from surviving",
+      "Worse than nothing, because the guard hides the real problem from reviewers",
+      "Sufficient, provided the guard sits in exactly one shared validation function"
+    ], answer: 0,
+    explain: "The near-miss (equivalent) misses the distinction the whole lesson turns on: rejected at runtime versus unrepresentable. A guard must be called everywhere, forever. (<a href='0003-illegal-states-unrepresentable.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Which feature of a signature tells you a function validates rather than parses?",
+    options: [
+      "Its return type discards the fact it proved: None, void, or a bare bool",
+      "It raises an exception rather than returning a value the caller can inspect",
+      "It takes a loosely typed argument such as a dict or a plain string",
+      "It is called from the entry point rather than from the code that uses the data"
+    ], answer: 0,
+    explain: "The near-miss focuses on raising, which changes nothing: raise or return false, the knowledge is gone at the end of the call. A parser returns a distinct type only it can build. (<a href='0004-parse-dont-validate.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "\"Push the burden of proof upward as far as possible, but no further.\" What does the second half prevent?",
+    options: [
+      "Demanding a parsed type from callers that never saw the raw input to build it",
+      "Parsing the same input twice, once at the edge and again in an inner layer",
+      "Coupling the outermost layer to domain types that belong further inside",
+      "Slowing the hot path down by validating data that is already known good"
+    ], answer: 0,
+    explain: "The near-miss is a real design concern and not this one. Pushed too far, a caller fabricates the type to satisfy a signature, which destroys the guarantee. (<a href='0004-parse-dont-validate.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "A DRF serializer validated the payload. Why is passing validated_data inward still wrong-shaped?",
+    options: [
+      "It is a plain dict, so the proof stops at the view and inner layers re-check",
+      "Serializer validation is field-level only, so cross-field rules go unchecked",
+      "The dict is mutable, so an inner layer can change a field after validation",
+      "It contains native Python types, which the domain layer should not depend on"
+    ], answer: 0,
+    explain: "The near-miss (mutability) is a genuine secondary risk. The shape problem is the type: a service taking dict cannot distinguish validated data from any other mapping. (<a href='0004-parse-dont-validate.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "What exactly makes \"we validate once, at the entry point\" the near-miss rather than the answer?",
+    options: [
+      "It fixes where the check runs, not what comes out; loose data still travels inward",
+      "One entry point is never enough, since background jobs bypass the HTTP layer",
+      "Entry-point checks cannot express rules that depend on database state",
+      "Validation at the edge produces poor error messages for the end user"
+    ], answer: 0,
+    explain: "The near-miss about other entry points is L6's concern. Parsing is defined by the return type differing, not by the check being early. (<a href='0004-parse-dont-validate.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Which flag parameters are the shape problem, and which are fine?",
+    options: [
+      "The problem is a flag that changes what other parameters mean or require",
+      "The problem is any boolean parameter, since booleans never reveal intent",
+      "The problem is a flag with more than two possible values to branch on",
+      "The problem is a flag whose value is passed through several layers unchanged"
+    ], answer: 0,
+    explain: "The near-miss bans all booleans, which over-applies Fowler and misses the mechanism. A parameter that tunes behaviour without changing what else is meaningful is configuration. (<a href='0005-kill-the-flag.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "A colleague objects that splitting the function duplicates the validation logic. Answer?",
+    options: [
+      "It does not: the mechanism stays shared below two entry points; only the branch goes",
+      "Some duplication is an acceptable price for making the illegal call impossible",
+      "The duplication can be removed later once both paths have settled into shape",
+      "The two paths validate different things, so there was never real duplication"
+    ], answer: 0,
+    explain: "The near-miss concedes duplication and argues it is worth it, which loses the argument unnecessarily. Nothing was duplicated; the sharing moved below the entry points. (<a href='0005-kill-the-flag.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Why is omitting the optional path argument worse than an exception would be?",
+    options: [
+      "It validates less and reports success, so the document passes checks it never got",
+      "It fails later, deep in the call stack, where the original input is out of scope",
+      "It leaves the field undefined, which crashes only for certain document types",
+      "It produces a confusing error message that sends debugging in the wrong direction"
+    ], answer: 0,
+    explain: "The near-miss describes a late failure, which at least fails. Here nothing fails: silent under-enforcement defeats the entire purpose of calling a validator. (<a href='0005-kill-the-flag.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Someone argues two functions is a wider interface than one. What is the reply?",
+    options: [
+      "Wider only by count; the single signature also carried an undeclared combination rule",
+      "Interface width matters less than call-site safety, so accept the wider interface",
+      "The two functions can share a facade, keeping the public interface a single entry",
+      "Width is fine because the names document the difference better than a flag does"
+    ], answer: 0,
+    explain: "The near-miss trades width away as a cost. Ousterhout measures interface complexity by what a caller must know, and an undocumented legality rule counts. (<a href='0005-kill-the-flag.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Why enumerate entry points rather than audit the call sites?",
+    options: [
+      "Entry points are a finite list; call sites include every function not yet written",
+      "Entry points are where the tenant is known, so enforcement is simplest there",
+      "Call sites change constantly, so any audit of them goes stale within a sprint",
+      "Auditing call sites requires static analysis tooling most codebases do not have"
+    ], answer: 0,
+    explain: "The near-miss says the call-site audit goes stale, implying it could work if repeated. It cannot complete at all: the set includes code nobody has written. (<a href='0006-invariants-convention-vs-structure.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A shared helper resets the search path correctly and everyone is told to call it. Verdict?",
+    options: [
+      "Convention with better ergonomics; a new path that skips it is stopped by nothing",
+      "Structural, since the correct behaviour now exists in exactly one place",
+      "Structural if a lint rule flags any query function that fails to call the helper",
+      "Convention, but equivalent in practice as long as code review is consistent"
+    ], answer: 0,
+    explain: "The near-miss counts single-definition as structural. The test is whether enforcement sits on the only path in, or beside it as something available to be used. (<a href='0006-invariants-convention-vs-structure.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Middleware now covers every HTTP request. What is still exposed?",
+    options: [
+      "Workers, management commands, the shell, scheduled jobs, raw connections",
+      "Requests handled by middleware ordered above the tenant-resolving middleware",
+      "Requests that raise before the view, since the context never gets established",
+      "Read-only queries, which many tenant-isolation layers deliberately skip"
+    ], answer: 0,
+    explain: "The near-miss (ordering) is a real thing to check and a much smaller hole. The doors that skip HTTP entirely are where the rule is least likely to be remembered. (<a href='0006-invariants-convention-vs-structure.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "How do you state an invariant so that it is actually an invariant?",
+    options: [
+      "As an always-true sentence with no \"when\" and no verb aimed at a developer",
+      "As a precondition on each function that touches the state it constrains",
+      "As a rule about which transitions between states the system permits",
+      "As an assertion that can be checked cheaply at the start of every request"
+    ], answer: 0,
+    explain: "The near-miss is a precondition, which is checked at a moment. \"Reset the search path before querying\" is an instruction, so it is a convention already. (<a href='0006-invariants-convention-vs-structure.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "Which Celery option makes tasks written next year inherit the enforcement automatically?",
+    options: [
+      "The app-wide task_cls argument when instantiating the Celery app",
+      "The base= argument on each task decorator, applied by team convention",
+      "A before_start handler registered on the app's default task class",
+      "A signal receiver bound to the task_prerun signal at import time"
+    ], answer: 0,
+    explain: "The near-miss is per-task base=, which each future author must remember, so it is a convention. task_cls sets it app-wide, which is what makes it structural. (<a href='0006-invariants-convention-vs-structure.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "State the two axes as questions.",
+    options: [
+      "Can this be violated by later code? And can a reader tell that it cannot?",
+      "Is the invariant enforced? And is the enforcement in the right architectural layer?",
+      "Does it work today? And will it keep working as the codebase grows?",
+      "Is the rule written down? And is it checked automatically somewhere?"
+    ], answer: 0,
+    explain: "The near-miss substitutes a layering question for the visibility one. Correctness is binary; visibility is a gradient, and no amount of it changes the first answer. (<a href='0007-correctness-vs-visibility.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "How should the objection \"I cannot see the protection in this task\" be answered?",
+    options: [
+      "Name the split, then buy visibility with a loud base-class name, a test, and docs",
+      "Add an explicit reset at the call site and keep the middleware as a safety net",
+      "Explain that the invariant holds structurally, which settles the matter",
+      "Move the enforcement into a decorator applied by hand at every task definition"
+    ], answer: 0,
+    explain: "The near-miss is belt-and-braces, and it inverts the signal: the call-site reset becomes the thing people learn to do, so safe paths look wrong and bypassed paths look safe. (<a href='0007-correctness-vs-visibility.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Why is maximum visibility not the design goal?",
+    options: [
+      "Hiding mechanism is what modules are for; a deep module's caller sees an interface",
+      "Visibility costs code, and extra code is itself a source of defects and drift",
+      "Readers rarely need the mechanism, so explaining it wastes their attention",
+      "Enforcement details change often, so exposing them creates coupling to the mechanism"
+    ], answer: 0,
+    explain: "The near-miss is a cost argument. Ousterhout's is stronger: invisibility at the call site is information hiding working. The goal is that a reader who needs to know can find out cheaply. (<a href='0007-correctness-vs-visibility.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "What is the design note's last question, and what does an unanswerable one mean?",
+    options: [
+      "\"What makes the wrong thing impossible, not unlikely?\" Unanswerable means unfinished",
+      "\"What is the simplest thing that could work?\" Unanswerable means the scope is unclear",
+      "\"What are we choosing not to build?\" Unanswerable means the tradeoffs are unexamined",
+      "\"How will we know this is correct?\" Unanswerable means the test plan is missing"
+    ], answer: 0,
+    explain: "Unanswerable means the design is not finished, even when it is completely clear how to start typing. Those two states feel identical, which is why the question is asked explicitly. (<a href='0008-the-design-note.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Why does the entities section say \"not tables, concepts\"?",
+    options: [
+      "Starting from tables imports whatever merges the schema already made",
+      "Tables describe storage, and storage decisions should follow the domain model",
+      "A concept may span several tables, so the table list is always incomplete",
+      "Table names are usually plural and stale, which distorts the vocabulary"
+    ], answer: 0,
+    explain: "The near-miss is true and generic. The specific harm: a schema merge arrives pre-installed as a merged entity, and the note then generates fake rules about which fields are required when. (<a href='0008-the-design-note.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Which practice exercise produces checkable feedback rather than an opinion?",
+    options: [
+      "Retro-fitting the design note to code already shipped, then diffing note against code",
+      "Auditing a function you touched this week for what should be impossible but is not",
+      "Asking a reviewer what shape they expected before they read your code",
+      "Finding a flag that changes required fields and sketching the union on paper"
+    ], answer: 0,
+    explain: "All four are worth doing. Only the retro-fit has a fixed answer to compare against, because the code exists, so each gap is a measured mismatch rather than a hypothesis. (<a href='0008-the-design-note.html'>L8</a>)" },
+
+  { lesson: "Lessons 3 &amp; 5",
+    q: "An optional record field required only for one status, and an optional parameter required only in one branch. What single fix?",
+    options: [
+      "Split into one case per state, each carrying exactly the fields or arguments it needs",
+      "Add a validation guard that rejects the illegal field or argument combinations",
+      "Document the legal combinations in the type's docstring and the function's signature",
+      "Make both fields required and let callers pass an explicit empty value"
+    ], answer: 0,
+    explain: "Same disease, two surfaces: a parameter list is a data model. The union splits the type; two functions split the signature; the sharing stays underneath. (<a href='0003-illegal-states-unrepresentable.html'>L3</a>, <a href='0005-kill-the-flag.html'>L5</a>)" },
+
+  { lesson: "Lessons 4 &amp; 6",
+    q: "Re-checking input in every service function, and resetting the search path in every query function. What is the shared fault?",
+    options: [
+      "A guarantee that must be re-established by each site instead of carried or enforced once",
+      "Duplicated logic that should be extracted into a single shared helper function",
+      "Missing type annotations, which would let a checker catch the omitted step",
+      "Enforcement placed at the wrong architectural layer for the rule it protects"
+    ], answer: 0,
+    explain: "The near-miss is a DRY reading, which extracts a helper and leaves the remembering in place. L4 carries the proof in a type; L6 enforces at the door. Both stop asking sites to redo it. (<a href='0004-parse-dont-validate.html'>L4</a>, <a href='0006-invariants-convention-vs-structure.html'>L6</a>)" },
+
+  { lesson: "Lessons 1 &amp; 7",
+    q: "Two designs both make an invariant unbreakable, and one hides the enforcement. What is the disagreement about?",
+    options: [
+      "Visibility, which is a separate axis; the correctness question is already settled",
+      "Correctness, since a guarantee nobody can find will eventually be worked around",
+      "Style, so it should be resolved by whichever convention the codebase already uses",
+      "Nothing substantive, since both satisfy the one question from Lesson 1"
+    ], answer: 0,
+    explain: "The near-miss contains a true observation (undiscoverable guarantees get routed around) and files it under the wrong axis, which is exactly the conflation that stalls the argument. (<a href='0001-two-kinds-of-correct.html'>L1</a>, <a href='0007-correctness-vs-visibility.html'>L7</a>)" }
+]);
+</script>

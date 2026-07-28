@@ -1,0 +1,87 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — The Shape of Code Glossary</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">The shared vocabulary for this course. Every lesson uses these terms exactly as defined here. The first table is the set of names other engineers will recognise in a design discussion, which is the point of learning them.</p>
+
+<h2>Names for this, so you can say it out loud</h2>
+
+<p>Five phrases cover the territory. Say <strong>"making illegal states unrepresentable"</strong> in a design discussion and most senior engineers will know exactly what you mean, which makes it the highest-value one to have ready.</p>
+
+<table>
+  <tr><th>Term</th><th>Coined by / associated with</th><th>What it emphasizes</th></tr>
+  <tr><td><strong>Making illegal states unrepresentable</strong></td><td>Yaron Minsky</td><td>The general principle, and the most commonly recognised phrase for it. (Lesson 3)</td></tr>
+  <tr><td><strong>Parse, don't validate</strong></td><td>Alexis King</td><td>Parse once into a type that can only hold valid data, instead of re-validating a loosely typed thing everywhere. (Lesson 4)</td></tr>
+  <tr><td><strong>Type-driven design</strong></td><td>General usage</td><td>The umbrella discipline of leaning on types to enforce domain rules. Useful as a heading, less useful as an argument, since it names the family rather than a move.</td></tr>
+  <tr><td><strong>Correct by construction</strong></td><td>Formal methods tradition</td><td>Invalidity is structurally impossible rather than checked after the fact. The lineage behind Lesson 6's chokepoints.</td></tr>
+  <tr><td><strong>Deep modules / information hiding</strong></td><td>John Ousterhout</td><td>A module's interface should hide the complexity rather than expose the mess. The reason some invisibility is a feature. (Lessons 5, 7)</td></tr>
+</table>
+
+<h2>Course terms</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Functionally correct</strong></td><td>The code produces the right output for the inputs it was given. It passes its tests and does what the ticket asked. A claim about behaviour on the inputs someone thought to write down. (Lesson 1)</td></tr>
+  <tr><td><strong>Conceptually correct</strong></td><td>The code's structure matches the real structure of the problem, so wrong states, wrong combinations, and rule violations are hard or impossible to create by accident. A claim about what future code is permitted to write. (Lesson 1)</td></tr>
+  <tr><td><strong>The one question</strong></td><td>"What rule is this code trying to guarantee, and could someone violate that rule by writing new code elsewhere, without the compiler or the structure stopping them?" Yes means a shape problem. Note that it forces you to name the rule first. (Lesson 1)</td></tr>
+  <tr><td><strong>Shape problem vs style problem</strong></td><td>Style is how the code reads. Shape is what the code permits. Renaming and extracting improve how a wrong shape reads while leaving every wrong thing it permits equally writable. (Lesson 1)</td></tr>
+  <tr><td><strong>The patch test</strong></td><td>The tell for a wrong shape: every new edge case is a surprise, and the fix bolts on another <code>if</code>, flag, or special case in another place instead of falling out of the existing structure. (Lesson 1)</td></tr>
+  <tr><td><strong>Change amplification</strong></td><td>Ousterhout's first symptom of complexity: a seemingly simple change requires modifications in many different places. What a wrong shape produces steadily rather than all at once. (Lesson 1)</td></tr>
+  <tr><td><strong>Unknown unknowns</strong></td><td>Ousterhout's worst symptom: there is something you need to know and no way to find out what it is, or whether there is an issue, until a bug appears after your change. (Lesson 1)</td></tr>
+  <tr><td><strong>The three axes</strong></td><td>Entities, boundaries and authority, invariants. The three places a shape problem lands. Naming which one converts a taste claim into a locatable one. Worked in that order. (Lesson 2)</td></tr>
+  <tr><td><strong>Entities axis</strong></td><td>Do the things in the code correspond to the real, distinct things in the domain, or is one bloated object standing in for two or three, distinguished only by a flag? Tell: a field whose meaning depends on another field's value. (Lesson 2)</td></tr>
+  <tr><td><strong>Boundaries / authority axis</strong></td><td>Is the thing <em>allowed</em> to change a piece of state actually the <em>only</em> thing that can? The word "only" is the design content. Tell: several unrelated functions can each mutate the same state. (Lesson 2)</td></tr>
+  <tr><td><strong>Invariant</strong></td><td>A rule that must hold <em>always</em>, not merely during a transition. "A tenant must never see another tenant's data." Stated as an always-true sentence with no "when" and no verb aimed at a developer. (Lessons 2, 6)</td></tr>
+  <tr><td><strong>Lifecycle rule</strong></td><td>A rule constraining a <em>change</em>: an order may go from paid to shipped but not from cancelled to shipped. Checked at a moment, so the code performing the change is an obvious home. Contrast with an invariant, which has none. (Lesson 2)</td></tr>
+  <tr><td><strong>Fake invariant</strong></td><td>A rule that exists only because two entities were merged ("if kind is email then the text path is required"). Splitting the entity deletes it rather than enforcing it. Building enforcement for one makes the merge permanent. (Lesson 2)</td></tr>
+  <tr><td><strong>Aggregate</strong></td><td>Domain-driven design's term for a cluster of objects with a single root through which all changes pass, so the root can be the one place the rules are checked. The boundaries axis with a name. (Lesson 2)</td></tr>
+  <tr><td><strong>Flag-plus-optionals encoding</strong></td><td>The wrong shape on the entities axis: a status or kind field alongside optional fields that are meaningful for only some of its values. Permits the product of the two, of which the domain allows a handful. (Lesson 3)</td></tr>
+  <tr><td><strong>Counting what the type permits</strong></td><td>The argument that turns a taste claim into arithmetic: enumerate the values the type allows against the states the domain allows. Each permitted-but-illegal combination is a bug someone must be prevented from writing by hand. (Lessons 3, 5)</td></tr>
+  <tr><td><strong>Discriminated union</strong></td><td>Per the TypeScript handbook, a union where every member shares a common property with literal types, letting the checker narrow out members. Each case carries only its own fields, so illegal combinations are not values. (Lesson 3)</td></tr>
+  <tr><td><strong>Narrowing</strong></td><td>The checker deducing a union's specific case from a test on the discriminant, so a case's fields are reachable only inside the matching branch. Reading them elsewhere is a compile error rather than <code>undefined</code>. (Lesson 3)</td></tr>
+  <tr><td><strong>Exhaustiveness</strong></td><td>The property that adding a case to a union fails compilation at every site that switches over it, converting "find the thirty places that care" into a worklist delivered before merge. (Lesson 3)</td></tr>
+  <tr><td><strong>Transition function</strong></td><td>The single place that knows the legal order of states. A union removes illegal states, not illegal state changes, so this knowledge is real and must be concentrated rather than smeared across consumers. (Lesson 3)</td></tr>
+  <tr><td><strong>Rejected vs unrepresentable</strong></td><td>The distinction the entities axis turns on. A runtime guard rejects the illegal value, which means it stays constructible and the guard must be called everywhere forever. Unrepresentable means the value cannot be built. (Lesson 3)</td></tr>
+  <tr><td><strong>Validating</strong></td><td>Checking input and returning nothing (<code>None</code>, <code>void</code>, <code>bool</code>). The fact it established survives one line, so every function downstream knows nothing and re-checks. (Lesson 4)</td></tr>
+  <tr><td><strong>Parsing</strong></td><td>King's definition: a function that consumes less-structured input and produces more-structured output. Returns a distinct type only it can construct, so holding that type is evidence the check happened. (Lesson 4)</td></tr>
+  <tr><td><strong>Carrying the proof</strong></td><td>The parsed type as evidence. A function taking <code>TenantScopedUserId</code> states its precondition in its signature instead of trusting callers. Frozen matters: a mutable value's proof expires silently. (Lesson 4)</td></tr>
+  <tr><td><strong>Push the burden of proof upward, but no further</strong></td><td>Parse where the raw input actually enters. Pushed further, callers that never saw the raw input must fabricate the type to satisfy a signature, which destroys the guarantee. (Lesson 4)</td></tr>
+  <tr><td><strong>Shotgun parsing</strong></td><td>From the LangSec literature via King: parsing and input-validating code mixed with and spread across processing code, so processing begins before validation finishes and the program can act on input it later rejects. (Lesson 4)</td></tr>
+  <tr><td><strong>The DRF dict gap</strong></td><td><code>.validated_data</code> is a plain dict, so a serializer performs a full parse and then discards the proof at the view boundary. The fix is a frozen dataclass built from it at that boundary, with inner layers taking that type. (Lesson 4)</td></tr>
+  <tr><td><strong>Flag argument</strong></td><td>Fowler: an argument that tells the function to carry out a different operation depending on its value. The shape fault specifically is a flag that changes what the <em>rest of the signature</em> means. (Lesson 5)</td></tr>
+  <tr><td><strong>Coupled parameter</strong></td><td>A parameter whose necessity depends on another parameter's value: optional in the signature, mandatory in one branch of the body. Makes the wrong combination a legal call. (Lesson 5)</td></tr>
+  <tr><td><strong>Silent under-enforcement</strong></td><td>The failure mode of the coupled-parameter validator: omitting the argument does not raise, it validates fewer things and reports success. The worst outcome available to a validator, since being told was the whole point of the call. (Lesson 5)</td></tr>
+  <tr><td><strong>Shape is not DRY</strong></td><td>Splitting one entry point into two does not duplicate anything if the mechanism stays shared underneath. The target is the branch that permitted the illegal combination, not the repeated lines. (Lesson 5)</td></tr>
+  <tr><td><strong>Interface complexity</strong></td><td>Ousterhout's measure: what a caller must know. A single signature plus an undocumented rule about legal parameter combinations is more to know than two honest signatures, even though it is fewer entry points. (Lessons 5, 7)</td></tr>
+  <tr><td><strong>Search path</strong></td><td>Postgres resolves an unqualified table name by walking a list of schemas, first match wins. Pointing it at a tenant's schema scopes every unqualified query, which is why forgetting to set it yields a correct query against the wrong tenant. (Lesson 6)</td></tr>
+  <tr><td><strong>Entry point (door)</strong></td><td>A way execution enters the system: HTTP request, background task, management command, shell session, scheduled job. Finite, knowable, and rarely changing, which is what makes it auditable. (Lesson 6)</td></tr>
+  <tr><td><strong>Chokepoint</strong></td><td>Enforcement placed on the only path in, so application code cannot run without it: middleware for HTTP, an app-wide task base class for workers. On the path, not beside it. (Lesson 6)</td></tr>
+  <tr><td><strong>Convention-based enforcement</strong></td><td>Asking an unbounded set of present and future call sites to remember a step. No audit over that set can complete, and its reliability decays with turnover, deadlines, and code volume. (Lesson 6)</td></tr>
+  <tr><td><strong>Structural enforcement</strong></td><td>Enforcement at each door, so the rule holds for code whose author never heard of it. Indifferent to turnover and deadline pressure, because nobody had to know. (Lesson 6)</td></tr>
+  <tr><td><strong>Beside the path, not on it</strong></td><td>The test that catches a helper masquerading as structure. A correct shared function everyone is supposed to call is convention with better ergonomics: the guarantee still depends on remembering. (Lesson 6)</td></tr>
+  <tr><td><strong>Bypass audit</strong></td><td>Checking each door for a way application code can run without passing the wrapper. Usual finds: a task not inheriting the base, a management command, a raw connection or second database alias, a middleware ordered too low. (Lesson 6)</td></tr>
+  <tr><td><strong>Invariant test</strong></td><td>A test that asserts the rule rather than the mechanism: enter through each door, run something that would violate the invariant if enforcement were missing, assert it does not. Fails when a new door appears unprotected. (Lessons 6, 7)</td></tr>
+  <tr><td><strong>The two axes</strong></td><td>Correctness ("can this be violated by later code?", binary) and visibility ("can a reader tell that it cannot?", a gradient). No amount of the second changes the first. Settle correctness, then spend on visibility. (Lesson 7)</td></tr>
+  <tr><td><strong>Naming the split</strong></td><td>The move that unsticks a stalled design argument: state which axis each side is on. "We agree the invariant must be structurally enforced. We are disagreeing about how visible the enforcement should be." (Lesson 7)</td></tr>
+  <tr><td><strong>Buying visibility</strong></td><td>Loud names (<code>TenantScopedTask</code>), an invariant test, documentation at the chokepoint, and where the tradeoff is worth it, an explicit decorator at the definition. Never a redundant check at the call site. (Lesson 7)</td></tr>
+  <tr><td><strong>Signal inversion</strong></td><td>What belt-and-braces produces: once a redundant call-site reset becomes the norm, safe paths that omit it look wrong and bypassed paths that include it look safe. Visibility bought with the correctness property it was meant to display. (Lesson 7)</td></tr>
+  <tr><td><strong>Design note</strong></td><td>A ten-minute prose document written before code on any non-trivial ticket: entities, invariants, lifecycle if applicable, boundaries, options with tradeoffs, chosen approach, then the last question. Prose because a rule you cannot state as a sentence has not been decided. (Lesson 8)</td></tr>
+  <tr><td><strong>The last question</strong></td><td>"What would make the wrong thing impossible, not just unlikely, here?" The gate. Unanswerable means the design is unfinished, even when it is entirely clear how to start typing. Those two states feel identical. (Lesson 8)</td></tr>
+  <tr><td><strong>Retro-fit exercise</strong></td><td>Writing the design note after the fact for code already shipped. The gaps between note and code are the conceptual mismatches, measured rather than guessed. The only exercise here with a checkable answer. (Lesson 8)</td></tr>
+</table>
+
+<div class="ask-teacher">
+  <strong>Using this.</strong> The first table is for talking to other engineers; the second is for thinking. If a term here is doing less work than its definition claims, say so and it gets cut or sharpened.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="design-note.html">Design note template ↗</a></span>
+  <span><a href="../lessons/0009-interleaved-review.html">Quiz ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+The five-name table is from a real design conversation distilled in this repo's source notes, kept in full. Identifying details removed for this public repo.<br>
+Definitions verified against: Minsky, Jane Street blog, 2011-03-09; King, "Parse, don't validate", 2019-11-05; the TypeScript Handbook on narrowing; Fowler, "FlagArgument", 2011-06-23; Ousterhout, <em>A Philosophy of Software Design</em>, Chs. 2 and 4; Vernon, <em>Domain-Driven Design Distilled</em>, Ch. 5; Amey, <em>CrossTalk</em>, March 2002; the PostgreSQL 18, Django 6.0, Celery 5.6.3, and DRF documentation. Full citations in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>

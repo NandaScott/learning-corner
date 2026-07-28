@@ -1,0 +1,116 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2 — Where shape shows up: entities, boundaries, invariants</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 1 · Lesson 2</p>
+<h1>Where shape shows up</h1>
+<p class="lede">"This feels structurally wrong" is not yet a claim anyone can act on. Shape problems land in exactly three places, and naming which one turns a feeling into something a colleague can agree or disagree with.</p>
+
+<h2>The concept</h2>
+
+<p><a href="0001-two-kinds-of-correct.html">Lesson 1</a> gave the question: what rule is this code guarding, and can new code elsewhere break it. This lesson gives the three places to point the question at. Entities, boundaries, and invariants. Each has a different tell and a different class of fix, and the three are ranked: invariants are the highest-stakes of the three, for a reason worth being precise about.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  s["a design that feels wrong"] --> a["1. ENTITIES<br/>do code's things match<br/>the domain's things?"]
+  s --> b["2. BOUNDARIES<br/>is the permitted writer<br/>the only possible writer?"]
+  s --> c["3. INVARIANTS<br/>what is always true,<br/>not just at a transition?"]
+  a --> at["tell: a flag standing<br/>in for two entities"]
+  b --> bt["tell: five functions can<br/>each mutate one state"]
+  c --> ct["tell: the rule lives in<br/>heads and a comment"]
+</pre>
+<p class="cap">Three places, three tells. Locating the problem is most of the work of fixing it.</p>
+</div>
+
+<h3>Step 1 — Entities: does the code's cast of characters match the domain's?</h3>
+<p>Ask whether the things in the code correspond to the real, distinct things in the domain, or whether one bloated object is standing in for two or three different things that got merged, distinguished only by a flag.</p>
+
+<p>The tell is a field whose meaning depends on another field's value. A record with a <code>kind</code> and a set of fields where some are meaningful for one <code>kind</code> and meaningless for another is two entities wearing one costume. Every consumer then has to re-derive which entity it is actually holding, from a flag, at every use site.</p>
+
+<p>The fix is to split the entity so each real thing is its own thing. Entities is the least alarming of the three axes, because a merged entity usually works. It just makes every downstream reader do the disambiguation, forever.</p>
+
+<h3>Step 2 — Boundaries and authority: who is allowed to change this?</h3>
+<p>Ask whether the thing that is <em>allowed</em> to change a piece of state is actually the <em>only</em> thing that can. That word "only" is the whole question. Nominating an owner is easy; the design question is whether anything enforces the nomination.</p>
+
+<p>The tell is a piece of state that five unrelated functions can each mutate independently. Nobody set out to build that. It accumulates: the state was public because it started simple, and each new writer was locally reasonable. What is lost is the ability to answer "how did this value get to be wrong", because the answer is any of five places, or an interleaving of them.</p>
+
+<p>The fix is to narrow the aperture. One owner, and the state is reachable only through it. Domain-driven design calls this an aggregate: a cluster of objects with a single root through which all changes pass, so the root can be the place that checks the rules.<sup><a href="#s1">1</a></sup></p>
+
+<div class="figure">
+<pre><code>authority diffuse                      authority concentrated
+──────────────────────────             ──────────────────────────
+   f1 ──┐                                 f1 ──┐
+   f2 ──┤                                 f2 ──┤
+   f3 ──┼──▶ [ state ]                    f3 ──┼──▶ [ owner ] ──▶ [ state ]
+   f4 ──┤                                 f4 ──┤        │
+   f5 ──┘                                 f5 ──┘        └─ checks the rules,
+                                                            once, here
+"how did this get wrong?"              "how did this get wrong?"
+  → any of five, or their               → one place, and it is the
+    interleaving                           place the rules live
+</code></pre>
+<p class="cap">Concentrating authority is what makes the rule-checking site exist at all.</p>
+</div>
+
+<h3>Step 3 — Invariants: what must be true always?</h3>
+<p>An invariant is a rule that must hold <em>always</em>, not merely at the moment of a transition. "A tenant must never see another tenant's data." "An email document always has a text path." "An account balance is never negative." These are the highest-stakes shape violations, and the reason is a distinction worth holding onto.</p>
+
+<p>A lifecycle rule constrains a <em>change</em>: an order may move from paid to shipped but not from cancelled to shipped. It is checked at a moment, and the natural home for the check is the code performing the change, which is a place that obviously exists.</p>
+
+<p>An invariant constrains <em>every state the system is ever in</em>. There is no single moment to check it, because it must hold at all moments, including in code written next year by someone who never read the rule. So an invariant has no natural home. If nothing structural gives it one, it ends up in a comment, a wiki page, and the collective memory of whoever was in the room, and it decays at the rate people leave.</p>
+
+<h3>Step 4 — Use the three as a checklist, in that order</h3>
+<p>Entities first, because a merged entity generates fake invariants: rules like "if <code>kind</code> is email then <code>txtPath</code> must be set" are only rules because two things were merged. Split the entity and the rule evaporates rather than needing enforcement. Boundaries second, because concentrating authority creates the one place an invariant check can live. Invariants last, and hardest, because they are what remains once the structural cleanups are done.</p>
+
+<h2>Why it matters</h2>
+
+<p>The three axes convert a taste claim into a locatable one. "I do not like this design" invites a defence. "This merges two entities behind a flag, so every consumer re-derives which one it has" invites a fix, and can be agreed with or refuted on the merits. That is the difference between a design discussion that converges and one that becomes a preference fight.</p>
+
+<p>The ranking matters as much as the list. Fake invariants are the ones most often argued about, because they are the ones an entity split would have deleted outright. Time spent designing enforcement for a rule that should not exist is worse than wasted: it makes the merged entity permanent by building machinery around it.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Shape problems land in three places: entities (do the code's things match the domain's things), boundaries (is the permitted writer the only possible writer), and invariants (what must be true always, not just at a transition). Invariants are the highest stakes, because a rule has no natural home the way a transition does.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating an invariant as a lifecycle rule. A lifecycle rule constrains a change and can be checked by the code making the change, so it has an obvious home. An invariant constrains every state the system ever occupies, including states produced by code not yet written, so no single check site is sufficient. Answering "when do we validate this?" for something that is actually an invariant produces a check that is correct and, structurally, in the wrong category.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Name the three places shape shows up, and the tell for each.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Entities: one object with a flag standing in for two or three domain things. Boundaries and authority: several unrelated functions can each mutate the same state independently. Invariants: the always-true rule lives in people's heads and a comment rather than in the structure.</p></details>
+  <p>② Why are invariants ranked as the highest-stakes of the three?</p>
+  <details><summary>show answer</summary>
+  <p class="a">They are rules, not workflows. A lifecycle rule constrains a transition, so the code performing the transition is an obvious home for the check. An invariant must hold in every state at every moment, including in code written later by someone who never heard the rule, so it has no natural home. Without a structural one it lives in memory and decays.</p></details>
+  <p>③ Why work the three axes in the order entities, boundaries, invariants?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A merged entity manufactures fake invariants ("if kind is X then field Y is required") that a split would delete rather than enforce. Concentrating authority then creates the single place a real invariant check can live. Building enforcement machinery for a fake invariant is worse than wasted, because it makes the merge permanent.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Vernon, <em>Domain-Driven Design Distilled</em>, Ch. 5 on Aggregates. It is the shortest good treatment of "invariant" and "consistency boundary" as formal terms, and it gives the aggregate-root argument for concentrating authority in step 2. For the boundary idea in its original form, Evans, <em>Domain-Driven Design</em>, Part II.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Bring a design that feels wrong and sort it into the three axes together. Cases that resist sorting are usually two problems stacked, and separating them is most of the fix. Next: the entities axis in full, and the single most recognised principle in this whole subject.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0001-two-kinds-of-correct.html">← Lesson 1</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-illegal-states-unrepresentable.html"><em>Next: Lesson 3 — Make illegal states unrepresentable →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Vernon, <em>Domain-Driven Design Distilled</em>, Ch. 5 (Aggregates): the aggregate as a consistency boundary with a single root through which all modifications pass. Evans, <em>Domain-Driven Design</em>, Part II, for entities and aggregates in their original statement.<br>
+The three-axis framing (entities / boundaries / invariants) is from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

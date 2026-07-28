@@ -1,0 +1,137 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5 — Kill the flag that changes what's required</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">The Shape of Code</a> · Arc 3 · Lesson 5</p>
+<h1>Kill the flag that changes what's required</h1>
+<p class="lede">An optional parameter that is mandatory in one branch and meaningless in the other is the same shape problem as an optional field on a flagged record. The fix is the same too: split, so each signature accepts exactly what it needs.</p>
+
+<h2>The concept</h2>
+
+<p><a href="0003-illegal-states-unrepresentable.html">Lesson 3</a> split a data type into one case per state. This lesson applies the identical move to a parameter list. Same disease, different surface, and the function version is easier to miss because a parameter list does not look like a data model.</p>
+
+<p>Here is the case, from the original design conversation. A single function validates two kinds of document. One kind has a single file; the other has two.</p>
+
+<div class="figure">
+<pre><code>function validateDocument(type: 'pdf' | 'email', htmlPath: string, txtPath?: string) {
+  if (type === 'pdf') {
+    // validate htmlPath only
+  } else {
+    // validate htmlPath and txtPath
+  }
+}
+</code></pre>
+<p class="cap">Nothing stops <code>validateDocument('email', htmlPath)</code> from compiling, and it silently under-validates.</p>
+</div>
+
+<p>The third parameter is required when <code>type</code> is <code>'email'</code> and irrelevant when it is <code>'pdf'</code>. Because the type system sees an independent optional string, the wrong combination is a legal call. It compiles, it runs, it validates half of what it should, and it reports success.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  a["1. spot a parameter whose<br/>necessity depends on<br/>another parameter"] --> b["2. enumerate the calls<br/>that compile but<br/>are wrong"]
+  b --> c["3. one function per<br/>branch, each taking<br/>only its own inputs"]
+  c --> d["4. keep the mechanism<br/>shared; delete the branch"]
+  d --> e["5. does the caller still<br/>need the flag at all?"]
+</pre>
+<p class="cap">Step 4 is where this gets argued about, and step 5 is where the win compounds.</p>
+</div>
+
+<h3>Step 1 — Spot the coupled parameter</h3>
+<p>The tell is a parameter whose necessity depends on another parameter's value. Optional in the signature, mandatory in one branch of the body. Fowler names the general category and gives the same remedy: "A flag argument is a kind of function argument that tells the function to carry out a different operation depending on its value," and "rather than use a flag argument, I prefer to define separate methods."<sup><a href="#s1">1</a></sup></p>
+
+<p>Not every boolean parameter is this problem. A parameter that tunes behaviour without changing which other parameters are meaningful is a configuration value. The specific fault here is a flag that <em>changes what the rest of the signature means</em>, which is the point at which one function is standing in for two.</p>
+
+<h3>Step 2 — Enumerate the call space</h3>
+<p>The same arithmetic as <a href="0003-illegal-states-unrepresentable.html">Lesson 3</a>'s step 2, and it makes the case in one line. Two values of <code>type</code>, times present-or-absent for <code>txtPath</code>, gives four calls that compile. Three of them are meaningful. The fourth, email without a text path, is the under-validating one, and it is the call a hurried author is most likely to write, because the parameter is optional and optional reads as "safe to omit."</p>
+
+<p>Worth noting which way the failure points. This does not raise. It validates fewer things and returns success, so the bug is a document that passed validation it never actually received. Silent under-enforcement is the worst failure mode a validator can have, because the whole point of the call was to be told.</p>
+
+<h3>Step 3 — Split into one function per branch</h3>
+<div class="figure">
+<pre><code>function validatePdfDocument(htmlPath: string) { /* ... */ }
+function validateEmailDocument(htmlPath: string, txtPath: string) { /* ... */ }
+</code></pre>
+<p class="cap">"Email without a text path" is no longer discouraged. It is not callable.</p>
+</div>
+
+<p>Both parameters are now required where they are required, and absent where they are irrelevant. The four-call space collapses to two calls, both meaningful. The <code>if</code> is gone, so is the optional marker, and so is the possibility of the silent case. The names improved as a side effect, which is pleasant and is not the point.</p>
+
+<h3>Step 4 — Shape is not DRY: share the mechanism, delete the branch</h3>
+<p>This is the step that draws the objection, and the objection deserves a straight answer. In the original case the underlying validation <em>mechanism</em> was shared between both kinds of document, and it stayed shared. Both new functions call the same internals.</p>
+
+<p>Shape work is not about reducing duplication. The two functions are not a copy-paste of each other; they are two public entry points over one shared implementation. What was deleted is the branch that let a caller supply the wrong combination, which is a different thing from deleting shared code.</p>
+
+<div class="figure">
+<pre><code>one entry point, branch inside          two entry points, one mechanism
+──────────────────────────              ──────────────────────────
+validateDocument(type, a, b?)           validatePdfDocument(a)
+  if type == pdf:  check(a)               → checkOne(a)
+  else:            check(a, b)          validateEmailDocument(a, b)
+                                          → checkOne(a); checkTwo(b)
+4 calls compile, 3 are valid
+                                        2 calls compile, 2 are valid
+                                        shared internals: unchanged
+</code></pre>
+<p class="cap">The duplication argument is answered by where the sharing lives: below the entry points, not at them.</p>
+</div>
+
+<p>Ousterhout's framing is useful for the objection in the other direction, that two functions is a wider interface than one. It is a wider interface only by count. The single function's interface included an undocumented rule about which parameter combinations are legal, which is interface complexity that no signature declared. Two honest signatures are less to know than one signature plus a rule.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 5 — Check whether the caller still needs the flag</h3>
+<p>The fix often propagates usefully upward. If callers were passing a literal <code>'pdf'</code> or <code>'email'</code>, they already knew which kind they had, and the flag existed only to carry that knowledge across the call. Splitting the function deletes the carrying, and the caller's own branch may disappear with it.</p>
+
+<p>If a caller genuinely does not know which kind it has, that is real information and it needs modelling. It usually means the caller is holding a value that should itself be a discriminated union, and the dispatch belongs at the one place that narrows it, not inside a validator that guesses from a string.</p>
+
+<h2>Why it matters</h2>
+
+<p>Applying <a href="0001-two-kinds-of-correct.html">Lesson 1</a>'s question to the original signature: the rule is "an email document is validated against both of its files", and yes, new code elsewhere can violate it by omitting an optional argument, with nothing objecting. The under-validated call passes review because it looks like every other call, and it passes tests because the tests were written by someone who knew to pass the third argument.</p>
+
+<p>The general lesson is that a parameter list is a data model. Every optional parameter multiplies the call space, and every optional parameter whose necessity depends on another parameter puts illegal calls into that space. The techniques from <a href="0003-illegal-states-unrepresentable.html">Lesson 3</a> apply unchanged, and the reason to treat it as its own lesson is that nobody reviews a parameter list the way they review a type.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A parameter that is required in one branch and irrelevant in the other makes the wrong combination a legal call. Split into one function per branch, each taking exactly what it needs, and keep sharing the mechanism underneath. The target is the branch, not the duplication.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is keeping one function and adding a guard: throw when the type is email and the text path is missing. That converts a silent under-validation into a loud runtime failure, which is a genuine improvement, and it leaves the illegal call compiling. The wrong combination is still writable, so it still reaches production to fail there. The second trap is rejecting the split on duplication grounds. Shape work is not DRY work: the mechanism stays shared below two honest entry points, and what gets deleted is the branch that permitted the bad combination.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Which boolean or enum parameters are the problem, and which are fine?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The problem is a flag that changes what the rest of the signature means, so another parameter's necessity depends on its value. That is one function standing in for two. A parameter that tunes behaviour without changing which other parameters are meaningful is a configuration value, not this fault.</p></details>
+  <p>② A colleague objects that two functions duplicate logic. What is the answer?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The mechanism stays shared: both entry points call the same internals. Nothing was duplicated. What was deleted is the branch that let a caller supply an illegal combination. Shape work targets what the signature permits, not how many lines repeat.</p></details>
+  <p>③ Why is the original signature's failure mode worse than an exception would be?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Omitting the optional argument does not raise. It validates fewer things and returns success, so a document passes validation it never received. Silent under-enforcement defeats the purpose of calling a validator, and it looks identical to a correct call at every review.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Fowler, "FlagArgument" (23 June 2011): <a href="https://martinfowler.com/bliki/FlagArgument.html">martinfowler.com/bliki/FlagArgument.html</a>. Two screens, and it is the reference to cite when someone defends the single function. For the interface-width counter-argument, Ousterhout, <em>A Philosophy of Software Design</em>, Ch. 4, on why interface complexity is measured by what a caller must know rather than by the number of entry points.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about the case where the split produces four or eight functions rather than two, since that is where the fix stops being obviously right and something needs to become a type instead. Next: the highest-stakes axis, rules that must hold always, and the difference between enforcing one by convention and enforcing it by structure.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0004-parse-dont-validate.html">← Lesson 4</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-invariants-convention-vs-structure.html"><em>Next: Lesson 6 — Invariants: convention or structure →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Fowler, "FlagArgument", 23 June 2011: <a href="https://martinfowler.com/bliki/FlagArgument.html">martinfowler.com/bliki/FlagArgument.html</a>. Definition and the "prefer separate methods" recommendation verified against the page.<br>
+<span id="s2">2.</span> Ousterhout, <em>A Philosophy of Software Design</em>, Ch. 4 "Modules Should Be Deep": interface complexity is what a caller must know, so a rule about legal parameter combinations counts against the single-function interface even though no signature declares it.<br>
+The document-validation example is from a real design conversation distilled in this repo's source notes. Identifying details removed for this public repo.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

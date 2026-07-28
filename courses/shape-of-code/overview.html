@@ -1,0 +1,85 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>The Shape of Code — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>The Shape of Code</h1>
+<p class="lede">Conceptual correctness: whether the code's structure makes the domain's rules hard to break, rather than whether it produces the right output today. Eight lessons on the judgment that happens before the first line of code, the vocabulary for arguing it with other engineers, and the ten-minute written note that puts both in front of the keyboard. Eight lessons, an interleaved quiz, a glossary, and a printable template.</p>
+
+<div class="home-group">
+  <p class="label">Arc 1 · The distinction</p>
+  <p class="blurb">Two kinds of correct, and the three places the second kind goes wrong.</p>
+
+  <a class="lesson-card" href="lessons/0001-two-kinds-of-correct.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>Two kinds of correct</strong><span>Functional versus conceptual. The patch test as the tell, and the one question to ask of any non-trivial code.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-where-shape-shows-up.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>Where shape shows up</strong><span>Entities, boundaries and authority, invariants. Why invariants are the highest stakes, and why entities come first.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 2 · Shaping data</p>
+  <p class="blurb">Two named principles that do most of the work: one for data already inside the system, one for data arriving at its edge.</p>
+
+  <a class="lesson-card" href="lessons/0003-illegal-states-unrepresentable.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Make illegal states unrepresentable</strong><span>Flag plus optional fields into a discriminated union. Narrowing, exhaustiveness, and where transition rules go.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0004-parse-dont-validate.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Parse, don't validate</strong><span>A validator discards its own proof; a parser returns a type that carries it. Plus where DRF stops helping.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 3 · Shaping signatures and enforcement</p>
+  <p class="blurb">The same fix applied to a parameter list, then the hardest case: a rule that must hold everywhere, always.</p>
+
+  <a class="lesson-card" href="lessons/0005-kill-the-flag.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>Kill the flag that changes what's required</strong><span>A parameter mandatory in one branch and irrelevant in the other. Split the entry points, share the mechanism.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0006-invariants-convention-vs-structure.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>Invariants: convention or structure</strong><span>Tenant isolation and the Postgres search path. Enumerate the doors, wrap each one, audit for the one you forgot.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 4 · Judgment</p>
+  <p class="blurb">The axis that gets confused with correctness, and the practice that puts all of it before the keyboard.</p>
+
+  <a class="lesson-card" href="lessons/0007-correctness-vs-visibility.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Correctness and visibility are two axes</strong><span>Structural enforcement is invisible at the call site. That is discoverability, not correctness, and naming the split unsticks the argument.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0008-the-design-note.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>The design note</strong><span>Synthesis. Ten minutes of prose, six sections, and the last question that decides whether the design is finished.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Review &amp; reference</p>
+  <p class="blurb">Drill the eight cold, then keep the template next to the keyboard.</p>
+
+  <a class="lesson-card" href="lessons/0009-interleaved-review.html">
+    <span class="num">L9</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>All eight shuffled, auto-graded, each answer against its near-miss.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/design-note.html">🗺️ Design note template and shape smells — the printable payoff</a>
+    <a href="reference/glossary.html">📖 Glossary — canonical vocabulary, plus the five names to use out loud</a>
+  </div>
+</div>
