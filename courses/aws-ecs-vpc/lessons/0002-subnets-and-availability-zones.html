@@ -1,0 +1,115 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2 — Subnets and Availability Zones</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 1 · Lesson 2</p>
+<h1>Subnets and Availability Zones</h1>
+<p class="lede">A VPC covers a whole Region, which is too coarse to be useful. A subnet cuts it into a slice of addresses pinned to one physical location. That pinning is the reason subnets exist, and it turns "where does this run" into a question about surviving failure.</p>
+
+<h2>The concept</h2>
+
+<p>The definition is two short sentences in the docs: "A subnet is a range of IP addresses in your VPC. A subnet must reside in a single Availability Zone."<sup><a href="#s1">1</a></sup> Everything interesting follows from the second one.</p>
+
+<p>An Availability Zone is a distinct location inside a Region, engineered to fail independently of the others. A Region has several. A VPC spans all of them, because it is only a definition. A subnet cannot: it is a range of addresses that physically resolves to machines in one zone. So when you choose a subnet for something, you are choosing which zone's failure takes it down.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  subgraph vpc["VPC 10.0.0.0/16 · one Region"]
+    direction LR
+    subgraph az1["Availability Zone A"]
+      s1["subnet 10.0.1.0/24"]
+    end
+    subgraph az2["Availability Zone B"]
+      s2["subnet 10.0.2.0/24"]
+    end
+    subgraph az3["Availability Zone C"]
+      s3["subnet 10.0.3.0/24"]
+    end
+  end
+</pre>
+<p class="cap">One address range, cut into slices. Each slice sits in exactly one zone and never straddles two.</p>
+</div>
+
+<h3>Step 1 — A subnet slices the VPC's address range</h3>
+<p>The VPC owns a block such as 10.0.0.0/16. Each subnet takes a smaller block out of it, such as 10.0.1.0/24. The blocks do not overlap, and together they need not fill the VPC; leaving room is normal, because a subnet's size is fixed once created and running out of addresses in a busy subnet is a real failure mode.</p>
+
+<p>Resources draw their private address from the subnet they are placed in. That is the whole relationship between a subnet and the things inside it: it is the pool they get an address from.</p>
+
+<h3>Step 2 — One subnet, one zone, permanently</h3>
+<p>A subnet cannot span two Availability Zones, and it cannot move. This is the single fact to hold on to, because it converts a networking detail into an availability decision. Anything that needs to survive the loss of a zone needs copies of itself with addresses in more than one subnet, in more than one zone.</p>
+
+<p>It also explains a shape you will see in every AWS architecture diagram: subnets come in matched sets. Not one public subnet and one private subnet, but a public subnet per zone and a private subnet per zone, doing the same job in each location.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  q["where should this run?"] --> s["choose a subnet"]
+  s --> ip["decides its address range"]
+  s --> az["decides its Availability Zone"]
+  az --> f["decides which single failure<br/>takes it offline"]
+</pre>
+<p class="cap">One choice, three consequences. The third is the one that gets asked about.</p>
+</div>
+
+<h3>Step 3 — Zones are the unit of failure, so they are the unit of redundancy</h3>
+<p>A Region-wide outage is rare. A zone-level problem is the case AWS designs around and expects you to design around. Spreading across zones only helps if each copy can actually get an address and be reached in its own zone, which is why "multi-AZ" in practice means: a subnet in each zone, capacity in each subnet, and something in front that can send traffic to whichever copies are healthy.</p>
+
+<p>Two copies in the same subnet are two copies in the same zone. They protect against one process crashing. They do not protect against the zone.</p>
+
+<h3>Step 4 — Subnets group things that share a treatment</h3>
+<p>Beyond the zone, a subnet is the natural place to group resources that should be treated alike. AWS's own security guidance puts it plainly: "Use subnets to isolate the tiers of your application (for example, web, application, and database) within a single VPC. Use private subnets for your instances if they should not be accessed directly from the internet."<sup><a href="#s2">2</a></sup></p>
+
+<p>That is the origin of the public and private subnet vocabulary you have already seen. Lesson 3 is about what those words actually mean, because it is not what most people assume.</p>
+
+<h2>Why it matters</h2>
+
+<p>Subnet design is where an availability story becomes concrete. "It's highly available" is a claim; "there are private subnets in three zones and the service keeps tasks in all three" is a design. Interviews probe exactly that gap, and the probe is usually some form of "what happens when one Availability Zone goes away."</p>
+
+<p>The same fact shapes the rest of this course. When ECS asks which subnets to run in, it is asking which zones, and the answer determines whether the service survives losing one. When a load balancer asks for subnets, it wants several zones for the same reason. The question keeps coming back because the constraint never changes: an address belongs to a subnet, and a subnet belongs to a zone.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A subnet is a range of IP addresses inside the VPC, pinned to exactly one Availability Zone. Choosing a subnet is choosing a failure domain, which is why every serious layout has one subnet per zone per tier.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating subnets as a purely organisational split, the way you would use folders: one subnet for web, one for database, done. The grouping is real, and it misses that the zone binding is the load-bearing part. Two subnets in the same zone give you tidier grouping and no extra availability. The related slip is saying a VPC is in an Availability Zone. The VPC spans the Region; the subnet is the piece that lands in a zone.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What is a subnet, in the docs' own terms, and what is the constraint that comes with it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A range of IP addresses in a VPC, and it must reside in a single Availability Zone.</p></details>
+  <p>② A service runs four copies of itself, all in one subnet. What is it protected against, and what is it not?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Protected against one copy crashing. Not protected against the Availability Zone that subnet lives in, because all four addresses resolve to that one zone.</p></details>
+  <p>③ Why do AWS architecture diagrams show pairs or triples of near-identical subnets?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because a subnet cannot span zones. A tier that needs to survive a zone failure needs one subnet per zone, each doing the same job, with capacity in each.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon VPC User Guide, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/configure-subnets.html">"Subnets for your VPC"</a>. Short, and it states the addressing rules and the zone constraint directly. Skim the sizing section too: the reserved addresses in every subnet are the kind of detail that explains a surprising capacity failure later.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about subnet sizing, the addresses AWS reserves in every subnet, or how zone identifiers are mapped differently per account. Next: route tables, and the answer to what actually makes a subnet public.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0001-what-a-vpc-is.html">← Lesson 1</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-route-tables-and-public-subnets.html"><em>Next: Lesson 3 — Route tables and what public means →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon VPC User Guide, "What is Amazon VPC?". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html">docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html</a>. "A subnet is a range of IP addresses in your VPC. A subnet must reside in a single Availability Zone."<br>
+<span id="s2">2.</span> Amazon VPC User Guide, "Infrastructure security in Amazon VPC". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/infrastructure-security.html">docs.aws.amazon.com/vpc/latest/userguide/infrastructure-security.html</a>. Using subnets to isolate application tiers, and private subnets for resources that should not be reachable from the internet.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

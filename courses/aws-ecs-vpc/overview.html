@@ -1,0 +1,88 @@
+<link rel="stylesheet" href="../../assets/course.css">
+<title>VPC and ECS at whiteboard depth — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>VPC and ECS at whiteboard depth</h1>
+<p class="lede">The conceptual model behind running containers on AWS, built for saying out loud rather than for clicking through. The network first: what a VPC is, why subnets exist, what actually makes a subnet public, the three ways out, and the two filters. Then the compute: what ECS is responsible for, who owns the machine underneath, and what happens to the network when a task starts. Closes on the reference architecture, walked hop by hop. Nine lessons, an interleaved quiz, a glossary, and a printable whiteboard sheet.</p>
+
+<div class="home-group">
+  <p class="label">Arc 1 · The network</p>
+  <p class="blurb">Addressing, placement, routing, exits, filtering. Five decisions that together decide what can reach what.</p>
+
+  <a class="lesson-card" href="lessons/0001-what-a-vpc-is.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>What a VPC is</strong><span>A Region-scoped private network defined by an address range. Why the default VPC made all of this invisible, and what costs money.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-subnets-and-availability-zones.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>Subnets and Availability Zones</strong><span>A subnet is an address range pinned to one zone. Why choosing a subnet is choosing a failure domain, and why diagrams show matched sets.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0003-route-tables-and-public-subnets.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Route tables and what public means</strong><span>There is no public flag. One route to an internet gateway is the whole difference, and the address is a separate decision.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0004-three-doors-out.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>The three doors out</strong><span>Internet gateway, NAT gateway, VPC endpoint, told as one question: who is allowed to start the conversation.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0005-security-groups-and-nacls.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>Security groups and network ACLs</strong><span>Stateful allow-list on the resource against a stateless numbered list on the subnet. Plus the rule that names another group.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 2 · The compute</p>
+  <p class="blurb">What ECS decides on your behalf, and how much of the machine you keep.</p>
+
+  <a class="lesson-card" href="lessons/0006-what-ecs-is-responsible-for.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>What ECS is responsible for</strong><span>A control loop with four nouns: cluster, task definition, task, service. Desired count, and what the scheduler does about health.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0007-who-owns-the-box.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Who owns the box</strong><span>Fargate, EC2, Managed Instances, and ECS Anywhere as points on one axis. Launch types, capacity providers, and mixing them in one cluster.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 3 · Where they meet</p>
+  <p class="blurb">The task joins the network, and the whole picture assembles.</p>
+
+  <a class="lesson-card" href="lessons/0008-the-task-as-a-network-citizen.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>The task as a network citizen</strong><span>One interface, one private IP, its own security groups. Why target groups use ip targets and how a task reaches the internet.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0009-the-whiteboard-walkthrough.html">
+    <span class="num">L9</span>
+    <span class="body"><strong>The whiteboard walkthrough</strong><span>Synthesis. One request from client to database, every hop justified, plus the failure story to tell before being asked.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Review &amp; reference</p>
+  <p class="blurb">Drill the nine cold, then practise redrawing the architecture from a blank page.</p>
+
+  <a class="lesson-card" href="lessons/0010-interleaved-review.html">
+    <span class="num">L10</span>
+    <span class="body"><strong>Interleaved review quiz</strong><span>All nine shuffled, auto-graded, each answer set against its near-miss.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <div class="ref-links" style="margin-top:0.8rem">
+    <a href="reference/whiteboard.html">🗺️ Whiteboard sheet — the diagram, the nine answers, and the debugging order</a>
+    <a href="reference/glossary.html">📖 Glossary — canonical vocabulary, plus what the course deliberately leaves out</a>
+  </div>
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask the teacher.</strong> Any lesson can go deeper on request. The mechanics left out on purpose, such as deployment strategies, service-to-service connectivity, and the IAM role split, are named in the glossary and are the natural next topics.
+</div>

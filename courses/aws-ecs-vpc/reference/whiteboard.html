@@ -1,0 +1,105 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — The whiteboard sheet</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Reference</p>
+<h1>The whiteboard sheet</h1>
+<p class="lede">One page to practise from. The reference architecture, the sentence that justifies each box, the nine one-line answers, and the order to check things in when something cannot connect. Prints on a single sheet.</p>
+
+<h2>Draw this from memory</h2>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  user["client"] --> alb["Application Load Balancer<br/>public subnets, 2+ zones"]
+  subgraph vpc["VPC · one Region · 10.0.0.0/16"]
+    subgraph pub["public subnets · 0.0.0.0/0 to internet gateway"]
+      alb
+      nat["NAT gateway"]
+    end
+    subgraph priv["private subnets · 0.0.0.0/0 to NAT gateway"]
+      t1["ECS tasks, zone A"]
+      t2["ECS tasks, zone B"]
+    end
+    subgraph data["data subnets · no internet route"]
+      db["database, multi-zone"]
+    end
+    vpce["VPC endpoints<br/>ECR · S3 · logs · secrets"]
+  end
+  alb --> t1
+  alb --> t2
+  t1 --> db
+  t2 --> db
+  t1 --> vpce
+  t1 --> nat
+  nat --> igw["internet gateway"]
+</pre>
+<p class="cap">Three tiers, two or three zones, four ways across the boundary. Redraw it cold before reading the table below.</p>
+</div>
+
+<h2>Say why each box is there</h2>
+
+<table>
+  <tr><th>Box</th><th>The justification, in one sentence</th></tr>
+  <tr><td><strong>VPC</strong></td><td>A private network in one Region, defined by an address range, isolated from every other virtual network.</td></tr>
+  <tr><td><strong>Two or three zones</strong></td><td>A subnet lives in exactly one Availability Zone, so surviving a zone failure means matched subnets and capacity in each.</td></tr>
+  <tr><td><strong>Public subnets</strong></td><td>Their route table sends 0.0.0.0/0 to the internet gateway. Only components that must face the internet belong here.</td></tr>
+  <tr><td><strong>Application Load Balancer</strong></td><td>The single public entry point. Its listener takes the connection, its rules pick a target group, and health checks keep traffic off unhealthy targets.</td></tr>
+  <tr><td><strong>NAT gateway</strong></td><td>Outbound egress for the private tiers. Connections must start inside the VPC, so nothing outside can reach in through it.</td></tr>
+  <tr><td><strong>Private subnets</strong></td><td>No internet route, so nothing in them is directly reachable from outside. This is where the application runs.</td></tr>
+  <tr><td><strong>ECS tasks</strong></td><td>Each task has its own network interface, private address, and security groups, placed in the subnets given to the service.</td></tr>
+  <tr><td><strong>Target group, type ip</strong></td><td>The load balancer registers task addresses, because the target is an interface rather than an instance.</td></tr>
+  <tr><td><strong>Data subnets</strong></td><td>Unreachable twice over: no internet route, and a security group that admits only the application tier.</td></tr>
+  <tr><td><strong>VPC endpoints</strong></td><td>Calls to AWS services stay on the AWS network, so the image pull and log writes need no internet path and skip the NAT gateway.</td></tr>
+</table>
+
+<h2>The security group chain</h2>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  net["internet"] -->|"443"| sglb["sg-loadbalancer"]
+  sglb -->|"app port"| sgapp["sg-application"]
+  sgapp -->|"database port"| sgdb["sg-database"]
+</pre>
+<p class="cap">Each rule names the previous group, not an address range. Nothing breaks when tasks are replaced or scaled.</p>
+</div>
+
+<h2>The nine answers</h2>
+
+<table>
+  <tr><th>Asked</th><th>Say</th></tr>
+  <tr><td>What is a VPC?</td><td>A private network in one Region of one account: an address range plus the rules for moving through it. Nothing runs it.</td></tr>
+  <tr><td>What is a subnet?</td><td>A range of addresses inside the VPC, pinned to one Availability Zone. Choosing a subnet is choosing a failure domain.</td></tr>
+  <tr><td>What makes a subnet public?</td><td>A route table entry sending 0.0.0.0/0 to an internet gateway. The resource also needs an address the internet can answer.</td></tr>
+  <tr><td>Internet gateway, NAT gateway, endpoint?</td><td>Who may start the conversation: either side, only the inside, or only the inside and it never leaves the AWS network.</td></tr>
+  <tr><td>Security group against network ACL?</td><td>Stateful allow-list on the resource, able to reference other groups, against a stateless numbered allow-and-deny list on the subnet.</td></tr>
+  <tr><td>What is ECS?</td><td>A control loop: a task definition is the blueprint, a task is one running copy, a service holds a desired count, a cluster groups it all in a Region.</td></tr>
+  <tr><td>Fargate or EC2?</td><td>Who owns the machine. Fargate: AWS does, you declare CPU and memory per task. EC2: you own types, packing, patching, and idle time.</td></tr>
+  <tr><td>How does a task get on the network?</td><td>In awsvpc mode it gets its own interface, private IP, and security groups, in a subnet you chose. Target groups therefore use ip targets.</td></tr>
+  <tr><td>Draw the architecture.</td><td>Load balancer and NAT gateway public, tasks private across zones, data tier with no internet route, endpoints for AWS service calls.</td></tr>
+</table>
+
+<h2>When something cannot connect, check in this order</h2>
+
+<table>
+  <tr><th>#</th><th>Check</th><th>What a failure looks like</th></tr>
+  <tr><td>1</td><td>Is there a route? Look at the route table associated with the source subnet.</td><td>No 0.0.0.0/0 entry, or one pointing at a target that cannot help.</td></tr>
+  <tr><td>2</td><td>Does the source have a usable address for the path it is taking?</td><td>A private address only, on a path that needs a public one.</td></tr>
+  <tr><td>3</td><td>Does the network ACL allow both directions?</td><td>Inbound allowed, replies dropped, because ACLs are stateless.</td></tr>
+  <tr><td>4</td><td>Does the destination's security group allow the source group or range?</td><td>Rule written against an address range that changed.</td></tr>
+  <tr><td>5</td><td>Is the target healthy, and is the desired count being met?</td><td>Target group draining targets, or a service repeatedly launching and stopping tasks.</td></tr>
+</table>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Reachability is three separate decisions: an address, a route, and a rule. Name which one you are talking about and most AWS networking questions answer themselves.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="glossary.html">Glossary ↗</a></span>
+  <span><a href="../lessons/0010-interleaved-review.html">Quiz ↗</a></span>
+</div>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

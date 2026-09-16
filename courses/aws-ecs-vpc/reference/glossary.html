@@ -1,0 +1,91 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — VPC and ECS glossary</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">Canonical vocabulary for this course. Every lesson uses these terms exactly as defined here, and the definitions follow the AWS documentation rather than common usage where the two differ. The last table lists the terms the course names on purpose without teaching them, so the gaps are visible.</p>
+
+<h2>The network</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>VPC</strong></td><td>A virtual network dedicated to one AWS account, logically isolated from other virtual networks in the AWS Cloud. Defined by an IP address range, scoped to one Region, spanning that Region's Availability Zones. Nothing runs it; it is a definition that resources plug into. (Lesson 1)</td></tr>
+  <tr><td><strong>Region</strong></td><td>A geographic AWS location containing several Availability Zones. A VPC belongs to exactly one, and so does an ECS cluster. (Lesson 1)</td></tr>
+  <tr><td><strong>Availability Zone</strong></td><td>A distinct location within a Region, engineered to fail independently of the others. The unit of failure, and therefore the unit of redundancy. (Lesson 2)</td></tr>
+  <tr><td><strong>CIDR block</strong></td><td>An address range written as a prefix and a length, such as 10.0.0.0/16. A VPC has one; each subnet takes a smaller, non-overlapping block out of it. (Lessons 1, 2)</td></tr>
+  <tr><td><strong>Subnet</strong></td><td>A range of IP addresses in a VPC. It must reside in a single Availability Zone, which is why choosing a subnet is choosing a failure domain. Resources draw their private address from the subnet they are placed in. (Lesson 2)</td></tr>
+  <tr><td><strong>Default VPC</strong></td><td>The VPC AWS provides in each Region for accounts created after 4 December 2013. It has a default subnet in every zone, an attached internet gateway, a main route table route to that gateway, and public DNS hostnames enabled. It is a set of pre-made decisions, not an absence of them. (Lesson 1)</td></tr>
+  <tr><td><strong>Route table</strong></td><td>A set of rules, called routes, determining where traffic from a subnet or gateway is directed. Each subnet uses exactly one: the one explicitly associated with it, or the main route table. (Lesson 3)</td></tr>
+  <tr><td><strong>Main route table</strong></td><td>The route table created with the VPC. It controls routing for every subnet not explicitly associated with another table. (Lesson 3)</td></tr>
+  <tr><td><strong>Route: destination and target</strong></td><td>A route pairs a destination, the range of addresses traffic is headed for, with a target, the gateway, network interface, or connection to send it through. (Lesson 3)</td></tr>
+  <tr><td><strong>Local route</strong></td><td>The default route for communication within the VPC, present in every route table. It is why any resource can route to any other in the same VPC without configuration. Routing is not permission. (Lesson 3)</td></tr>
+  <tr><td><strong>Public subnet</strong></td><td>A subnet whose route table sends 0.0.0.0/0 to an internet gateway. Not a flag, not an attribute, not about which addresses the resources hold. (Lesson 3)</td></tr>
+  <tr><td><strong>Private subnet</strong></td><td>A subnet with no route to an internet gateway. Its resources reach the internet, if at all, through some other target such as a NAT gateway. (Lessons 3, 4)</td></tr>
+  <tr><td><strong>Internet gateway</strong></td><td>A gateway attached to a VPC that lets resources connect to the internet through the Amazon EC2 network edge. The only door through which something outside can initiate a connection inward. (Lessons 3, 4)</td></tr>
+  <tr><td><strong>NAT gateway</strong></td><td>An address translation service letting resources in a private subnet connect out while external services cannot initiate connections to them. A public NAT gateway lives in a public subnet with an Elastic IP address and routes onward to the internet gateway. Connections must always be initiated from within the VPC. (Lesson 4)</td></tr>
+  <tr><td><strong>Elastic IP address</strong></td><td>A static public IPv4 address allocated to your account and associated with a resource such as a NAT gateway or an instance. (Lessons 1, 4)</td></tr>
+  <tr><td><strong>VPC endpoint</strong></td><td>A way to reach an AWS service or a service in another VPC using private addresses, with traffic staying on the AWS network. An interface endpoint places an endpoint network interface in your subnet; a gateway endpoint serves Amazon S3 and DynamoDB through the route table and does not use AWS PrivateLink. (Lesson 4)</td></tr>
+  <tr><td><strong>AWS PrivateLink</strong></td><td>The service behind interface endpoints: clients in your VPC connect to services and resources in other VPCs using private IP addresses, as if those services were hosted in your own VPC. (Lesson 4)</td></tr>
+  <tr><td><strong>Elastic network interface (ENI)</strong></td><td>A virtual network card in a subnet, carrying a private address and the security groups attached to it. In <code>awsvpc</code> mode each ECS task gets its own, created with the task and deleted when it stops. (Lesson 8)</td></tr>
+  <tr><td><strong>Security group</strong></td><td>A stateful allow-list attached to a resource's network interface. Allow rules only, all rules evaluated, return traffic permitted automatically. Rules may reference other security groups instead of addresses. (Lesson 5)</td></tr>
+  <tr><td><strong>Network ACL</strong></td><td>A stateless filter attached to a subnet. Allow and deny rules, evaluated in ascending order until a match, with return traffic needing its own explicit rule. AWS positions it as coarse guard rails and defence in depth, not the primary control. (Lesson 5)</td></tr>
+  <tr><td><strong>Group-references-group</strong></td><td>Writing a security group rule whose source is another security group, so the policy names a role rather than an address. What keeps rules correct while tasks are replaced and scaled. (Lessons 5, 8, 9)</td></tr>
+</table>
+
+<h2>The compute</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Amazon ECS</strong></td><td>A fully managed container orchestration service. Split by the docs into three layers: capacity, the infrastructure where containers run; controller, which deploys and manages applications; and provisioning, the interfaces you use. (Lesson 6)</td></tr>
+  <tr><td><strong>Cluster</strong></td><td>A logical grouping of tasks or services that provides the infrastructure capacity for containerised applications. Region specific. Its components include the VPC and subnets where the work runs. Not a set of machines. (Lesson 6)</td></tr>
+  <tr><td><strong>Task definition</strong></td><td>A blueprint for an application: a JSON document describing one or more containers and their parameters, including images, CPU and memory, network mode, logging, and the IAM role tasks use. Registered as numbered revisions. Nothing runs when you write one. (Lesson 6)</td></tr>
+  <tr><td><strong>Task</strong></td><td>One running instantiation of a task definition within a cluster. All containers in the definition are placed together and live and die together. (Lesson 6)</td></tr>
+  <tr><td><strong>Service</strong></td><td>A controller that runs and maintains a specified number of instances of a task definition. If a task fails or stops, the service scheduler launches a replacement. Optionally sits behind a load balancer. (Lesson 6)</td></tr>
+  <tr><td><strong>Service scheduler</strong></td><td>The part of ECS that compares desired count with actual and acts on the difference, including replacing tasks that fail a container health check or a load balancer target group health check. (Lessons 6, 9)</td></tr>
+  <tr><td><strong>Desired count</strong></td><td>The number of tasks a service is asked to keep running. Scaling changes this number; the reconciliation behaviour around it never changes. (Lesson 6)</td></tr>
+  <tr><td><strong>Service auto scaling</strong></td><td>Automatic adjustment of a service's desired number of tasks, implemented through Application Auto Scaling. (Lesson 6)</td></tr>
+  <tr><td><strong>Capacity</strong></td><td>The ECS layer that supplies the infrastructure tasks run on: Fargate, EC2 instances, ECS Managed Instances, or external instances. Independent of the controller layer above it. (Lesson 7)</td></tr>
+  <tr><td><strong>AWS Fargate</strong></td><td>Serverless capacity: run containers without provisioning, configuring, or scaling clusters of virtual machines. Each Fargate task has its own isolation boundary and shares no kernel, CPU, memory, or network interface with another task. (Lesson 7)</td></tr>
+  <tr><td><strong>Platform version</strong></td><td>A Fargate runtime environment, combining kernel and container runtime versions. New tasks always start on the latest revision, which is how patching reaches workloads with no host to patch. (Lesson 7)</td></tr>
+  <tr><td><strong>Fargate Spot</strong></td><td>Fargate capacity running on spare compute at a discount, interrupted with a two-minute warning when AWS needs it back. Suits interruption-tolerant work. (Lesson 7)</td></tr>
+  <tr><td><strong>ECS Managed Instances</strong></td><td>EC2 instance types with infrastructure management offloaded to AWS, which handles provisioning, patching, scaling, and maintenance. Currently the docs' recommended choice for most new workloads. (Lesson 7)</td></tr>
+  <tr><td><strong>ECS Anywhere</strong></td><td>Registration of an external instance, such as an on-premises server or virtual machine, to an ECS cluster. (Lesson 7)</td></tr>
+  <tr><td><strong>Launch type</strong></td><td>Telling ECS to launch tasks directly on Fargate or on the EC2 instances registered to the cluster. The simpler of the two ways to choose capacity. (Lesson 7)</td></tr>
+  <tr><td><strong>Capacity provider strategy</strong></td><td>Distributing tasks across one or more capacity providers, with weights. How a single service splits between, say, Fargate and Fargate Spot. (Lesson 7)</td></tr>
+  <tr><td><strong>awsvpc network mode</strong></td><td>The network mode giving tasks the same networking properties as EC2 instances: one elastic network interface per task, a private IPv4 address, and the security groups you specify. Required for Fargate. (Lesson 8)</td></tr>
+  <tr><td><strong>Network configuration</strong></td><td>The subnets and security groups given when running a task or creating a service. Placement follows the subnets, so it is also the availability decision. Currently limited to 16 subnets and 5 security groups. (Lesson 8)</td></tr>
+</table>
+
+<h2>Where they meet</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Application Load Balancer</strong></td><td>A layer 7 load balancer serving as the single point of contact for clients and distributing traffic across targets in multiple Availability Zones. (Lesson 9)</td></tr>
+  <tr><td><strong>Listener</strong></td><td>The part of a load balancer that checks for connection requests using a configured protocol and port. (Lesson 9)</td></tr>
+  <tr><td><strong>Rule</strong></td><td>A listener's routing decision, made of a priority, one or more conditions, and one or more actions. Layer 7 conditions can match paths and hostnames. (Lesson 9)</td></tr>
+  <tr><td><strong>Target group</strong></td><td>The list of registered backends a rule forwards to, with health checks configured per group so traffic only reaches healthy targets. (Lessons 8, 9)</td></tr>
+  <tr><td><strong>Target type <code>ip</code></strong></td><td>The required target type for services using <code>awsvpc</code>, because the task is associated with a network interface rather than an EC2 instance. Instance targets are the wrong unit. (Lesson 8)</td></tr>
+  <tr><td><strong>Health check</strong></td><td>A periodic probe. A target group health check decides whether the load balancer sends traffic; the ECS service scheduler treats a failure as a reason to replace the task. Two loops, different jobs. (Lesson 9)</td></tr>
+</table>
+
+<h2>Named, not taught</h2>
+
+<p>These come up next to the course material and are deliberately outside its scope. They are listed so the boundary is visible rather than invisible.</p>
+
+<table>
+  <tr><th>Term</th><th>One line</th></tr>
+  <tr><td><strong>Service Connect</strong></td><td>ECS service-to-service communication with automatic discovery using short names and standard ports, without a load balancer.</td></tr>
+  <tr><td><strong>Service discovery</strong></td><td>The Route 53 based alternative: a namespace makes a service discoverable through DNS.</td></tr>
+  <tr><td><strong>Amazon VPC Lattice</strong></td><td>A managed application networking service connecting and securing services across accounts and VPCs.</td></tr>
+  <tr><td><strong>Task role and task execution role</strong></td><td>Two distinct IAM roles: the task role is what the application uses, the execution role is what the ECS agent uses to pull images and write logs.</td></tr>
+  <tr><td><strong>Amazon ECR</strong></td><td>The AWS container registry. Relevant here only as the thing a task must reach to pull its image.</td></tr>
+  <tr><td><strong>Blue/green deployment</strong></td><td>Shifting traffic to a parallel new version rather than replacing tasks in place.</td></tr>
+  <tr><td><strong>VPC peering and Transit Gateway</strong></td><td>Two ways to route privately between VPCs: a direct pairing, and a Regional hub that interconnects many networks.</td></tr>
+  <tr><td><strong>VPC Flow Logs</strong></td><td>Records of IP traffic going to and from network interfaces in a VPC, including task interfaces.</td></tr>
+</table>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="whiteboard.html">Whiteboard sheet ↗</a></span>
+  <span><a href="../lessons/0010-interleaved-review.html">Quiz ↗</a></span>
+</div>

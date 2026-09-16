@@ -1,0 +1,99 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 7 — Who owns the box</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 2 · Lesson 7</p>
+<h1>Who owns the box</h1>
+<p class="lede">The scheduler from Lesson 6 needs somewhere to put tasks. That somewhere is the capacity layer, and choosing it is one question asked in several ways: how much of the machine do you want to be responsible for?</p>
+
+<h2>The concept</h2>
+
+<p>ECS separates the controller from the capacity, which is why the same service definition can run on very different infrastructure. The docs list the capacity options plainly: EC2 instances in the AWS cloud, where "you choose the instance type, the number of instances, and manage the capacity"; serverless, where "Fargate is a serverless, pay-as-you-go compute engine"; ECS Managed Instances, where AWS "handles provisioning, patching, scaling, and maintenance of the underlying infrastructure"; and on-premises servers registered through ECS Anywhere.<sup><a href="#s1">1</a></sup></p>
+
+<p>Read them as points on one axis rather than four products.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  a["Fargate<br/>AWS owns the machine<br/>you declare CPU and memory"] --> b["ECS Managed Instances<br/>EC2 underneath,<br/>AWS provisions and patches"]
+  b --> c["EC2 capacity<br/>you choose instance types<br/>and manage the fleet"]
+  c --> d["ECS Anywhere<br/>your own servers,<br/>registered to the cluster"]
+</pre>
+<p class="cap">Left to right: more control, more to look after. The controller layer above is the same in every case.</p>
+</div>
+
+<h3>Step 1 — Fargate removes the fleet from the picture</h3>
+<p>"AWS Fargate is a technology that you can use with Amazon ECS to run containers without having to manage servers or clusters of Amazon EC2 instances. With AWS Fargate, you no longer have to provision, configure, or scale clusters of virtual machines to run containers. This removes the need to choose server types, decide when to scale your clusters, or optimize cluster packing."<sup><a href="#s2">2</a></sup></p>
+
+<p>What you declare instead is the shape of the task: "you package your application in containers, specify the CPU and memory requirements, define networking and IAM policies, and launch the application."<sup><a href="#s2">2</a></sup> Isolation is per task, and the docs are specific about it: "Each Fargate task has its own isolation boundary and does not share the underlying kernel, CPU resources, memory resources, or elastic network interface with another task."<sup><a href="#s2">2</a></sup></p>
+
+<p>Because there is no host you own, there is also no host you patch. Fargate exposes <em>platform versions</em> instead, "a combination of the kernel and container runtime versions", and a new task "always runs on the latest revision of a platform version, ensuring that tasks are always started on secure and patched infrastructure."<sup><a href="#s2">2</a></sup> Patching becomes a property of starting a new task.</p>
+
+<h3>Step 2 — EC2 capacity keeps the fleet, and the control that comes with it</h3>
+<p>With EC2 capacity you register instances to the cluster and the scheduler places tasks onto them. You pick the instance types, so you can reach things Fargate does not offer, and you decide how full the machines run. The docs frame the choice around needing "specific instance types or configurations", existing EC2 infrastructure, "custom AMIs or specialized software", or "maximum control over the underlying infrastructure."<sup><a href="#s3">3</a></sup></p>
+
+<p>The cost model differs in kind, not only in rate. Instances are billed while they exist, whether or not tasks fill them, so packing and scaling the fleet is your problem and your opportunity. Fargate bills per task. That is the real content of most "which is cheaper" debates.</p>
+
+<h3>Step 3 — ECS Managed Instances is the middle, and it is the current default advice</h3>
+<p>"Amazon ECS Managed Instances is a compute option for Amazon ECS that enables you to run containerized workloads on a range of Amazon EC2 instance types while offloading infrastructure management to AWS."<sup><a href="#s1">1</a></sup> You get EC2 instance characteristics such as GPU acceleration or specific CPU architectures, and AWS handles provisioning, patching, scaling, and lifecycle management.<sup><a href="#s3">3</a></sup></p>
+
+<p>The docs currently call it "the recommended choice for most new workloads."<sup><a href="#s3">3</a></sup> Worth knowing by name: it is recent enough that many people's mental model of ECS still has only two options in it.</p>
+
+<h3>Step 4 — Launch type or capacity provider, and clusters can mix</h3>
+<p>Two ways to say where a task should go. A <em>launch type</em> "causes Amazon ECS to launch our tasks directly on either Fargate or on the EC2 instances registered to your clusters."<sup><a href="#s4">4</a></sup> A <em>capacity provider strategy</em> distributes tasks "in one or across multiple capacity providers", with weights, and a cluster can have a default strategy.<sup><a href="#s3">3</a></sup></p>
+
+<p>The flexible part is that these are per-workload, not per-cluster: "A cluster can contain a mix of tasks that are hosted on Amazon ECS Managed Instances, AWS Fargate, Amazon EC2 instances, or external instances."<sup><a href="#s3">3</a></sup> Fargate Spot is the common reason to use a strategy rather than a launch type, since it "runs tasks on spare compute capacity" at a discount and interrupts them "with a two-minute warning" when AWS needs it back.<sup><a href="#s2">2</a></sup> A strategy can put a baseline on regular Fargate and the surge on Spot.</p>
+
+<h2>Why it matters</h2>
+
+<p>This is the ECS question that actually gets asked, and the weak version of the answer is a preference. The strong version names the axis. Fargate trades control and per-unit price for the disappearance of an entire operational surface: no AMIs, no fleet scaling, no bin packing, no patch windows. EC2 capacity keeps that surface because something about the workload needs it, and a reason worth naming is a reason like GPUs, a specialised AMI, or existing committed capacity.</p>
+
+<p>It also explains why the capacity choice barely touches the rest of the design. The service and its desired count do not change. The next lesson shows that the networking does not change much either, which is the part that surprises people.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Fargate against EC2 is one question: who owns the machine. Fargate means AWS owns it, you declare CPU and memory per task, and patching is a property of launching a new task. EC2 capacity means you own the fleet, its types, its packing, and its idle time. Managed Instances sits between them and is what the docs now recommend for most new workloads.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating this as a cluster-wide, one-time decision. A cluster can hold tasks on Fargate, on EC2 instances, on Managed Instances, and on external instances at the same time, and a capacity provider strategy can split a single service across providers with weights. The most common real design is exactly that split: steady capacity on one provider, burst on Fargate Spot, which is interruptible with a two-minute warning.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① State the axis the capacity options sit on, and place Fargate and EC2 on it.</p>
+  <details><summary>show answer</summary>
+  <p class="a">How much of the machine you own. Fargate: AWS owns it, no instances to provision, configure or scale, and each task has its own isolation boundary. EC2: you choose instance types and numbers and manage the capacity yourself.</p></details>
+  <p>② There is no host to patch under Fargate. So how do tasks get security updates?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Through platform versions, which pair a kernel with a container runtime. AWS publishes new revisions, and a new task always starts on the latest revision, so replacing tasks is what applies the update.</p></details>
+  <p>③ A workload needs GPU instances for one component and has a bursty stateless web tier. Does that force two clusters?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No. One cluster can mix capacity types. The GPU component uses EC2 or Managed Instances capacity; the web tier uses Fargate, optionally with a capacity provider strategy that sends burst tasks to Fargate Spot.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon ECS Developer Guide, <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html">"Amazon ECS clusters"</a>. The cluster types section is the cleanest side-by-side of the capacity options, and the capacity providers section that follows explains how a single cluster mixes them.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask how cluster auto scaling works for EC2 capacity, what bin packing costs you in practice, or when Fargate's task size constraints become the deciding factor. Next: the lesson where the two halves of this course meet. What happens to the VPC when a task starts.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0006-what-ecs-is-responsible-for.html">← Lesson 6</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0008-the-task-as-a-network-citizen.html"><em>Next: Lesson 8 — The task as a network citizen →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon ECS Developer Guide, "What is Amazon Elastic Container Service?". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html</a>. The capacity options: Managed Instances, EC2 instances, Fargate, and ECS Anywhere.<br>
+<span id="s2">2.</span> Amazon ECS Developer Guide, "Architect for AWS Fargate for Amazon ECS". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html</a>. What Fargate removes, the per-task isolation boundary, platform versions and patching, and Fargate Spot's two-minute interruption warning.<br>
+<span id="s3">3.</span> Amazon ECS Developer Guide, "Amazon ECS clusters". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html</a>. The three cluster infrastructure types and when to use each, the recommendation for Managed Instances, capacity providers, and clusters mixing capacity types.<br>
+<span id="s4">4.</span> Amazon ECS Developer Guide, "Amazon ECS services". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html</a>. Launch type against capacity provider strategy as the two compute options for a service.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

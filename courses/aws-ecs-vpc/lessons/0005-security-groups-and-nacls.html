@@ -1,0 +1,106 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5 — Security groups and network ACLs</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 1 · Lesson 5</p>
+<h1>Security groups and network ACLs</h1>
+<p class="lede">Routing decides whether a path exists. Filtering decides whether traffic is allowed down it. AWS gives two filters that sit at different levels and behave differently enough that mixing them up produces confident wrong answers.</p>
+
+<h2>The concept</h2>
+
+<p>A security group "controls the traffic that is allowed to reach and leave the resources that it is associated with."<sup><a href="#s1">1</a></sup> It attaches to the resource. A network ACL attaches to a subnet and filters everything entering or leaving that subnet, whatever it is.</p>
+
+<p>Both are packet filters, so the temptation is to treat them as the same tool at two scales. They are not. The comparison table in the AWS security guidance is the fastest way to see why, and it is worth knowing well enough to reconstruct.<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  net["traffic arriving from<br/>outside the subnet"] --> nacl["network ACL<br/>subnet level, stateless<br/>allow and deny, numbered"]
+  nacl --> sg["security group<br/>resource level, stateful<br/>allow rules only"]
+  sg --> res["the resource"]
+</pre>
+<p class="cap">Two layers, in order. Most designs configure the inner one and leave the outer one open.</p>
+</div>
+
+<h3>Step 1 — A security group is a stateful allow-list on the resource</h3>
+<p>You write inbound rules and outbound rules, each naming a source or destination, a port range, and a protocol. There are no deny rules: anything not allowed is simply not allowed. AWS puts it as "Allow rules only", and adds that a security group "Evaluates all rules before deciding whether to allow traffic."<sup><a href="#s2">2</a></sup></p>
+
+<p>Stateful is the property that matters day to day: "if you send a request from an instance, the response traffic for that request is allowed to reach the instance regardless of the inbound security group rules. Responses to allowed inbound traffic are allowed to leave the instance, regardless of the outbound rules."<sup><a href="#s1">1</a></sup> You allow the request; the reply is handled for you.</p>
+
+<h3>Step 2 — Security groups can name each other</h3>
+<p>A rule's source does not have to be an address range. It can be another security group, which means "anything currently wearing that group." AWS calls this out as a reason to prefer them: security groups are "more versatile than network ACLs, due to their ability to perform stateful packet filtering and create rules that reference other security groups."<sup><a href="#s2">2</a></sup></p>
+
+<p>This is the idea worth carrying into the ECS half of the course. It lets you write a rule like "the database accepts connections from the application group, and nothing else" without knowing a single IP address, and without rewriting anything when instances are replaced or scaled. The rule describes roles, and membership is what changes.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  lb["group: load balancer"] -->|"allowed on 443"| app["group: application"]
+  app -->|"allowed on 5432"| db["group: database"]
+  world["the internet"] -->|"allowed on 443"| lb
+  world -.->|"no rule, so denied"| app
+</pre>
+<p class="cap">A chain of groups referencing groups. No addresses appear anywhere in it.</p>
+</div>
+
+<h3>Step 3 — A network ACL is a stateless numbered list on the subnet</h3>
+<p>Network ACLs differ on every row of the table: they operate at the subnet level rather than the instance level, they support "Allow and deny rules", they evaluate "rules in ascending order until a match for the traffic is found", and return traffic "Must be explicitly allowed (stateless)."<sup><a href="#s2">2</a></sup></p>
+
+<p>The last one is the practical trap. Because there is no connection tracking, allowing an inbound request does nothing for the outbound reply; a separate rule has to permit it, typically across the ephemeral port range. A network ACL that looks correct and blocks all real traffic is usually a missing return rule.</p>
+
+<h3>Step 4 — AWS's own guidance picks a default</h3>
+<p>The recommendation is explicit: "Use security groups as the primary mechanism for controlling network access to your VPCs. When necessary, use network ACLs to provide stateless, coarse-grain network control." The stated role for ACLs is "a secondary control (for example, to deny a specific subset of traffic) or as high-level subnet guard rails", and as "defense-in-depth in case an instance is ever launched without the correct security group."<sup><a href="#s2">2</a></sup></p>
+
+<p>So the expected shape of an answer is: security groups do the work, network ACLs catch mistakes. Deny rules are the one thing only the ACL can express, which is why blocking a specific address range is its classic use.</p>
+
+<h2>Why it matters</h2>
+
+<p>These two objects carry the whole reachability story once routing is settled, and they are where "it can't connect" questions end up. The diagnosis order follows the layers: is there a route, does the network ACL permit both directions, does the security group on the target allow the source, does the security group on the source allow the outbound.</p>
+
+<p>The group-references-group idea matters more than it first appears. It is what makes a policy survive autoscaling, replacement, and redeployment, because the rule is written about a role rather than about addresses that will not be the same tomorrow. The ECS half of this course depends on it: tasks come and go constantly, and their addresses with them.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A security group is a stateful allow-list attached to the resource, and its rules can reference other security groups. A network ACL is a stateless numbered allow-and-deny list attached to the subnet, first match wins, and return traffic needs its own rule. Do the work in security groups; keep ACLs as coarse guard rails.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is describing network ACLs as the finer-grained control because they come with numbered rules and explicit denies. The granularity runs the other way: a security group applies to individual resources and can reference other groups, while an ACL applies to every packet crossing a subnet boundary regardless of what it is. The second half of the trap is forgetting statelessness. An ACL rule set written as if responses come back for free will block the replies to traffic it just allowed.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Reconstruct the comparison, row by row: level, rule types, evaluation, return traffic.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Security group: instance level, allow rules only, evaluates all rules before deciding, return traffic automatically allowed because it is stateful. Network ACL: subnet level, allow and deny rules, evaluates rules in ascending order until a match is found, return traffic must be explicitly allowed because it is stateless.</p></details>
+  <p>② Why does referencing a security group in a rule survive autoscaling when an address range does not?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The rule names a role rather than an address. New resources join the group when they launch and inherit the permission; replaced resources take new addresses, which the rule never mentioned. Nothing has to be rewritten.</p></details>
+  <p>③ An inbound network ACL rule allows HTTPS on port 443, and requests still fail. What is the first thing to check?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The outbound rules. Network ACLs are stateless, so the response to an allowed inbound request needs its own explicit allow, usually over the ephemeral port range.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon VPC User Guide, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/infrastructure-security.html">"Infrastructure security in Amazon VPC"</a>. Short, and it carries both the comparison table and AWS's own recommendation about which to reach for first. The layered diagram on that page is the one to redraw when explaining this out loud.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about the default security group's behaviour, what the default network ACL allows, or how group-referencing rules behave across peered VPCs. Next: the other half of the course. What ECS is actually responsible for.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0004-three-doors-out.html">← Lesson 4</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-what-ecs-is-responsible-for.html"><em>Next: Lesson 6 — What ECS is responsible for →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon VPC User Guide, "Control traffic to your AWS resources using security groups". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html">docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html</a>. What a security group controls, inbound and outbound rule fields, and statefulness.<br>
+<span id="s2">2.</span> Amazon VPC User Guide, "Infrastructure security in Amazon VPC". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/infrastructure-security.html">docs.aws.amazon.com/vpc/latest/userguide/infrastructure-security.html</a>. The security group against network ACL comparison table, the recommendation to use security groups as the primary mechanism, and network ACLs as coarse-grained defence in depth.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

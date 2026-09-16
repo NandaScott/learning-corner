@@ -1,0 +1,113 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3 — Route tables and what public means</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 1 · Lesson 3</p>
+<h1>Route tables and what public means</h1>
+<p class="lede">There is no setting named "public" on a subnet. A subnet is public because of one line in a table: send everything not local to an internet gateway. Once that lands, the whole public and private vocabulary stops being jargon and starts being a routing decision you can read off a diagram.</p>
+
+<h2>The concept</h2>
+
+<p>A route table "serves as the traffic controller for your virtual private cloud", holding "a set of rules, called <em>routes</em>, that determine where network traffic from your subnet or gateway is directed."<sup><a href="#s1">1</a></sup> Each route is a pair: a <strong>destination</strong>, meaning "the range of IP addresses where you want traffic to go", and a <strong>target</strong>, meaning "the gateway, network interface, or connection through which to send the destination traffic."<sup><a href="#s2">2</a></sup></p>
+
+<p>That pairing is the entire mechanism. A packet leaves a resource, its destination address is compared against the routes in that subnet's table, and the matching route says which exit to hand it to. No matching route means the packet goes nowhere.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  p["packet leaves a resource<br/>in subnet 10.0.2.0/24"] --> rt["the route table associated<br/>with that subnet"]
+  rt --> r1["destination 10.0.0.0/16<br/>target: local"]
+  rt --> r2["destination 0.0.0.0/0<br/>target: ?"]
+  r1 --> in["stays inside the VPC"]
+  r2 --> out["whatever the target is,<br/>or nowhere if no such route"]
+</pre>
+<p class="cap">Two routes decide almost everything. The second one is where public and private are settled.</p>
+</div>
+
+<h3>Step 1 — Every subnet has exactly one route table</h3>
+<p>You can associate a subnet with a table you created. If you do not, it falls back: the main route table "automatically comes with your VPC" and "controls the routing for all subnets that are not explicitly associated with any other route table."<sup><a href="#s2">2</a></sup> So there is no such thing as a subnet without routing. There is only a subnet whose routing you have not looked at.</p>
+
+<p>One table can serve many subnets, which is how a matched set of private subnets across three zones stays consistent: same table, same rules, three places.</p>
+
+<h3>Step 2 — The local route is always there</h3>
+<p>Every route table contains a <em>local route</em>, "a default route for communication within the VPC."<sup><a href="#s2">2</a></sup> Its destination is the VPC's own address range, and its target is the VPC itself. This is why any resource in a VPC can route to any other resource in the same VPC without configuration, across subnets and across zones.</p>
+
+<p>Routing is not permission. The local route means a path exists; whether the traffic is allowed to arrive is decided by a separate layer, which is Lesson 5. Keeping those two apart is most of what makes AWS connectivity debugging tractable.</p>
+
+<h3>Step 3 — A public subnet is one with a route to an internet gateway</h3>
+<p>Add a route with destination 0.0.0.0/0 and an internet gateway as the target, and every packet with no more specific match heads for the internet. A subnet whose table has that route is what everyone means by a public subnet. A subnet whose table does not have it is a private subnet. The words describe the routing, not a property AWS stores.</p>
+
+<p>The docs describe the default VPC in exactly these terms: it has "an attached internet gateway, a route in the main route table that sends all traffic to the internet gateway", and therefore "an EC2 instance that is launched in a default subnet automatically has access to the internet."<sup><a href="#s3">3</a></sup> The internet access is a consequence of the route, spelled out as such.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  subgraph pub["public subnet"]
+    prt["route table<br/>10.0.0.0/16 → local<br/>0.0.0.0/0 → internet gateway"]
+  end
+  subgraph priv["private subnet"]
+    qrt["route table<br/>10.0.0.0/16 → local<br/>(no 0.0.0.0/0 route)"]
+  end
+  prt --> igw["internet gateway"]
+  qrt --> none["traffic to the internet<br/>has nowhere to go"]
+</pre>
+<p class="cap">Same VPC, same kind of object, one line of difference.</p>
+</div>
+
+<h3>Step 4 — A public IP address is the other half, and it is a separate decision</h3>
+<p>The route gets a packet to the edge. Getting an answer back requires the resource to have an address the internet can reply to. The docs are precise about the default case: "By default, each instance that you launch into a nondefault subnet has a private IPv4 address, but no public IPv4 address, unless you specifically assign one at launch, or you modify the subnet's public IP address attribute. These instances can communicate with each other, but can't access the internet."<sup><a href="#s3">3</a></sup></p>
+
+<p>Two independent things, then. The subnet's route table decides whether a path to the internet exists. The resource's address decides whether it can use that path. Missing either one produces the same symptom, which is why "it can't reach the internet" is never a one-check diagnosis.</p>
+
+<h2>Why it matters</h2>
+
+<p>This is the lesson that turns AWS diagrams into something readable. Every box labelled "public subnet" is making a claim about a route table, and you can ask to see it. Every "why can't this reach out" question splits immediately into two: is there a route, and does this thing have a usable address.</p>
+
+<p>It also sets up the rest of the network. Gateways are not special powers; they are targets that a route can point at. Once the route table is the thing doing the deciding, adding an internet gateway, a NAT gateway, or an endpoint is the same move each time: give traffic a destination and point it somewhere.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A subnet is public because its route table sends 0.0.0.0/0 to an internet gateway. There is no public flag. And the route alone is not enough: the resource also needs an address the internet can answer.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "a public subnet is one where resources get public IP addresses." Auto-assigning a public address is a real subnet setting, and it is the wrong half of the answer. Without the internet gateway route, the packet never reaches the edge and the public address does nothing. The strong answer names both halves and says which one the term "public subnet" refers to.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What makes a subnet public?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Its associated route table contains a route whose destination is 0.0.0.0/0 and whose target is an internet gateway. Nothing else marks it as public.</p></details>
+  <p>② A subnet was created and no route table was associated with it. What is its routing?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It uses the VPC's main route table, which controls routing for every subnet not explicitly associated with another table. It always has the local route, so it can reach the rest of the VPC.</p></details>
+  <p>③ An instance sits in a subnet with an internet gateway route and still cannot reach the internet. Name one reason that is consistent with everything in this lesson.</p>
+  <details><summary>show answer</summary>
+  <p class="a">It has only a private IPv4 address, so there is no address for return traffic. The path exists and the resource cannot use it.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon VPC User Guide, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html">"Route table concepts"</a>. A single list of definitions: main and custom tables, destination, target, local route, association. The example that follows, with five subnets and four tables, is worth redrawing from memory.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask how AWS picks between two routes that both match, or what a gateway route table is for. Next: the three ways out of a VPC, told as one question about who is allowed to start the conversation.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-subnets-and-availability-zones.html">← Lesson 2</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-three-doors-out.html"><em>Next: Lesson 4 — The three doors out →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon VPC User Guide, "Configure route tables". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Route_Tables.html">docs.aws.amazon.com/vpc/latest/userguide/VPC_Route_Tables.html</a>. Route tables as traffic controller; each route specifies a destination and a target.<br>
+<span id="s2">2.</span> Amazon VPC User Guide, "Route table concepts". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html">docs.aws.amazon.com/vpc/latest/userguide/RouteTables.html</a>. Main route table, custom route table, destination, target, local route, route table association.<br>
+<span id="s3">3.</span> Amazon VPC User Guide, "How Amazon VPC works". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html">docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html</a>. The default VPC's internet gateway route, and the default addressing of instances in nondefault subnets.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

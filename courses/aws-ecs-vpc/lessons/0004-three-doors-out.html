@@ -1,0 +1,113 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4 — The three doors out</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 1 · Lesson 4</p>
+<h1>The three doors out</h1>
+<p class="lede">An internet gateway, a NAT gateway, and a VPC endpoint look like three unrelated services. They are one idea seen three ways. Each answers the same question differently: who is allowed to start the conversation, and does the traffic leave the AWS network at all.</p>
+
+<h2>The concept</h2>
+
+<p>A private network with no exits is not useful. Applications call payment APIs, pull container images, write to object storage, and receive requests from customers. Each of those crosses the VPC boundary, and AWS gives three ways across. They are all route targets, in the sense of Lesson 3, so adding one is always the same move: create the door, then point a route at it.</p>
+
+<p>The difference between them is direction and path.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  q["traffic needs to cross<br/>the VPC boundary"] --> a{"who starts<br/>the conversation?"}
+  a -->|"either side"| igw["internet gateway<br/>two-way, over the internet"]
+  a -->|"only the inside"| nat["NAT gateway<br/>outbound only, over the internet"]
+  a -->|"only the inside,<br/>and it is an AWS service"| vpce["VPC endpoint<br/>stays on the AWS network"]
+</pre>
+<p class="cap">One question, three answers. Memorise the question, not the list.</p>
+</div>
+
+<h3>Step 1 — Internet gateway: two-way, and the only one that accepts inbound</h3>
+<p>An internet gateway is attached to a VPC and "enables your instances to connect to the internet through the Amazon EC2 network edge."<sup><a href="#s1">1</a></sup> It is the door a public subnet's default route points at, and it is the only one of the three through which something outside can open a connection to something inside.</p>
+
+<p>Being able to accept inbound does not mean everything inside becomes reachable. The resource still needs a public address, and the filtering layer still applies. What the gateway provides is the possibility.</p>
+
+<h3>Step 2 — NAT gateway: outbound only, by construction</h3>
+<p>The docs state the purpose in one sentence: "You can use a NAT gateway so that instances in a private subnet can connect to services outside your VPC but external services can't initiate a connection with those instances."<sup><a href="#s2">2</a></sup> And the constraint that makes it a design tool: "Connections must always be initiated from within the VPC containing the NAT gateway."<sup><a href="#s2">2</a></sup></p>
+
+<p>The placement surprises people. A public NAT gateway "is created in a public subnet and must associate an Elastic IP address with the NAT gateway at creation", and traffic is routed from it to the internet gateway.<sup><a href="#s2">2</a></sup> So the device that serves private subnets does not live in one. The private subnets route 0.0.0.0/0 to the NAT gateway, and the NAT gateway, sitting in a public subnet, routes onward to the internet gateway.</p>
+
+<p>The translation is what removes the inbound path: the NAT gateway maps the source private address of the instance to its own address, and translates the answer back on the way in.<sup><a href="#s2">2</a></sup> Nothing outside ever learns an address that reaches the instance directly.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  task["resource in<br/>private subnet"] -->|"0.0.0.0/0"| nat["NAT gateway<br/>in a public subnet"]
+  nat -->|"0.0.0.0/0"| igw["internet gateway"]
+  igw --> net["the internet"]
+  net -.->|"cannot initiate"| task
+</pre>
+<p class="cap">Two hops out, no hop in. The dotted line is the property people pay for.</p>
+</div>
+
+<h3>Step 3 — VPC endpoint: do not leave the AWS network at all</h3>
+<p>Much of what an application calls is an AWS service: object storage, a secrets store, a container registry, a queue. Those services have public endpoints, so reaching them from a private subnet through a NAT gateway works. A VPC endpoint asks why the traffic should go out at all.</p>
+
+<p>With AWS PrivateLink, clients in your VPC "connect to services and resources in other VPCs using private IP addresses, as if those services and resources were hosted directly in your VPC."<sup><a href="#s3">3</a></sup> Concretely, an <em>interface endpoint</em> puts an endpoint network interface in your subnet, with a private address, and "traffic between a VPC endpoint and an endpoint service or resource stays within the AWS network, without traversing the public internet."<sup><a href="#s3">3</a></sup></p>
+
+<p>There is a second, older kind. A <em>gateway endpoint</em> sends traffic to Amazon S3 or DynamoDB and works through the route table rather than an interface, and the docs note that gateway endpoints "do not use AWS PrivateLink, unlike the other types of VPC endpoints."<sup><a href="#s3">3</a></sup> Two shapes, same intent: keep the call on the AWS network so no internet-facing door is needed for it.</p>
+
+<h3>Step 4 — Read the three as a single decision</h3>
+<p>Given any dependency, ask two questions in order. Does anything outside need to open a connection to us? If yes, an internet gateway is involved, and almost always with a load balancer in front rather than direct exposure. If no, is the dependency an AWS service that offers an endpoint? If yes, use the endpoint and keep the traffic internal. Otherwise a NAT gateway carries the outbound call.</p>
+
+<p>Most real workloads use all three at once, for different flows, in the same VPC. That is normal and it is worth saying out loud in an interview, because it shows the three are not alternatives.</p>
+
+<h2>Why it matters</h2>
+
+<p>"Put it in a private subnet" is the standard security recommendation, and on its own it breaks things: an application in a private subnet with no doors cannot pull its image, call an API, or write a log. The doors are what make a private placement workable, and picking the right one is the difference between an architecture that is closed by default and one that is closed by accident.</p>
+
+<p>The cost story follows the same lines. A VPC costs nothing, and a NAT gateway is one of the components AWS charges for, by the hour and by data processed.<sup><a href="#s4">4</a></sup> Which is why replacing NAT traffic to AWS services with endpoints is one of the first things a cost review looks at, and why an answer that reaches for endpoints unprompted reads as experienced.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Three doors, one question: who may start the conversation. An internet gateway allows either side. A NAT gateway allows only the inside, because connections must be initiated from within the VPC. A VPC endpoint keeps the call on the AWS network, so nothing needs to face the internet for it.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is calling a NAT gateway a firewall. It is an address translation device, and the inbound protection is a side effect of how translation works rather than a policy you configure. Nothing about it inspects or filters traffic, and it does not restrict what the inside may call out to. The related slip is putting the NAT gateway in the private subnet it serves. A public NAT gateway sits in a public subnet with an Elastic IP; the private subnets route to it.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Give the one question that separates the three doors, and answer it for each.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Who may initiate the connection. Internet gateway: either side. NAT gateway: only something inside the VPC, since connections must always be initiated from within the VPC. VPC endpoint: only the inside, and the traffic never leaves the AWS network.</p></details>
+  <p>② Which subnet does a public NAT gateway live in, and why is that not a contradiction?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A public subnet, with an Elastic IP address. It needs its own route to the internet gateway to do its job. Private subnets route their outbound traffic to it, so the private resources stay private while the device that relays for them does not.</p></details>
+  <p>③ A service in a private subnet reads from Amazon S3 through a NAT gateway. What is the alternative, and what changes?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A VPC endpoint for S3, which is a gateway endpoint reached through the route table. The traffic stays on the AWS network instead of going out through the NAT gateway and back, so no internet path is used for it.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon VPC User Guide, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html">"NAT gateways"</a>. The clearest single statement of the direction rule, plus the public and private connectivity types and how translation works in each direction. The considerations list at the end is short and every line is load-bearing.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about egress-only internet gateways for IPv6, why interface endpoints need DNS to be useful, or how endpoint policies restrict what an endpoint may be used for. Next: the filtering layer, and the one comparison table this topic keeps coming back to.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0003-route-tables-and-public-subnets.html">← Lesson 3</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-security-groups-and-nacls.html"><em>Next: Lesson 5 — Security groups and network ACLs →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon VPC User Guide, "How Amazon VPC works". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html">docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html</a>. The internet gateway and the Amazon EC2 network edge; NAT as the alternative for outbound-only access.<br>
+<span id="s2">2.</span> Amazon VPC User Guide, "NAT gateways". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html">docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html</a>. Purpose, public and private connectivity types, placement in a public subnet with an Elastic IP, address translation in both directions, and the rule that connections must be initiated from within the VPC.<br>
+<span id="s3">3.</span> AWS PrivateLink, "AWS PrivateLink concepts". <a href="https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html">docs.aws.amazon.com/vpc/latest/privatelink/concepts.html</a>. VPC endpoint types, endpoint network interfaces, traffic staying on the AWS network, and gateway endpoints for Amazon S3 and DynamoDB.<br>
+<span id="s4">4.</span> Amazon VPC User Guide, "What is Amazon VPC?". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html">docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html</a>. No charge for a VPC; charges for components including NAT gateways.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

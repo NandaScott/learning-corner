@@ -1,0 +1,95 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — What a VPC is</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 1 · Lesson 1</p>
+<h1>What a VPC is</h1>
+<p class="lede">A VPC is not a machine, a firewall, or a data centre. It is a private network you define inside one AWS Region: an address range, plus the rules about what can move inside it and what can leave. Every other decision in this course happens inside that space.</p>
+
+<h2>The concept</h2>
+
+<p>Amazon's own definition is worth keeping close to the original words: "A <em>virtual private cloud</em> (VPC) is a virtual network dedicated to your AWS account. It is logically isolated from other virtual networks in the AWS Cloud."<sup><a href="#s1">1</a></sup> The docs add the comparison that makes it click: it "closely resembles a traditional network that you'd operate in your own data center."<sup><a href="#s1">1</a></sup></p>
+
+<p>So the mental model is a network, not a thing that runs. There is no VPC server. Nothing is installed. What exists is a definition held by AWS: this account owns this range of private IP addresses in this Region, and here are the rules for traffic in that range. Resources launched later ask that definition for an address and become reachable on it.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  acct["AWS account, one Region"] --> vpc["VPC<br/>a private address range<br/>you chose"]
+  vpc --> a["a place for resources<br/>to get IP addresses"]
+  vpc --> b["rules about which<br/>traffic may move"]
+  vpc --> c["gateways: the only<br/>ways in and out"]
+</pre>
+<p class="cap">Three jobs, one definition. The rest of Arc 1 is each of these in turn.</p>
+</div>
+
+<h3>Step 1 — It solves the addressing problem, before anything else</h3>
+<p>Two virtual machines have to find each other somehow, and finding each other means addresses. A VPC is where those addresses come from. You pick a private IPv4 range when you create it, and everything launched inside draws from that range. The docs list this as the first thing you do: "You can specify an IP address range for the VPC, add subnets, add gateways, and associate security groups."<sup><a href="#s1">1</a></sup></p>
+
+<p>Isolation falls out of the same definition. Another account's VPC can use the identical address range and the two never collide, because they are separate virtual networks that share no path. Reachability between them has to be built on purpose.</p>
+
+<h3>Step 2 — It lives in exactly one Region, and one account</h3>
+<p>A VPC does not span Regions. Your account gets a separate one in each Region, and resources in Tokyo cannot draw an address from a VPC defined in Ohio. This is the scope question interviewers reach for first, because it separates people who have read the model from people who have heard the word.</p>
+
+<p>Inside its Region, though, a VPC covers the whole Region. That matters for availability, and Lesson 2 is about the piece that carves it up.</p>
+
+<h3>Step 3 — Most people meet it without noticing, through the default VPC</h3>
+<p>Launching an EC2 instance and being able to reach it feels like the instance came with networking. It did not. Accounts created after 4 December 2013 get a <em>default VPC</em> in every Region, and the docs spell out what is pre-wired: "it has a <em>default subnet</em> in each Availability Zone in the Region, an attached internet gateway, a route in the main route table that sends all traffic to the internet gateway, and DNS settings that automatically assign public DNS hostnames to instances with public IP addresses."<sup><a href="#s1">1</a></sup></p>
+
+<p>That is a complete set of networking decisions, made in advance, on your behalf. Every one of them is a choice this course is about to unpack. A VPC you create yourself is called a <em>nondefault VPC</em>, and none of those choices come pre-made.</p>
+
+<h3>Step 4 — The network is free; the doors are not</h3>
+<p>"There's no additional charge for using a VPC. There are, however, charges for some VPC components, such as NAT gateways, IP Address Manager, traffic mirroring, Reachability Analyzer, and Network Access Analyzer."<sup><a href="#s2">2</a></sup> Private IPv4 addresses are free. Public IPv4 addresses are charged.<sup><a href="#s2">2</a></sup></p>
+
+<p>This is a useful sanity check on any architecture answer. Address space, subnets, route tables, and security groups cost nothing. The line items appear where traffic crosses a boundary, which is a reasonable summary of where the interesting decisions are too.</p>
+
+<h2>Why it matters</h2>
+
+<p>Nearly every AWS resource that has an IP address is placed in a VPC, so the VPC is the shared substrate underneath compute, databases, caches, and load balancers. An answer that treats it as a container ("the tasks go in the VPC") stops there. An answer that treats it as a set of decisions can keep going: which addresses, reachable from where, through which door, allowed by which rule.</p>
+
+<p>It also explains why AWS networking questions feel indirect. There is no switch labelled "make this reachable." Reachability is the product of an address range, a routing decision, and a filtering decision, each configured separately. Knowing that the three are separate is most of the skill.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A VPC is a private network you define inside one Region of one account: an address range plus the rules for moving through it. Nothing runs it. Everything with an IP address plugs into it.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is calling a VPC a security boundary and stopping. It is an isolation boundary for addressing and routing, which is real, and it is not by itself a firewall. Traffic filtering is a separate layer with its own objects, and a VPC with permissive rules is wide open. The other half of the trap is scope: a VPC is Region-scoped, not global and not tied to one Availability Zone.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Define a VPC in one sentence, without using the word "container".</p>
+  <details><summary>show answer</summary>
+  <p class="a">A virtual network dedicated to one AWS account, logically isolated from other virtual networks, defined by an IP address range inside a single Region.</p></details>
+  <p>② You launched an EC2 instance years ago and reached it over the internet without configuring any networking. What made that work?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The default VPC. It ships with a default subnet in each Availability Zone, an attached internet gateway, a route in the main route table sending all traffic to that gateway, and DNS settings for public hostnames. Those decisions were made in advance, not skipped.</p></details>
+  <p>③ Two accounts both use the address range 10.0.0.0/16. Is that a problem?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No, on its own. They are separate virtual networks with no path between them, so the addresses never meet. It becomes a problem only when someone tries to connect the two networks, because then the overlapping ranges are ambiguous.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon VPC User Guide, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html">"How Amazon VPC works"</a>. One page, and it carries the whole conceptual model: VPCs and subnets, default against nondefault, route tables, and the ways out. Read it before the next lesson and the next lesson will feel like review.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about anything here that felt asserted rather than explained, including why AWS chose private address ranges at all, or what "logically isolated" is actually implemented as. Next: subnets, and why a network that covers a whole Region still has to be cut into pieces.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-subnets-and-availability-zones.html"><em>Next: Lesson 2 — Subnets and Availability Zones →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon VPC User Guide, "How Amazon VPC works". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html">docs.aws.amazon.com/vpc/latest/userguide/how-it-works.html</a>. VPC definition, the data centre comparison, specifying an address range, and the default VPC's pre-wired configuration.<br>
+<span id="s2">2.</span> Amazon VPC User Guide, "What is Amazon VPC?". <a href="https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html">docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html</a>. Pricing: no charge for a VPC, charges for components such as NAT gateways, and the charge on public IPv4 addresses.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

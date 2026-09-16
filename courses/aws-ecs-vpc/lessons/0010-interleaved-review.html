@@ -1,0 +1,215 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 10 — Interleaved review</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Lesson 10 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading the lessons builds fluency, the feeling of knowing. Retrieving each answer cold, with all nine lessons shuffled together, builds storage strength: the version that survives an interview, where there is nothing to look at and no time to reconstruct.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all nine lessons and <strong>shuffled</strong> every run, by design. Interleaving beats reviewing one lesson at a time, and the extra difficulty is the reason it works.<sup><a href="#s1">1</a></sup> Most questions pit the right answer against a <strong>near-miss</strong>, the version that sounds right and is subtly wrong, because the near-miss is what a nervous candidate says. Answer out loud from memory before reading the feedback. Then hit <em>Shuffle and retry</em>, and run it again in a few days.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Missed the same lesson twice? Say which one and it is worth re-explaining a different way. The harder test is the <a href="../reference/whiteboard.html">whiteboard sheet</a>: redraw the reference architecture from a blank page and say the justification for each box out loud.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0009-the-whiteboard-walkthrough.html">← Lesson 9</a></span>
+  <span><a href="../reference/whiteboard.html">Whiteboard sheet ↗</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving and spacing as desirable difficulties — Bjork &amp; Bjork; research summaries at <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a>.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// 4 options each. options[0] is correct; options[1] is a deliberate near-miss
+// (right idea, subtly wrong). The engine shuffles option order on render, so
+// position never leaks the answer.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "What is the scope of a single VPC?",
+    options: [
+      "One AWS account, one Region, spanning that Region's Availability Zones",
+      "One AWS account, one Availability Zone, extended by adding more subnets",
+      "One AWS account globally, with a separate address range in each Region",
+      "One AWS organisation, shared by every account that has been invited in"
+    ], answer: 0,
+    explain: "The near-miss swaps Region for Availability Zone. The zone binding belongs to the subnet, not the VPC. (<a href='0001-what-a-vpc-is.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "An EC2 instance launched years ago was reachable with no networking setup. Why?",
+    options: [
+      "The default VPC ships with an internet gateway and a route to it already",
+      "Instances launched from the console are given internet access by default",
+      "EC2 attaches a public address whenever no other networking is configured",
+      "The Region's shared gateway serves any instance without its own gateway"
+    ], answer: 0,
+    explain: "The near-miss credits the console. The decisions were pre-made in the default VPC: default subnet per zone, attached internet gateway, and a main route table route to it. (<a href='0001-what-a-vpc-is.html'>L1</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "What is a subnet, and what constraint comes with it?",
+    options: [
+      "A range of IP addresses in a VPC, residing in exactly one Availability Zone",
+      "A range of IP addresses in a VPC, spanning the zones the VPC is enabled for",
+      "A grouping of resources that share one route table, independent of location",
+      "A security boundary inside a VPC that filters traffic entering or leaving it"
+    ], answer: 0,
+    explain: "The near-miss lets a subnet span zones. It cannot, and that single constraint is why multi-zone designs need matched sets of subnets. (<a href='0002-subnets-and-availability-zones.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Four copies of a service run in one subnet. What is that layout protected against?",
+    options: [
+      "One copy failing, but not the loss of the Availability Zone they all share",
+      "One copy failing, and zone loss, because four copies are spread by the platform",
+      "Nothing at all, because copies in one subnet share a single network interface",
+      "Zone loss only, since AWS rebalances copies into other zones automatically"
+    ], answer: 0,
+    explain: "The near-miss assumes the platform spreads copies. Placement follows the subnets you give it, and one subnet means one zone. (<a href='0002-subnets-and-availability-zones.html'>L2</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "What makes a subnet public?",
+    options: [
+      "Its route table sends 0.0.0.0/0 to an internet gateway attached to the VPC",
+      "Its resources are assigned public IPv4 addresses when they are launched in it",
+      "A public flag on the subnet, which AWS sets when a gateway is attached to it",
+      "Its network ACL permits inbound traffic from any address on the open internet"
+    ], answer: 0,
+    explain: "The near-miss is the other half of the story. Public addressing without the gateway route reaches nothing; the term refers to the route. (<a href='0003-route-tables-and-public-subnets.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A subnet was created with no route table association. What is its routing?",
+    options: [
+      "The VPC's main route table, which always carries the local route",
+      "No routing at all until a route table is explicitly associated with it",
+      "A copy of the route table used by the subnet created before it",
+      "Local routing only, with the main table applying to public subnets"
+    ], answer: 0,
+    explain: "The near-miss imagines a subnet with no routing. The main route table controls every subnet not explicitly associated with another. (<a href='0003-route-tables-and-public-subnets.html'>L3</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "What distinguishes a NAT gateway from an internet gateway?",
+    options: [
+      "Connections must be initiated from inside the VPC, so nothing outside can start one",
+      "It inspects outbound traffic and blocks connections to destinations you have denied",
+      "It replaces the internet gateway, so a VPC using one does not need the other",
+      "It lives in the private subnet it serves and gives that subnet a public address"
+    ], answer: 0,
+    explain: "The near-miss turns it into a firewall. Nothing is inspected or filtered; the inbound protection is a side effect of address translation. (<a href='0004-three-doors-out.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "What does a VPC endpoint change about a call to an AWS service?",
+    options: [
+      "The traffic stays on the AWS network instead of crossing the public internet",
+      "The traffic is encrypted end to end rather than sent over a plain connection",
+      "The service is copied into your VPC so the call never leaves your account",
+      "The call is routed through the NAT gateway using a private address instead"
+    ], answer: 0,
+    explain: "The near-miss substitutes encryption for path. Endpoints change where the traffic goes, which is why no internet-facing door is needed for it. (<a href='0004-three-doors-out.html'>L4</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Which pair of properties belongs to a security group?",
+    options: [
+      "Instance level, allow rules only, stateful, evaluates all rules before deciding",
+      "Instance level, allow and deny rules, stateful, evaluates rules in ascending order",
+      "Subnet level, allow rules only, stateless, evaluates all rules before deciding",
+      "Subnet level, allow and deny rules, stateful, first matching rule wins outright"
+    ], answer: 0,
+    explain: "The near-miss mixes in the network ACL's deny rules and ordered evaluation. Security groups have no denies and no rule order. (<a href='0005-security-groups-and-nacls.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "An inbound network ACL rule allows port 443 and requests still fail. First check?",
+    options: [
+      "The outbound rules, because network ACLs are stateless and replies need a rule",
+      "The rule numbers, because a lower-numbered allow rule may be shadowing this one",
+      "The security group, because a network ACL cannot allow what a group has denied",
+      "The route table, because an allow rule has no effect without a matching route"
+    ], answer: 0,
+    explain: "The near-miss is plausible and backwards: a lower-numbered allow would help, not hurt. Statelessness is what bites, since replies need their own rule. (<a href='0005-security-groups-and-nacls.html'>L5</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "What is the difference between a task definition and a task?",
+    options: [
+      "The definition is a JSON blueprint; a task is one running instantiation of it",
+      "The definition is the running unit; a task is one container inside that unit",
+      "The definition describes a service; a task is the definition after deployment",
+      "The definition holds one container; a task groups several of them together"
+    ], answer: 0,
+    explain: "The near-miss inverts the pair. A task definition never runs, and a task can hold several containers because the definition listed them. (<a href='0006-what-ecs-is-responsible-for.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "What does an ECS service add on top of running tasks?",
+    options: [
+      "A desired count the scheduler keeps true, replacing failed and unhealthy tasks",
+      "A restart policy that relaunches a task in place after its container exits",
+      "A queue of pending work that tasks pull from until the backlog is cleared",
+      "A guarantee that tasks are distributed evenly over the cluster's instances"
+    ], answer: 0,
+    explain: "The near-miss describes restarting in place. The service compares desired with actual and launches replacements, including for failed health checks. (<a href='0006-what-ecs-is-responsible-for.html'>L6</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "What is the actual axis behind the Fargate against EC2 choice?",
+    options: [
+      "Who owns the machine: its types, its patching, its packing, and its idle time",
+      "Whether the workload is stateless, since only stateless work suits Fargate",
+      "How fast tasks must start, since one option always launches faster than the other",
+      "Whether the cluster is shared, since Fargate requires a cluster of its own"
+    ], answer: 0,
+    explain: "The near-miss invents a statefulness rule. The real difference is ownership of the machine, and it drives the cost model too. (<a href='0007-who-owns-the-box.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "A cluster runs a GPU component and a bursty web tier. How many clusters are needed?",
+    options: [
+      "One, because a cluster can mix Fargate, EC2 and Managed Instances capacity",
+      "One, because Fargate can be configured with GPU capacity when the task asks for it",
+      "Two, because capacity type is fixed per cluster and cannot be mixed within one",
+      "Two, because a capacity provider strategy applies to every service in a cluster"
+    ], answer: 0,
+    explain: "The near-miss gets the count right for the wrong reason. Capacity is per workload, not per cluster, and a strategy is chosen per service. (<a href='0007-who-owns-the-box.html'>L7</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "What does a task get in awsvpc network mode?",
+    options: [
+      "Its own elastic network interface, private IP, and security groups",
+      "Its own private IP on the host's interface, with security groups per host",
+      "A port mapped on the host's address, reachable through the host's group",
+      "A shared interface with the other tasks placed in the same subnet"
+    ], answer: 0,
+    explain: "The near-miss keeps the host as the network identity. Under awsvpc the interface belongs to the task, so filtering is per task. (<a href='0008-the-task-as-a-network-citizen.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Why must target groups for awsvpc tasks use the ip target type?",
+    options: [
+      "The task is associated with a network interface rather than with an instance",
+      "The task's address changes on every launch, and ip targets are re-registered",
+      "Instance targets are limited to one task per instance, which caps the service",
+      "Instance targets cannot carry health checks, which the service scheduler needs"
+    ], answer: 0,
+    explain: "The near-miss is true about churn and is not the reason. The target type follows from what the target is: an interface with an address. (<a href='0008-the-task-as-a-network-citizen.html'>L8</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "In the reference layout, what belongs in the public subnets?",
+    options: [
+      "The load balancer and the NAT gateway, and nothing that runs the application",
+      "The load balancer, the NAT gateway, and the tasks that must pull public images",
+      "The load balancer only, with the NAT gateway placed beside the private tasks",
+      "Any component needing outbound internet access, including the application tier"
+    ], answer: 0,
+    explain: "The near-miss is the most common real mistake. Tasks stay private and get a door: a NAT gateway, or endpoints for AWS services. (<a href='0009-the-whiteboard-walkthrough.html'>L9</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "A task starts failing its health check. What are the two independent reactions?",
+    options: [
+      "The load balancer stops routing to it; the service scheduler replaces the task",
+      "The load balancer stops routing to it; the scheduler restarts its container in place",
+      "The scheduler drains it first, then the load balancer removes it from the group",
+      "The load balancer replaces the target; the scheduler adjusts the desired count"
+    ], answer: 0,
+    explain: "The near-miss restarts in place. ECS replaces the task with a new one, which is why the recovery works when the host itself is the problem. (<a href='0009-the-whiteboard-walkthrough.html'>L9</a>)" }
+]);
+</script>

@@ -1,0 +1,104 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8 — The task as a network citizen</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 3 · Lesson 8</p>
+<h1>The task as a network citizen</h1>
+<p class="lede">Here the two halves meet. In <code>awsvpc</code> networking mode a task is not a process hiding behind a host's address. It gets its own network interface, its own private IP, and its own security group, which means everything learned about the VPC applies to it directly.</p>
+
+<h2>The concept</h2>
+
+<p>The docs state the goal in the first line: "The task networking features that are provided by the <code>awsvpc</code> network mode give Amazon ECS tasks the same networking properties as Amazon EC2 instances."<sup><a href="#s1">1</a></sup> Same properties means the VPC does not have a special category for containers. A task appears in the network the way anything else does, with an address drawn from a subnet.</p>
+
+<p>The mechanism is one sentence of the same page: "Each Amazon ECS task that uses the <code>awsvpc</code> network mode receives its own elastic network interface (ENI)", and "Each task ENI is assigned a private IPv4 address by default."<sup><a href="#s1">1</a></sup> One task, one interface, one address.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  svc["service starts a task"] --> cfg["network configuration:<br/>which subnets, which security groups"]
+  cfg --> eni["ECS creates an ENI<br/>in one of those subnets"]
+  eni --> ip["private IPv4 address<br/>from that subnet's range"]
+  eni --> sg["the given security groups<br/>attach to this ENI"]
+  ip --> cit["the task is addressable<br/>in the VPC like any instance"]
+  sg --> cit
+  cit -.->|"task stops"| gone["ENI detached and deleted"]
+</pre>
+<p class="cap">The interface is created for the task and destroyed with it. Addresses are as temporary as the tasks are.</p>
+</div>
+
+<h3>Step 1 — You hand ECS the network decisions from Arc 1</h3>
+<p>Running a task or creating a service takes a network configuration "that includes one or more subnets to place your tasks in and one or more security groups to attach to an ENI."<sup><a href="#s1">1</a></sup> Those are exactly the two objects from Lessons 2 through 5, and they carry exactly the meanings they had there.</p>
+
+<p>Placement follows from the subnets: "The tasks are placed on compatible Amazon EC2 instances in the same Availability Zones as those subnets."<sup><a href="#s1">1</a></sup> Listing subnets in three zones is how a service becomes multi-zone. There is no separate availability setting. There are quotas on the inputs, currently 16 subnets and 5 security groups per network configuration.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 2 — The security group now describes one task, not one machine</h3>
+<p>Because the group attaches to the task's own interface, two different services on the same infrastructure can have entirely different rules. The group-references-group idea from Lesson 5 becomes the natural way to express a tier: the database group allows the application group, and every task of that service inherits the permission by being launched with the group.</p>
+
+<p>This is the concrete reason <code>awsvpc</code> is the default in modern ECS. Filtering per workload, rather than per host, is what makes a shared cluster safe to reason about.</p>
+
+<h3>Step 3 — Containers in one task share the interface</h3>
+<p>A task can hold several containers, and they do not each get an address. They share the task's network stack, so "all containers in a task are addressable by the IP addresses of the ENI, and they can communicate with each other over the <code>localhost</code> interface."<sup><a href="#s1">1</a></sup></p>
+
+<p>That is the sidecar pattern's plumbing. An application container and a log forwarder in the same task reach each other on localhost, with no service discovery and no exposure to the rest of the VPC. Across tasks, localhost means nothing; those are separate interfaces and separate addresses.</p>
+
+<h3>Step 4 — Load balancing targets the address, not the host</h3>
+<p>A load balancer keeps a <em>target group</em>, the list of backends it forwards requests to, and registers or removes members as they come and go. With <code>awsvpc</code> there is a constraint: "When you create any target groups for these services, you must choose <code>ip</code> as the target type. Do not use <code>instance</code>. This is because tasks that use the <code>awsvpc</code> network mode are associated with an ENI, not with an Amazon EC2 Linux instance."<sup><a href="#s1">1</a></sup></p>
+
+<p>The constraint is a consequence, not a rule to memorise separately. Once the task owns an address, the address is the thing worth registering. Lesson 9 puts the load balancer in place around this.</p>
+
+<h3>Step 5 — A private address means the doors from Lesson 4 apply</h3>
+<p>A task with only a private address reaches the internet the way anything else in a private subnet does, and it usually needs to, because pulling its image is itself an outbound call. For Fargate the docs enumerate the options exactly: "For a task on Fargate to pull a container image, the task must have a route to the internet", satisfied by assigning a public IP address to the task ENI in a public subnet, by a NAT gateway attached to a private subnet, or by configuring an Amazon ECR interface VPC endpoint so that "the image pull occurs over the task's private IPv4 address."<sup><a href="#s2">2</a></sup></p>
+
+<p>One asymmetry is worth knowing because it contradicts the pattern. When tasks run on EC2 instances you manage, "your task ENIs aren't given public IP addresses", so internet access there means a private subnet with a NAT gateway; a public subnet does not help.<sup><a href="#s1">1</a></sup> The public IP option is specific to Fargate.</p>
+
+<h2>Why it matters</h2>
+
+<p>This lesson is the reason the VPC half came first. Every ECS networking question resolves into a VPC question about an ENI: which subnet gives it an address, which security group is attached, which route table serves that subnet, which door it uses to leave. Nothing new appears at the container layer.</p>
+
+<p>It also changes what "the same machine" means. Two tasks on one EC2 instance are two interfaces with two addresses and possibly two different security groups, and they cannot reach each other on localhost. Container-level intuitions from a single Docker host do not transfer, and that gap is a favourite interview probe.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  In <code>awsvpc</code> mode the task is a first-class citizen of the VPC: its own elastic network interface, its own private IP from a subnet you chose, its own security groups. Containers inside one task share that interface and talk over localhost. Target groups must use the ip target type, because the target is an interface rather than an instance.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is the single-Docker-host model: containers share the host's address and are reached on mapped ports, so a security group covers everything on the box. That describes a different network mode, and under <code>awsvpc</code> it is wrong in every part. Each task has its own interface and address, security groups apply per task, and two tasks on one instance cannot reach each other over localhost. The follow-up that catches people is the target type: registering instance targets for tasks that are addressed by interface.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① What does a task get in <code>awsvpc</code> mode, and what two inputs does ECS need to give it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Its own elastic network interface with a private IPv4 address. The inputs are one or more subnets to place the task in and one or more security groups to attach to the interface.</p></details>
+  <p>② Why must target groups for these services use the ip target type?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Because the task is associated with an elastic network interface rather than with an EC2 instance, so the address is what gets registered. Instance targets would name a host that is not the unit being balanced.</p></details>
+  <p>③ A Fargate task in a private subnet fails to start, reporting that it cannot pull its image. Name two fixes consistent with this lesson.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Give the subnet a route to a NAT gateway, or configure an Amazon ECR interface VPC endpoint so the pull happens over the task's private address. Moving it to a public subnet works only with a public IP assigned to the task ENI.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon ECS Developer Guide, <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-networking-awsvpc.html">"Allocate a network interface for an Amazon ECS task"</a>. The considerations list is long and unusually honest: interface density limits per instance type, why manually attached interfaces break placement, and why the target type must be ip.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about the pause container that holds the task's network namespace, interface trunking for higher task density on EC2, or how tasks find each other without a load balancer. Next: the synthesis. One request, from a browser to the database, with every hop justified.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0007-who-owns-the-box.html">← Lesson 7</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0009-the-whiteboard-walkthrough.html"><em>Next: Lesson 9 — The whiteboard walkthrough →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon ECS Developer Guide, "Allocate a network interface for an Amazon ECS task". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-networking-awsvpc.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/task-networking-awsvpc.html</a>. Task networking properties, one ENI per task with a private IPv4 address, the subnets and security groups in the network configuration, placement in the subnets' Availability Zones, the 16 subnet and 5 security group limits, shared network stack and localhost between containers in a task, the ip target type requirement, and the absence of public IPs on task ENIs hosted on EC2 instances.<br>
+<span id="s2">2.</span> Amazon ECS Developer Guide, "Amazon ECS task networking options for Fargate". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html</a>. The optional public IP address on a task ENI in a public subnet, and the three ways a Fargate task can reach a container image: public IP, NAT gateway, or an Amazon ECR interface VPC endpoint.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

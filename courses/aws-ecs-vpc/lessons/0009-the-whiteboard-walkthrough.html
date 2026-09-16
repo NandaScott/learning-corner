@@ -1,0 +1,117 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 9 — The whiteboard walkthrough</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 3 · Lesson 9</p>
+<h1>The whiteboard walkthrough</h1>
+<p class="lede">Synthesis. One diagram holds every idea in this course, and the way to prove you understand it is to walk a single request through it and justify each hop. This is the answer to "how would you run a containerised web service on AWS."</p>
+
+<h2>The concept</h2>
+
+<p>The reference layout is the same in almost every real deployment: a VPC with two or three Availability Zones, public subnets holding only the things that must face the internet, private subnets holding the application, and a further private tier for data. Nothing in it is arbitrary. Each box is one of the decisions from the previous eight lessons.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  user["client"] --> dns["DNS name"]
+  dns --> alb["Application Load Balancer<br/>public subnets, AZ A and AZ B"]
+  subgraph vpc["VPC · one Region"]
+    subgraph pubs["public subnets · route 0.0.0.0/0 to internet gateway"]
+      alb
+      nat["NAT gateway"]
+    end
+    subgraph privs["private subnets · route 0.0.0.0/0 to NAT gateway"]
+      t1["ECS task<br/>own ENI, own IP"]
+      t2["ECS task<br/>own ENI, own IP"]
+    end
+    subgraph datas["data subnets · no route to the internet"]
+      db["database"]
+    end
+    vpce["VPC endpoints<br/>ECR, S3, logs"]
+  end
+  alb -->|"target group, target type ip"| t1
+  alb -->|"health checks"| t2
+  t1 --> db
+  t1 --> vpce
+  t1 --> nat
+  nat --> igw["internet gateway"]
+</pre>
+<p class="cap">The reference architecture. Every arrow is a route plus a security group rule that permits it.</p>
+</div>
+
+<h3>Step 1 — The load balancer is the only public thing</h3>
+<p>"A <em>load balancer</em> serves as the single point of contact for clients", distributing traffic "across multiple targets, such as EC2 instances, in multiple Availability Zones."<sup><a href="#s1">1</a></sup> It sits in the public subnets, so its route table sends 0.0.0.0/0 to the internet gateway, and it is the one component reachable from outside.</p>
+
+<p>Three of its parts matter for the walkthrough. A <em>listener</em> "checks for connection requests from clients, using the protocol and port that you configure", typically 443. Its <em>rules</em> decide where a request goes, each rule being "a priority, one or more actions, and one or more conditions". A <em>target group</em> "routes requests to one or more registered targets", with health checks configured per group so that the load balancer "can send requests only to the healthy targets."<sup><a href="#s1">1</a></sup> An Application Load Balancer works at layer 7, so those conditions can read paths and hostnames.<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 2 — The tasks are private, and the target group knows their addresses</h3>
+<p>The ECS service runs its tasks in the private subnets, one set per Availability Zone. Each task has its own interface and private address, and the service registers those addresses in the target group, which is why its target type is ip.</p>
+
+<p>Two control loops now overlap, and saying so out loud is worth marks. The load balancer stops sending traffic to a target that fails its health check. The ECS service scheduler goes further and replaces a task that fails a container health check or a target group health check.<sup><a href="#s2">2</a></sup> One loop protects the request, the other repairs the fleet.</p>
+
+<h3>Step 3 — Security groups make the chain explicit</h3>
+<p>Routing says the packets can arrive. The security groups say who may talk to whom, written as groups referencing groups: the load balancer's group accepts 443 from the internet, the task group accepts the application port from the load balancer group, and the database group accepts its port from the task group. No address ranges appear, so the rules keep holding while tasks are replaced and scaled.</p>
+
+<p>This chain is the shortest complete answer to "how is the database protected." It is unreachable from outside by routing, because its subnets have no internet route, and unreachable by anything except the application tier by filtering.</p>
+
+<h3>Step 4 — Outbound traffic picks the cheapest correct door</h3>
+<p>The tasks still need to pull images, write logs, read secrets, and call third-party APIs. Calls to AWS services take VPC endpoints and stay on the AWS network. Everything else goes out through the NAT gateway in the public subnets, which allows the connection precisely because the task started it.</p>
+
+<p>This is also the first cost lever most reviews reach for. Every image pull and log write that goes through the NAT gateway is billed on the way past; moving the AWS-service traffic to endpoints removes that.</p>
+
+<h3>Step 5 — Tell the failure story before you are asked</h3>
+<p>Lose an Availability Zone and the layout answers for itself. The load balancer keeps nodes in the surviving zones. Its health checks stop sending requests to targets in the lost zone. The ECS service sees its actual task count below the desired count and launches replacements, which land in the subnets that remain, because placement follows the subnets given in the network configuration. The database fails over to its standby in another zone.</p>
+
+<p>Every one of those recoveries depends on a multi-zone subnet layout. A design with one private subnet has none of them, which is why Lesson 2 is load-bearing rather than introductory.</p>
+
+<h2>Why it matters</h2>
+
+<p>The diagram is the deliverable in a system design interview, but the drawing is not the skill. Plenty of people can draw it. The distinguishing move is justifying each element with the decision it represents: this subnet is private because its route table has no internet gateway route, this load balancer spans zones because subnets cannot, this target group uses ip targets because tasks own interfaces, this endpoint exists so the image pull never leaves the AWS network.</p>
+
+<p>That habit also transfers to the job. A change request becomes a question about which decision moves, and an incident becomes a walk along the same path: is there a route, is there a rule, is the target healthy, is the desired count being met.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Public subnets hold only the load balancer and the NAT gateway. Tasks run in private subnets across zones, each with its own interface and address, registered in an ip target group. Security groups chain load balancer to task to database. Outbound calls take VPC endpoints where they can and the NAT gateway otherwise.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is putting the tasks in public subnets with public IP addresses, usually justified by the need to pull images and call APIs. It works, and it gives every task a directly reachable address, which is the thing the layout is meant to avoid. The correct version keeps the tasks private and gives them a door: a NAT gateway for general egress, VPC endpoints for AWS services. The other common slip is a single-zone drawing. One private subnet means an Availability Zone failure is a total outage, and the diagram says so at a glance.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Walk a request from client to task, naming the component at each hop.</p>
+  <details><summary>show answer</summary>
+  <p class="a">DNS resolves to the load balancer, which sits in public subnets in at least two zones. Its listener accepts the connection on the configured port, its rules select a target group, and the group forwards to a healthy registered target. The target is a task's private address in a private subnet, reached because the task's security group allows the load balancer's group on the application port.</p></details>
+  <p>② Two independent mechanisms react when a task goes unhealthy. What are they, and how do they differ?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The load balancer stops routing requests to a target that fails its health check, which protects in-flight traffic. The ECS service scheduler replaces a task that fails a container or target group health check, which restores the desired count. One diverts, the other repairs.</p></details>
+  <p>③ Why is the database unreachable from the internet in this layout? Give both reasons.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Routing: its subnets have no route to an internet gateway, so no path exists. Filtering: its security group only allows the task tier's security group on the database port, so even inside the VPC nothing else may connect.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Application Load Balancer User Guide, <a href="https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html">"What is an Application Load Balancer?"</a>. The components section defines listener, rule, and target group in three short paragraphs, which is the vocabulary the ECS documentation assumes you already have.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask how this layout changes for internal services with no public entry point, where a WAF or CloudFront would sit, or how services inside the VPC find each other without a load balancer. Next: the interleaved quiz, all nine lessons shuffled, and the printable whiteboard sheet for practice from a blank page.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0008-the-task-as-a-network-citizen.html">← Lesson 8</a></span>
+  <span><a href="../reference/whiteboard.html">Whiteboard sheet ↗</a></span>
+  <span><a href="0010-interleaved-review.html"><em>Next: Lesson 10 — Interleaved review →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Application Load Balancer User Guide, "What is an Application Load Balancer?". <a href="https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html">docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html</a>. The load balancer as single point of contact across multiple Availability Zones, listeners, rules with priorities and conditions, target groups and per-group health checks, routing only to healthy targets, and operation at layer 7.<br>
+<span id="s2">2.</span> Amazon ECS Developer Guide, "Amazon ECS services". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html</a>. The scheduler replacing tasks that fail a container health check or a load balancer target group health check, and optional load balancing across a service's tasks.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

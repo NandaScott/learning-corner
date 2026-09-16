@@ -1,0 +1,115 @@
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6 — What ECS is responsible for</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">VPC and ECS at whiteboard depth</a> · Arc 2 · Lesson 6</p>
+<h1>What ECS is responsible for</h1>
+<p class="lede">Amazon ECS is a control loop with four nouns around it. Learn the loop and the nouns stop being vocabulary: a cluster holds capacity, a task definition describes a unit of work, a task is one running copy, and a service is the promise that a number of copies keeps being true.</p>
+
+<h2>The concept</h2>
+
+<p>AWS describes ECS as "a fully managed container orchestration service that helps you easily deploy, manage, and scale containerized applications."<sup><a href="#s1">1</a></sup> Orchestration is the part worth unpacking. A container image on its own answers "what should run." Orchestration answers everything else: where it runs, how many copies, what happens when one dies, what happens when the machine under it dies, and how traffic finds the copies that are alive.</p>
+
+<p>The docs split ECS into three layers: <em>capacity</em>, "the infrastructure where your containers run"; <em>controller</em>, which deploys and manages the applications; and <em>provisioning</em>, the tools you use to talk to the scheduler.<sup><a href="#s1">1</a></sup> This lesson is the controller. The next one is capacity.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  td["task definition<br/>the blueprint"] --> svc["service<br/>desired count = 3"]
+  svc --> sched["scheduler<br/>compares desired with actual"]
+  sched --> t1["task 1"]
+  sched --> t2["task 2"]
+  sched --> t3["task 3"]
+  t2 -.->|"crashes"| sched
+  sched -.->|"launches a replacement"| t4["task 2b"]
+</pre>
+<p class="cap">The loop is the product. Everything else is an input to it.</p>
+</div>
+
+<h3>Step 1 — A task definition is a blueprint, not a running thing</h3>
+<p>"A <em>task definition</em> is a blueprint for your application. It is a text file in JSON format that describes the parameters and one or more containers that form your application."<sup><a href="#s2">2</a></sup> It names the images to run, how much CPU and memory to give them, the networking mode, the logging configuration, the command to run, and the IAM role the application uses.<sup><a href="#s2">2</a></sup></p>
+
+<p>Nothing runs when you write one. It is a registered document, versioned as numbered revisions, and deploying a change means registering a new revision and pointing something at it. Multiple containers can appear in one task definition, which is how a sidecar such as a log forwarder travels with the application.</p>
+
+<h3>Step 2 — A task is one running instantiation of it</h3>
+<p>"A <em>task</em> is the instantiation of a task definition within a cluster."<sup><a href="#s2">2</a></sup> One task is one copy of that blueprint, running now, with its own resources. If the blueprint lists three containers, the task is all three together, placed as a unit and living and dying as a unit.</p>
+
+<p>Tasks can be run directly, which suits a batch job: start, do work, exit. The docs use exactly that framing, describing a task as "an application such as a batch job that performs work, and then stops."<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 3 — A service keeps a count of tasks true</h3>
+<p>A long-running application should not stop when a task stops. That is what a service adds: "You can use an Amazon ECS service to run and maintain a specified number of instances of a task definition simultaneously in an Amazon ECS cluster. If one of your tasks fails or stops, the Amazon ECS service scheduler launches another instance of your task definition to replace it."<sup><a href="#s3">3</a></sup></p>
+
+<p>That is the control loop, stated in the docs' own words. You declare a desired count; the scheduler compares it with what is actually running and acts on the difference. It also acts on health rather than only on crashes: the scheduler "replaces tasks determined to be unhealthy after a container health check or a load balancer target group health check fails."<sup><a href="#s3">3</a></sup> Replacement is ordered deliberately, starting the replacement before stopping the unhealthy task where capacity settings allow it.<sup><a href="#s3">3</a></sup></p>
+
+<p>Two more behaviours are worth naming because they show up as interview follow-ups. A service can sit behind a load balancer, which "distributes traffic across the tasks that are associated with the service."<sup><a href="#s3">3</a></sup> And service auto scaling "is the ability to increase or decrease the desired number of tasks in your Amazon ECS service automatically", implemented through Application Auto Scaling.<sup><a href="#s3">3</a></sup> Scaling changes the number the loop is aiming at; the loop itself does not change.</p>
+
+<h3>Step 4 — A cluster is the boundary the loop runs inside</h3>
+<p>"An Amazon ECS cluster is a logical grouping of tasks or services that provides the infrastructure capacity for your containerized applications."<sup><a href="#s4">4</a></sup> Two things follow. It is a grouping, so it is a boundary for organisation and for access control rather than a machine. And "clusters are AWS Region specific", so it does not span Regions.<sup><a href="#s4">4</a></sup></p>
+
+<p>A cluster also carries the network that its work runs in. The docs list among its components "the network (VPC and subnet) where your tasks and services run."<sup><a href="#s4">4</a></sup> That line is where the two halves of this course start to touch.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  c["cluster<br/>Region-scoped grouping"] --> s1["service A<br/>desired 3"]
+  c --> s2["service B<br/>desired 2"]
+  c --> j["standalone task<br/>a batch job"]
+  s1 --> ta["3 tasks"]
+  s2 --> tb["2 tasks"]
+</pre>
+<p class="cap">Services and one-off tasks share a cluster. The cluster does not care what they are.</p>
+</div>
+
+<h2>Why it matters</h2>
+
+<p>Almost every ECS question is answerable by asking which of the four nouns it is about. "How do I change the image?" is a task definition question. "Why did it come back after I killed it?" is a service question. "Why is it in the wrong Availability Zone?" is a cluster and network question. "Why did this one exit and nothing replaced it?" means a standalone task rather than a service.</p>
+
+<p>The loop framing also explains the shape of the whole system. Nothing in ECS is imperative for long. You do not start copies; you state how many should exist. Deployments, scaling, and failure recovery are all the same mechanism viewed at different moments, which is why they share one set of settings.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  ECS is a control loop over four nouns. The task definition is the blueprint, a task is one running copy, a service holds a desired count of copies and replaces the ones that fail or go unhealthy, and the cluster is the Region-scoped grouping that provides the capacity.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is describing a cluster as a pool of machines. It is a logical grouping that provides capacity, and where that capacity comes from is a separate choice, which is the next lesson. Saying "a cluster is a set of EC2 instances" commits you to one answer and makes the serverless case sound like an exception rather than a normal configuration. The related slip is using "task" and "task definition" interchangeably; the distinction between a blueprint and an instance is the one an interviewer is checking.
+</div>
+
+<div class="recall">
+  <p class="q">Recall — answer out loud before peeking:</p>
+  <p>① Define task definition, task, service, and cluster in one sentence each.</p>
+  <details><summary>show answer</summary>
+  <p class="a">Task definition: a JSON blueprint describing one or more containers and their parameters. Task: one running instantiation of that blueprint within a cluster. Service: a controller that runs and maintains a desired number of tasks, replacing any that fail or become unhealthy. Cluster: a Region-scoped logical grouping of tasks and services that provides the infrastructure capacity.</p></details>
+  <p>② You stop a task by hand and another appears seconds later. What happened, and what would have been different if nothing came back?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The task belonged to a service, so the scheduler saw actual fall below desired and launched a replacement. If nothing came back it was a standalone task, which has no controller keeping a count.</p></details>
+  <p>③ Besides a crash, what else causes the service scheduler to replace a task?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A failed health check, either a container health check or a load balancer target group health check. Where capacity allows, the scheduler starts the replacement first and then stops the unhealthy task.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source — read this one</span>
+  Amazon ECS Developer Guide, <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html">"Amazon ECS services"</a>. It states the control loop in one paragraph and then spends the rest of the page on the cases that make it subtle: unhealthy task replacement, the interaction with maximum percent, and the throttle that slows repeated failed launches.
+</div>
+
+<div class="ask-teacher">
+  <strong>Go deeper.</strong> Ask about deployment strategies, task placement strategies, or how the scheduler behaves when a task fails to start repeatedly. Next: where the capacity comes from, and how much of the machine you want to own.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0005-security-groups-and-nacls.html">← Lesson 5</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-who-owns-the-box.html"><em>Next: Lesson 7 — Who owns the box →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> Amazon ECS Developer Guide, "What is Amazon Elastic Container Service?". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html</a>. ECS as a fully managed container orchestration service; the capacity, controller, and provisioning layers; the one-line definitions of task definition, cluster, task, and service.<br>
+<span id="s2">2.</span> Amazon ECS Developer Guide, "Amazon ECS task definitions". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html</a>. The blueprint definition, the parameter list, and the definition of a task as an instantiation within a cluster.<br>
+<span id="s3">3.</span> Amazon ECS Developer Guide, "Amazon ECS services". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html</a>. Maintaining a specified number of tasks, replacement on failure and on failed health checks, load balancing, and service auto scaling.<br>
+<span id="s4">4.</span> Amazon ECS Developer Guide, "Amazon ECS clusters". <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html">docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html</a>. Cluster as a logical grouping providing infrastructure capacity, Region scoping, and the VPC and subnet as cluster components.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>
