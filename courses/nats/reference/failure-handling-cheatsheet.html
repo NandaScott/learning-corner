@@ -1,0 +1,88 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — JetStream failure-handling cheat sheet</title>
+<style>
+  table { font-size: 0.86rem; }
+  td, th { vertical-align: top; }
+  ol.tight li { margin: 0.2rem 0; }
+  @media print { body { font-size: 10pt; } h2 { margin-top: 1rem; } table { font-size: 8.5pt; } }
+</style>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Reference</p>
+<h1>Failure-handling cheat sheet</h1>
+<p class="lede">One page for designing what happens to a failed JetStream message. Defaults are from nats-server source at v2.16.0-dev (latest stable v2.15.0) and nats.js v3.4.0. Terms follow the <a href="glossary.html">glossary</a>.</p>
+
+<h2>Consumer and stream defaults</h2>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>What it means for failure handling</th></tr>
+  <tr><td><code>ack_wait</code></td><td>30s</td><td>Time to ack before the server redelivers. Restarted by <code>working()</code>. (L5)</td></tr>
+  <tr><td><code>max_deliver</code></td><td>-1 (unlimited)</td><td>Counts every delivery. At -1 a poison message retries forever and no max-deliveries advisory fires. Set it finite for a DLQ. (L6)</td></tr>
+  <tr><td><code>backoff</code></td><td>unset</td><td>Delays for redeliveries after an AckWait timeout only, not naks. Replaces AckWait: entry 0 becomes the ack deadline. Last entry repeats if <code>max_deliver</code> is larger; a list longer than <code>max_deliver</code> is rejected unless it is -1. Server 2.7.1+. (L6)</td></tr>
+  <tr><td><code>max_ack_pending</code></td><td>1000</td><td>Unacked messages allowed across all subscribers of the consumer; delivery stops at the limit. -1 = no limit. 1 = strict order. (L5, L6)</td></tr>
+  <tr><td><code>duplicate_window</code></td><td>2m</td><td>Window in which a repeated <code>Nats-Msg-Id</code> is refused (PubAck <code>duplicate: true</code>). (L3)</td></tr>
+  <tr><td><code>max_consumers</code></td><td>1000 per stream from 2.15.0</td><td>DLQ and capture consumers count. (L8)</td></tr>
+</table>
+
+<h2>Ack responses</h2>
+<table>
+  <tr><th>Response</th><th>nats.js</th><th>Effect</th><th>Counts as ack?</th><th>Advisory</th></tr>
+  <tr><td>ack</td><td><code>m.ack()</code></td><td>Done; leaves the pending list.</td><td>Yes</td><td>none</td></tr>
+  <tr><td>nak</td><td><code>m.nak()</code></td><td>Redeliver at once. Not slowed by BackOff.</td><td>No; uses a delivery</td><td><code>MSG_NAKED</code></td></tr>
+  <tr><td>nak with delay</td><td><code>m.nak(ms)</code></td><td>Redeliver after the delay. Server 2.7.1+.</td><td>No; uses a delivery</td><td><code>MSG_NAKED</code></td></tr>
+  <tr><td>term</td><td><code>m.term(reason)</code></td><td>Never redeliver.</td><td>Yes (removes on WorkQueue, or Interest when last)</td><td><code>MSG_TERMINATED</code> with reason</td></tr>
+  <tr><td>working</td><td><code>m.working()</code></td><td>Restart the ack timer; not final.</td><td>No</td><td>none</td></tr>
+  <tr><td>no response</td><td>none</td><td>AckWait expires; redeliver, spaced by BackOff if set.</td><td>No; uses a delivery</td><td>none until budget runs out</td></tr>
+  <tr><td>budget exhausted</td><td>none</td><td>Consumer stops delivering it; message stays in the stream.</td><td>No</td><td><code>MAX_DELIVERIES</code> (only if <code>max_deliver</code> &gt; 0)</td></tr>
+</table>
+
+<h2>Retention against give-up path</h2>
+<table>
+  <tr><th>Source stream retention</th><th>After term</th><th>After MaxDeliver</th><th>DLQ lookup by <code>stream_seq</code></th></tr>
+  <tr><td>Limits</td><td>Stays until limits remove it</td><td>Stays until limits remove it</td><td>Works until <code>max_age</code> / <code>max_msgs</code> / <code>max_bytes</code> remove it</td></tr>
+  <tr><td>Interest</td><td>Removed if this was the last interested consumer</td><td>Stays for this consumer's interest until limits (inferred, not documented)</td><td>Term: may be <code>null</code>. MaxDeliver: works</td></tr>
+  <tr><td>WorkQueue</td><td>Removed (term counts as the first ack)</td><td>Stays until deleted via API</td><td>Term: <code>null</code>. MaxDeliver: works; delete after copying</td></tr>
+</table>
+
+<h2>The DLQ pattern</h2>
+<ol class="tight">
+  <li>Consumer: <code>ack_policy: explicit</code>, finite <code>max_deliver</code>, optional <code>backoff</code>.</li>
+  <li>Handler: ack on success, <code>nak(delay)</code> on transient errors, <code>term(reason)</code> on permanent ones, <code>working()</code> for long jobs. Idempotent on a natural ID.</li>
+  <li>Capture stream bound to <code>$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.&lt;stream&gt;.*</code> and <code>…MSG_TERMINATED.&lt;stream&gt;.*</code>, created with the source stream. Advisories are published once, never stored, and skipped with no interest.</li>
+  <li>DLQ worker: read <code>stream</code> + <code>stream_seq</code>, call <code>jsm.streams.getMessage(stream, { seq })</code> (leader read; returns <code>null</code> if gone). Avoid Direct Get here: not read-after-write coherent.</li>
+  <li>Copy payload and headers to <code>dlq.&lt;stream&gt;.&lt;consumer&gt;</code> with advisory type, deliveries, reason. Publish with <code>msgID</code> = advisory <code>id</code>; ack the advisory last.</li>
+  <li>WorkQueue source: <code>jsm.streams.deleteMessage(stream, seq)</code> after the copy.</li>
+  <li>Replay: republish from the DLQ stream to the original subject after the fix. Watch the duplicate window if the original <code>Nats-Msg-Id</code> is reused.</li>
+</ol>
+
+<h2>Advisory payloads</h2>
+<table>
+  <tr><th>Advisory</th><th><code>type</code></th><th>Fields</th></tr>
+  <tr><td><code>MAX_DELIVERIES</code></td><td><code>io.nats.jetstream.advisory.v1.max_deliver</code></td><td><code>id</code>, <code>timestamp</code>, <code>stream</code>, <code>consumer</code>, <code>stream_seq</code>, <code>deliveries</code></td></tr>
+  <tr><td><code>MSG_TERMINATED</code></td><td><code>io.nats.jetstream.advisory.v1.terminated</code></td><td>as above plus <code>consumer_seq</code>, <code>reason</code></td></tr>
+  <tr><td><code>MSG_NAKED</code></td><td><code>io.nats.jetstream.advisory.v1.nak</code></td><td>as above plus <code>consumer_seq</code></td></tr>
+</table>
+<p class="src">No advisory carries the message body or headers. <code>jsm.advisories()</code> in nats.js is a core subscription and has no <code>nak</code> kind: monitoring only, not a DLQ source.</p>
+
+<h2>Version notes</h2>
+<table>
+  <tr><th>Server</th><th>Relevant change</th></tr>
+  <tr><td>2.7.1</td><td><code>backoff</code>; nak with delay</td></tr>
+  <tr><td>2.9.0</td><td><code>allow_direct</code> (Direct Get)</td></tr>
+  <tr><td>2.11</td><td>Consumer pause; per-message TTL (<code>Nats-TTL</code>); priority groups (overflow, pinned)</td></tr>
+  <tr><td>2.12</td><td>Prioritized priority policy; message schedules</td></tr>
+  <tr><td>2.14</td><td>Consumer reset API; cron schedules</td></tr>
+  <tr><td>2.15</td><td>Default 1000 consumers per stream</td></tr>
+  <tr><td>all to 2.15</td><td>No built-in dead-letter queue</td></tr>
+</table>
+<p class="src">Unverified: the server version Synadia Cloud runs, and whether an account may bind <code>$JS.EVENT.ADVISORY</code> subjects to a stream there. Confirm before depending on 2.11+ features.</p>
+
+<p class="src"><strong>Sources.</strong> <a href="https://docs.nats.io/learn/jetstream/acknowledgment">Ack responses and redelivery</a>; <a href="https://docs.nats.io/learn/monitoring/advisories-and-events">Advisories and events</a>; <a href="https://docs.nats.io/reference/jetstream/advisory/">Advisory reference</a>; <a href="https://docs.nats.io/learn/jetstream/retention-policies">Retention policies</a>; <a href="https://docs.nats.io/learn/jetstream/get-direct">Get direct</a>; <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go">nats-server consumer.go @ a44c356</a>; <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/consumers.md">consumer config table</a>; <a href="https://github.com/nats-io/nats-server/releases/tag/v2.15.0">v2.15.0 release</a>; <a href="https://www.synadia.com/blog/jetstream-reliable-delivery-dlq-replay">Synadia DLQ post</a>.</p>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="glossary.html">Glossary</a></span>
+  <span><a href="../lessons/0008-the-dlq-pattern.html">Lesson 8</a></span>
+  <span><a href="../lessons/0009-designing-failure-handling.html">Lesson 9</a></span>
+</div>

@@ -1,0 +1,234 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 9 — Designing failure handling for one service</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 3 · Lesson 9</p>
+<h1>Designing failure handling for one service</h1>
+<p class="lede">Every earlier lesson covered one mechanism. This one uses all of them to design failure handling for a single service, an order-fulfilment worker, from the publish to the dead letter. Each step is a decision, and each decision is stated with the mechanic that justifies it.</p>
+
+<h2>The concept</h2>
+
+<p>The service is a fulfilment worker in a microservice system. An orders service publishes an event when an order is created. The fulfilment worker reserves stock and calls a shipping provider. Other services, such as billing, also read order events. The shipping provider sometimes times out, sometimes returns a server error for a few minutes, and occasionally goes down for hours. Some orders arrive malformed and can never be fulfilled.</p>
+
+<p>The design question is the one from the design doc: what happens to an order event that fails? The answer below is one defensible design, not the only one. The decision table at the end shows where a different service would choose differently.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  l["1 · pick the layer<br/>core NATS or JetStream"] --> s["2 · source stream<br/>retention, limits, dedupe"]
+  s --> c["3 · consumer<br/>MaxDeliver, BackOff,<br/>MaxAckPending"]
+  c --> h["4 · handler<br/>ack, nak with delay,<br/>term, working"]
+  h --> a["5 · advisory capture<br/>and DLQ worker"]
+  a --> r["6 · replay and<br/>monitoring"]
+</pre>
+<p class="cap">Six decisions, in dependency order. Each one constrains the next.</p>
+</div>
+
+<h3>Step 1 — Pick the layer</h3>
+<p>Core NATS delivers at most once and keeps nothing (Lesson 1). An order event lost during a fulfilment deploy is an order nobody ships, so this flow belongs on JetStream. A request-reply call (Lesson 2) would tell the orders service that fulfilment failed, but it would make order creation wait on the shipping provider, and a no-responders error during a deploy would push the retry problem back onto the publisher. Persisting the event and letting the worker retry keeps the two services decoupled.</p>
+
+<h3>Step 2 — Shape the source stream</h3>
+<p>Three choices from Lesson 3:</p>
+
+<ul>
+  <li><strong>Retention: Limits.</strong> Billing also reads order events, so WorkQueue is out: it removes a message on the first ack and rejects overlapping consumers.<sup><a href="#s1">1</a></sup> Limits retention has a second benefit for failure handling. A term counts as an ack, and "on a WorkQueue or Interest stream, where a handled message is removed, a term removes it just as an ack would."<sup><a href="#s2">2</a></sup> Under Limits the original stays, so the DLQ lookup by stream sequence (Lesson 8) still finds it. Retention cannot be changed after creation, so this choice is made once.<sup><a href="#s3">3</a></sup></li>
+  <li><strong>Limits: <code>max_age</code> of 7 days.</strong> Long enough to outlast any realistic DLQ-worker outage and any replay window the team needs, and bounded so the stream does not grow forever.</li>
+  <li><strong>Dedupe: <code>Nats-Msg-Id</code> set to the order ID.</strong> A publisher that retries after a lost PubAck stores the event once, inside the 2-minute default duplicate window.<sup><a href="#s4">4</a></sup></li>
+</ul>
+
+<h3>Step 3 — Configure the consumer</h3>
+<p>One durable pull consumer, <code>fulfilment</code>, shared by every worker replica (Lesson 4). Its settings come from Lessons 5 and 6:</p>
+
+<ul>
+  <li><strong><code>ack_policy: explicit</code>.</strong> Required for redelivery at all.<sup><a href="#s5">5</a></sup></li>
+  <li><strong><code>max_deliver: 5</code>.</strong> The default of -1 retries a poison message forever and never emits a max-deliveries advisory.<sup><a href="#s5">5</a></sup> A finite budget is the precondition for the DLQ.</li>
+  <li><strong><code>backoff: [30s, 2m, 10m, 30m]</code>.</strong> When BackOff is set it replaces AckWait, and its first entry becomes the ack deadline.<sup><a href="#s6">6</a></sup> So the first entry must exceed normal processing time, or slow but healthy work is redelivered. BackOff spaces only the redeliveries that follow an AckWait timeout, not naks.<sup><a href="#s2">2</a></sup> With <code>max_deliver</code> larger than the list, the last entry repeats.<sup><a href="#s5">5</a></sup></li>
+  <li><strong><code>max_ack_pending: 200</code>.</strong> The default is 1000, and delivery stops when the limit is reached across all replicas.<sup><a href="#s6">6</a></sup> A limit near the shipping provider's safe concurrency stops a backlog from flooding it. Too low starves batches.</li>
+</ul>
+
+<p>The Synadia blog gives the sizing rule in one line: "Size MaxDeliver against the backoff schedule so the retries you want all get a chance to run."<sup><a href="#s7">7</a></sup> The total retry window is roughly the sum of the delays the budget reaches. An outage longer than that window sends messages to the DLQ, which is acceptable here because replay is cheap.</p>
+
+<h3>Step 4 — Decide the handler's response per error class</h3>
+<p>The handler, not the consumer config, knows why a message failed. Lesson 5's four responses map onto error classes:</p>
+
+<table>
+  <tr><th>Error class</th><th>Example</th><th>Response</th><th>Effect</th></tr>
+  <tr><td>Success</td><td>Shipment booked</td><td><code>ack()</code></td><td>Removed from the pending list.</td></tr>
+  <tr><td>Permanent</td><td>Malformed payload, unknown SKU</td><td><code>term(reason)</code></td><td>Never redelivered; <code>MSG_TERMINATED</code> advisory with the reason.</td></tr>
+  <tr><td>Transient, known</td><td>Provider 503, rate limit</td><td><code>nak(delay)</code></td><td>Redelivered after the delay; counts toward <code>max_deliver</code>.</td></tr>
+  <tr><td>Slow but healthy</td><td>Large order, long provider call</td><td><code>working()</code> on a timer</td><td>Restarts the ack timer.</td></tr>
+  <tr><td>Unknown</td><td>Worker crash, hang, OOM</td><td>none</td><td>AckWait expires; redelivery spaced by BackOff.</td></tr>
+</table>
+
+<p>Two consequences follow. First, a nak's delay comes from the handler, so the handler should grow it with <code>m.info.deliveryCount</code> to mirror the BackOff schedule.<sup><a href="#s8">8</a></sup> Second, delivery is at least once. A redelivered message may already have been processed, for example when the provider booked the shipment but the ack was lost. The handler must be idempotent, keyed on the order ID. The Synadia blog makes the same point: effectively-once results come from "idempotent consumers on top of at-least-once delivery."<sup><a href="#s7">7</a></sup></p>
+
+<h3>Step 5 — Capture the give-ups and copy them out</h3>
+<p>Exactly as Lesson 8 built it. A capture stream binds <code>MAX_DELIVERIES</code> and <code>MSG_TERMINATED</code> for <code>ORDERS</code>, created in the same deploy as the source stream so no advisory fires into an empty interest graph.<sup><a href="#s9">9</a></sup> A DLQ worker fetches each original with <code>jsm.streams.getMessage</code> and copies it into <code>dlq.ORDERS.fulfilment</code> with the advisory type, deliveries and term reason as headers. Because the source stream uses Limits retention, the original is still there after a term; copying it anyway makes the dead letter independent of the 7-day limit.</p>
+
+<h3>Step 6 — Replay and monitor</h3>
+<p>Replay is a republish from the DLQ stream to the original subject once the defect is fixed (Lesson 8). Because the handler is idempotent, replaying an order that was in fact shipped is harmless.</p>
+
+<p>Monitoring watches levels and signals. <code>jsm.consumers.info("ORDERS", "fulfilment")</code> reports <code>num_pending</code>, <code>num_ack_pending</code> and <code>num_redelivered</code>.<sup><a href="#s10">10</a></sup> A rising redelivery count with a flat pending count points at a struggling downstream. A non-empty DLQ stream is the alert that a message gave up.</p>
+
+<p>For an outage measured in hours, burning the retry budget sends every in-flight order to the DLQ. Server 2.11 added consumer pause, which stops delivery until a deadline and keeps the cursor and redelivery counts.<sup><a href="#s11">11</a></sup> Pausing <code>fulfilment</code> during a known provider outage is an operational alternative to replaying a large DLQ afterwards. It depends on the server version Synadia Cloud runs, which is not public and needs confirming.</p>
+
+<h2>The whole design in code</h2>
+
+<p>Composed from verified nats.js v3 signatures; not run against a server.<sup><a href="#s8">8</a></sup><sup><a href="#s10">10</a></sup> Durations on the wire are nanoseconds, hence <code>nanos(ms)</code>.</p>
+
+<pre><code>import { connect, nanos } from "@nats-io/transport-node";
+import {
+  AckPolicy, DeliverPolicy, RetentionPolicy, StorageType,
+  jetstream, jetstreamManager,
+} from "@nats-io/jetstream";
+
+const nc = await connect({ servers: process.env.NATS_URL });
+const jsm = await jetstreamManager(nc);
+const js = jetstream(nc);
+const DAY = 24 * 60 * 60 * 1000;
+// Order, isValid, fulfil, PermanentError and region are application code.
+
+// Step 2: source stream. Limits retention keeps originals after a term.
+await jsm.streams.add({
+  name: "ORDERS",
+  subjects: ["orders.&gt;"],
+  retention: RetentionPolicy.Limits,
+  storage: StorageType.File,
+  num_replicas: 3,
+  max_age: nanos(7 * DAY),
+});
+
+// Step 5: capture give-up advisories, same deploy as the source stream.
+await jsm.streams.add({
+  name: "ORDERS_DLQ_EVENTS",
+  subjects: [
+    "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ORDERS.*",
+    "$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ORDERS.*",
+  ],
+  retention: RetentionPolicy.Workqueue,
+  max_age: nanos(7 * DAY),
+});
+await jsm.streams.add({ name: "DLQ", subjects: ["dlq.&gt;"] });
+
+// Step 3: the work consumer.
+await jsm.consumers.add("ORDERS", {
+  durable_name: "fulfilment",
+  filter_subject: "orders.*.created",
+  deliver_policy: DeliverPolicy.All,
+  ack_policy: AckPolicy.Explicit,
+  max_deliver: 5,
+  backoff: [nanos(30_000), nanos(120_000), nanos(600_000), nanos(1_800_000)],
+  max_ack_pending: 200,
+});
+
+// Publisher side (orders service): dedupe on the order ID.
+await js.publish(`orders.${region}.created`, JSON.stringify(order), {
+  msgID: order.id,
+});
+
+// Step 4: the handler.
+const NAK_DELAYS = [5_000, 30_000, 120_000, 600_000];
+const c = await js.consumers.get("ORDERS", "fulfilment");
+for await (const m of await c.consume({ max_messages: 10 })) {
+  const order = m.json&lt;Order&gt;();
+  if (!isValid(order)) {
+    m.term("invalid payload");               // permanent
+    continue;
+  }
+  const keepAlive = setInterval(() =&gt; m.working(), 10_000);
+  try {
+    await fulfil(order);                     // idempotent on order.id
+    m.ack();
+  } catch (err) {
+    if (err instanceof PermanentError) {
+      m.term(err.message);
+    } else {
+      const n = m.info.deliveryCount;        // 1 on first delivery
+      m.nak(NAK_DELAYS[Math.min(n - 1, NAK_DELAYS.length - 1)]);
+    }
+  } finally {
+    clearInterval(keepAlive);
+  }
+}
+// Step 5 continued: the DLQ worker is the Lesson 8 worker, unchanged.</code></pre>
+
+<h2>The decision table</h2>
+
+<table>
+  <tr><th>Decision</th><th>This service</th><th>Choose differently when</th><th>Lesson</th></tr>
+  <tr><td>Layer</td><td>JetStream</td><td>Loss is acceptable (telemetry, cache invalidation): core NATS.</td><td>1</td></tr>
+  <tr><td>Sync or async</td><td>Async event</td><td>The caller must know the outcome now: request-reply, and handle no-responders.</td><td>2</td></tr>
+  <tr><td>Retention</td><td>Limits, 7-day <code>max_age</code></td><td>Single consumer, remove on done: WorkQueue, and copy payloads before a term removes them.</td><td>3, 8</td></tr>
+  <tr><td>Dedupe</td><td><code>Nats-Msg-Id</code> = order ID</td><td>Never; set it whenever a natural ID exists.</td><td>3</td></tr>
+  <tr><td>Consumer</td><td>One durable pull consumer, shared by replicas</td><td>Each service needs every message: one consumer per service.</td><td>4</td></tr>
+  <tr><td>Retry budget</td><td><code>max_deliver: 5</code></td><td>Never leave it at -1 if the design needs a DLQ.</td><td>6</td></tr>
+  <tr><td>Retry spacing</td><td>BackOff for timeouts, delayed nak for known transients</td><td>Fast, cheap retries: plain AckWait and short nak delays.</td><td>5, 6</td></tr>
+  <tr><td>Backpressure</td><td><code>max_ack_pending: 200</code></td><td>Strict ordering needed: 1, at a large throughput cost.</td><td>5, 6</td></tr>
+  <tr><td>Give-up signal</td><td>Capture stream for max-deliveries and terminated</td><td>Never rely on a core subscription for it.</td><td>7</td></tr>
+  <tr><td>Dead letters</td><td>Worker copies payload into <code>dlq.&gt;</code></td><td>Handler can also publish on known permanent errors, but timeouts still need the advisory path.</td><td>8</td></tr>
+</table>
+
+<h2>Why it matters</h2>
+
+<p>Each mechanism in the course answers one part of "what happens to a message that fails." JetStream decides whether the message exists to be retried. Retention decides whether the original survives being given up on. The consumer's budget and spacing decide how long the system keeps trying and how hard it hits a struggling downstream. The handler's choice of response decides which failures are retried and which are given up on at once. Advisories are the only signal that a give-up happened, and a capture stream is the only way that signal survives. The DLQ worker turns the signal back into a message someone can act on.</p>
+
+<p>Read in reverse, the chain explains why NATS has no DLQ setting. A dead-letter queue depends on choices only the design can make: which failures are permanent, how long to retry, which retention policy, which payloads to keep. NATS provides each mechanism separately and leaves the policy to the system that knows its own failure modes. On Synadia Cloud the design work is the same. What remains to confirm is the account-level detail: server version, advisory capture, and plan limits.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Failure handling on NATS is a chain the design builds: JetStream so the message exists, a finite MaxDeliver so giving up is possible, handler responses that separate transient from permanent, a capture stream so the give-up signal survives, and a DLQ worker that copies the payload while it still exists.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating BackOff as the retry policy for every failure. BackOff spaces only redeliveries after an AckWait timeout, so a handler that catches errors and sends a bare nak gets immediate redelivery and burns its <code>max_deliver</code> budget in seconds. The handler has to supply its own delay on a nak. The second slip is setting BackOff's first entry below normal processing time; it replaces AckWait, so healthy slow work is redelivered while still running.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① The shipping provider returns 503 for ten minutes. The handler catches the error and calls <code>m.nak()</code> with no delay. The consumer has <code>max_deliver: 5</code> and a BackOff of 30s, 2m, 10m, 30m. What happens to an order that arrives at the start of the outage?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It is redelivered immediately on each nak, because BackOff does not apply to naks. Five deliveries happen within seconds, the budget runs out, and a max-deliveries advisory fires. The order lands in the DLQ even though the provider recovers ten minutes later. A delayed nak that grows with the delivery count fixes it.</p></details>
+  <p>② Why does this design choose Limits retention for <code>ORDERS</code> even though only the fulfilment consumer does work on it?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Other services such as billing also read the events, which rules out WorkQueue. Limits also keeps the original after a term, which counts as an ack and would remove the message on a WorkQueue or Interest stream, so the DLQ lookup by stream sequence still finds it.</p></details>
+  <p>③ A worker books a shipment, then crashes before acking. What happens next, and which design choice keeps it from shipping twice?</p>
+  <details><summary>show answer</summary>
+  <p class="a">AckWait expires and the message is redelivered after the BackOff delay. Delivery is at least once, so the handler must be idempotent on the order ID; the second attempt sees the order is already booked and acks.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/jetstream/acknowledgment">"Ack responses and redelivery"</a>. Read it again with the whole course behind it. The pitfalls section is a checklist for this design: delayed naks for transients, BackOff and AckWait, term on WorkQueue streams, and MaxDeliver without a dead letter.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Bring a real service from the design doc and walk it through the decision table, or ask how the design changes for strict per-key ordering or for a WorkQueue source stream. Next: an interleaved review across all nine lessons.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0008-the-dlq-pattern.html">← Lesson 8</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="../reference/failure-handling-cheatsheet.html">Cheat sheet ↗</a></span>
+  <span><a href="0010-interleaved-review.html"><em>Next: Interleaved review →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Retention policies". <a href="https://docs.nats.io/learn/jetstream/retention-policies">docs.nats.io/learn/jetstream/retention-policies</a>. Limits, Interest, WorkQueue; WorkQueue rejects overlapping consumers.<br>
+<span id="s2">2.</span> NATS docs, "Ack responses and redelivery". <a href="https://docs.nats.io/learn/jetstream/acknowledgment">docs.nats.io/learn/jetstream/acknowledgment</a>. Term on WorkQueue and Interest streams; BackOff applies to AckWait timeouts, not naks.<br>
+<span id="s3">3.</span> NATS docs (previous site source), streams configuration. <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/streams.md">nats.docs/…/streams.md</a>. Retention not editable after creation.<br>
+<span id="s4">4.</span> NATS docs, "Publishing". <a href="https://docs.nats.io/learn/jetstream/publishing">docs.nats.io/learn/jetstream/publishing</a>. <code>Nats-Msg-Id</code> and the 2-minute default duplicate window.<br>
+<span id="s5">5.</span> NATS docs (previous site source), consumers configuration. <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/consumers.md">nats.docs/…/consumers.md</a>. Ack policies and their effect on redelivery.<br>
+<span id="s6">6.</span> nats-server source, <code>consumer.go</code> at commit a44c356. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L596-L604">consumer.go#L596-L604</a>; <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L677-L682">#L677-L682</a>. AckWait and MaxAckPending defaults; BackOff replacing AckWait; MaxDeliver default -1 per the consumers table.<br>
+<span id="s7">7.</span> Synadia blog, "Reliable Message Delivery in NATS JetStream: Acks, Retries, Dead Letters, and Replay", 2026-07-24. <a href="https://www.synadia.com/blog/jetstream-reliable-delivery-dlq-replay">synadia.com/blog/jetstream-reliable-delivery-dlq-replay</a>. Sizing MaxDeliver against BackOff; idempotent consumers over at-least-once delivery.<br>
+<span id="s8">8.</span> nats.js v3.4.0, <code>jsmsg.ts</code>. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/jsmsg.ts">jetstream/src/jsmsg.ts</a>. <code>ack</code>, <code>nak(millis)</code>, <code>term(reason)</code>, <code>working</code>, <code>info.deliveryCount</code>.<br>
+<span id="s9">9.</span> NATS docs, "Advisories and events". <a href="https://docs.nats.io/learn/monitoring/advisories-and-events">docs.nats.io/learn/monitoring/advisories-and-events</a>. Advisories are transient; capture them in a stream.<br>
+<span id="s10">10.</span> nats.js v3.4.0, <code>jsapi_types.ts</code> and <code>types.ts</code>. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/jsapi_types.ts">jetstream/src/jsapi_types.ts</a>. Stream and consumer config field names; <code>ConsumerInfo</code> counts.<br>
+<span id="s11">11.</span> NATS docs, "Pausing consumers". <a href="https://docs.nats.io/learn/jetstream/pausing">docs.nats.io/learn/jetstream/pausing</a>. Consumer pause, server 2.11 and later.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

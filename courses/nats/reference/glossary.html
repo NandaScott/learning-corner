@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Reference — NATS glossary</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Reference</p>
+<h1>Glossary</h1>
+<p class="lede">Canonical vocabulary for this course. Every lesson uses these terms as defined here, following the NATS documentation. The last column of each row names the lesson that introduces the term. For defaults and outcome tables, see the <a href="failure-handling-cheatsheet.html">failure-handling cheat sheet</a>.</p>
+
+<h2>Core NATS</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Core NATS</strong></td><td>The base publish-subscribe layer of NATS, with no persistence. Delivers each message at most once to subscribers interested at publish time. (Lesson 1)</td></tr>
+  <tr><td><strong>Subject</strong></td><td>A case-sensitive, dot-separated string the server uses to match publishers to subscribers. Never declared; the server tracks it only while something subscribes. (Lesson 1)</td></tr>
+  <tr><td><strong>Token</strong></td><td>One dot-separated part of a subject. Wildcards match whole tokens. (Lesson 1)</td></tr>
+  <tr><td><strong><code>*</code> wildcard</strong></td><td>Subscriber-only. Matches exactly one token, not zero and not two. (Lesson 1)</td></tr>
+  <tr><td><strong><code>&gt;</code> wildcard</strong></td><td>Subscriber-only. Matches one or more tokens; must be the last token. (Lesson 1)</td></tr>
+  <tr><td><strong>Reserved subjects</strong></td><td>Subjects starting with <code>$</code>, used by the system. <code>$JS.</code> holds the JetStream API and advisories. (Lesson 1)</td></tr>
+  <tr><td><strong>At-most-once</strong></td><td>The core NATS guarantee. A subscriber that is connected and interested at publish time gets one copy; one that is absent, slow or disconnected gets zero. No retry. (Lesson 1)</td></tr>
+  <tr><td><strong>Fire-and-forget</strong></td><td>Core publish behaviour: the call hands the message to the server and returns, with no report of who received it. (Lesson 1)</td></tr>
+  <tr><td><strong>Interest</strong></td><td>The set of current subscriptions matching a subject. A message published with no interest is discarded silently. (Lesson 1)</td></tr>
+  <tr><td><strong>JetStream</strong></td><td>The NATS persistence layer, built into the server. Adds storage, redelivery and replay on top of core NATS. (Lessons 1, 3)</td></tr>
+</table>
+
+<h2>Core NATS: queue groups and request-reply</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Queue group</strong></td><td>A set of subscribers on the same subject sharing a group name. The server treats it as one logical subscriber and delivers each message to exactly one member. Nothing is configured on the server, and nothing is stored: a member that dies after delivery loses the message. (Lesson 2)</td></tr>
+  <tr><td><strong>Request-reply</strong></td><td>Publish and subscribe used twice: the request carries a reply subject, and the responder publishes its answer there. At most once in both directions, so every request has a timeout. (Lesson 2)</td></tr>
+  <tr><td><strong>Inbox</strong></td><td>The private reply subject for a request, under the reserved <code>_INBOX.</code> prefix. A client subscribes once to a wildcard inbox and gives each request a fresh last token. (Lesson 2)</td></tr>
+  <tr><td><strong>No responders</strong></td><td>An immediate reply with status 503 and no payload, sent when a request's subject has no subscribers. In nats.js v3 a <code>RequestError</code> whose cause is <code>NoRespondersError</code>. Distinct from a timeout. (Lesson 2)</td></tr>
+</table>
+
+<h2>JetStream: streams and consumers</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Stream</strong></td><td>A JetStream store on the server that keeps every message published on its subjects. A subject may be bound by only one stream. (Lesson 3)</td></tr>
+  <tr><td><strong>Stream sequence</strong></td><td>The number a stream assigns to each stored message. Starts at 1, only increases, never reused. The message's permanent address in the stream. (Lesson 3)</td></tr>
+  <tr><td><strong>PubAck</strong></td><td>The server's reply to a JetStream publish: stream name, stream sequence, and a <code>duplicate</code> flag. Confirms storage, not delivery to any consumer. (Lesson 3)</td></tr>
+  <tr><td><strong>Storage</strong></td><td>File (default) or memory. Memory storage does not survive a server restart. Fixed at creation. (Lesson 3)</td></tr>
+  <tr><td><strong>Replicas</strong></td><td>How many servers hold a copy of a stream. Default 1, maximum 5. (Lesson 3)</td></tr>
+  <tr><td><strong>Limits</strong></td><td><code>MaxAge</code>, <code>MaxMsgs</code>, <code>MaxBytes</code> (and per-subject and size caps). Unlimited by default; whichever is reached first triggers a discard. Apply under every retention policy. (Lesson 3)</td></tr>
+  <tr><td><strong>Discard policy</strong></td><td>What happens at a limit. <code>DiscardOld</code> (default) deletes the oldest messages; <code>DiscardNew</code> rejects the new publish. (Lesson 3)</td></tr>
+  <tr><td><strong>Retention policy</strong></td><td>What makes a message ready to leave a stream besides limits. One per stream, not editable after creation. Limits, Interest, or WorkQueue. (Lesson 3)</td></tr>
+  <tr><td><strong>Limits retention</strong></td><td>The default. Messages leave only by limits; reading and acking change nothing. (Lesson 3)</td></tr>
+  <tr><td><strong>Interest retention</strong></td><td>A message is removed once every consumer whose filter covers it has acked it, or immediately if no consumer is interested when it arrives. (Lesson 3)</td></tr>
+  <tr><td><strong>WorkQueue retention</strong></td><td>A message is removed by the first ack. For job queues where each message is work for one worker. (Lesson 3)</td></tr>
+  <tr><td><strong><code>Nats-Msg-Id</code> / duplicate window</strong></td><td>A publish header carrying a stable ID. Within the stream's duplicate window (default 2 minutes) a repeated ID is stored once and its PubAck reports <code>duplicate: true</code>. (Lesson 3)</td></tr>
+  <tr><td><strong>Per-message TTL</strong></td><td>The <code>Nats-TTL</code> header (server 2.11+) on a stream with <code>AllowMsgTTL</code>, which can be enabled but never disabled. A deadline on the stored copy. (Lesson 3)</td></tr>
+  <tr><td><strong>Consumer</strong></td><td>A server-side cursor on a stream. Tracks how far its clients have progressed and hands out the next message. Reading through a consumer moves its position only; it does not remove the message from the stream. (Lesson 4)</td></tr>
+  <tr><td><strong>Durable consumer</strong></td><td>A consumer created with a durable name. The server keeps its position under that name across disconnects and restarts. The right choice for any service that must not miss work. (Lesson 4)</td></tr>
+  <tr><td><strong>Ephemeral consumer</strong></td><td>A consumer with no durable name. No persisted state or fault tolerance; removed automatically after a period of inactivity. (Lesson 4)</td></tr>
+  <tr><td><strong>Inactive threshold</strong></td><td>Consumer setting controlling automatic cleanup after inactivity. Does not make a consumer durable; applies to durables too since server 2.9. (Lesson 4)</td></tr>
+  <tr><td><strong>Pull consumer</strong></td><td>A consumer where the client asks for messages when ready. The default and recommended kind. In nats.js: <code>next</code>, <code>fetch</code>, or <code>consume</code>. (Lesson 4)</td></tr>
+  <tr><td><strong>Push consumer</strong></td><td>The older model, where the server sends messages to a deliver subject on its own. Not used in this course. (Lesson 4)</td></tr>
+  <tr><td><strong>Consumer sequence</strong></td><td>A per-consumer counter bumped on every delivery, redeliveries included. Counts handovers, not distinct messages; contrast stream sequence. (Lesson 4)</td></tr>
+  <tr><td><strong>Deliver policy</strong></td><td>Where a consumer starts: <code>all</code> (default), <code>last</code>, <code>last_per_subject</code>, <code>new</code>, or a start sequence or time. Not editable after creation. (Lesson 4)</td></tr>
+  <tr><td><strong>Filter subject</strong></td><td>A subject pattern on a consumer. The consumer receives only stored messages whose subject matches; the rest of the stream is skipped. (Lesson 4)</td></tr>
+</table>
+
+<h2>Acks and giving up</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>At-least-once</strong></td><td>The JetStream guarantee with explicit acks: a message stays available and is redelivered until a reader confirms it. Handlers may see a message more than once, so they must be idempotent. (Lesson 5)</td></tr>
+  <tr><td><strong>Ack policy</strong></td><td>Consumer setting for whether and how deliveries are answered. <code>explicit</code>: each message answered (the basis for redelivery). <code>none</code>: done on delivery, no redelivery. <code>all</code>: one ack retires every earlier message. Not editable after creation. (Lesson 5)</td></tr>
+  <tr><td><strong>Pending list</strong></td><td>The consumer's record of delivered messages that have not yet received a final answer. (Lesson 5)</td></tr>
+  <tr><td><strong>AckWait</strong></td><td>How long the server waits for an answer before treating a delivery as failed and redelivering it. Default 30 seconds. (Lesson 5)</td></tr>
+  <tr><td><strong>ack</strong></td><td>Final answer: the work succeeded. Removes the message from the pending list; never delivered again to this consumer. nats.js <code>m.ack()</code>. (Lesson 5)</td></tr>
+  <tr><td><strong>nak</strong></td><td>Final answer for this delivery: the work failed, redeliver. Plain nak redelivers at once; <code>m.nak(millis)</code> delays it (server 2.7.1+). Returns the message to the consumer, not the same worker. (Lesson 5)</td></tr>
+  <tr><td><strong>term</strong></td><td>Final answer: this can never succeed. Clears the pending entry like an ack and is never redelivered to this consumer. Moves the message nowhere. Optional reason string (server 2.11+). nats.js <code>m.term(reason)</code>. (Lesson 5)</td></tr>
+  <tr><td><strong>in-progress</strong></td><td>Not a final answer: resets the AckWait timer for a long job. nats.js <code>m.working()</code>. (Lesson 5)</td></tr>
+  <tr><td><strong>Delivery count</strong></td><td>How many times this consumer has handed out a message. nats.js <code>m.info.deliveryCount</code>; <code>m.redelivered</code> is true above one. (Lesson 5)</td></tr>
+  <tr><td><strong>MaxAckPending</strong></td><td>Cap on delivered-but-unanswered messages for a consumer, shared across all its workers. Delivery stops when reached. Default 1000. (Lesson 5)</td></tr>
+  <tr><td><strong>MaxDeliver</strong></td><td>Consumer setting capping how many times a message is delivered, the first delivery included; nak and AckWait redeliveries both count. Default <code>-1</code>, unlimited. Reaching it stops delivery to that consumer without acking or deleting the message. (Lesson 6)</td></tr>
+  <tr><td><strong>BackOff</strong></td><td>Consumer list of delays for redeliveries caused by an AckWait timeout. Replaces AckWait: the first entry becomes the ack deadline for the first delivery; the last entry repeats. Does not slow a nak. Server 2.7.1+. (Lesson 6)</td></tr>
+  <tr><td><strong>Poison message</strong></td><td>A message that fails every time it is processed, typically a malformed payload. With unlimited MaxDeliver it is redelivered forever and holds a MaxAckPending slot. Handled with term or a finite MaxDeliver. (Lesson 6)</td></tr>
+  <tr><td><strong>Consumer pause</strong></td><td>Server 2.11 feature that stops a consumer's delivery until a deadline, keeping its position and redelivery counts. An alternative to burning delivery attempts during an outage. (Lesson 6)</td></tr>
+</table>
+
+<h2>Advisories and the DLQ pattern</h2>
+
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Advisory</strong></td><td>A transient JSON message JetStream publishes once, on a subject under <code>$JS.EVENT.ADVISORY.</code>, when something notable happens to a stream or consumer. Travels over core NATS: not stored unless a stream captures it, and not published at all when nothing is subscribed. (Lesson 7)</td></tr>
+  <tr><td><strong>Max-deliveries advisory</strong></td><td>Advisory of type <code>io.nats.jetstream.advisory.v1.max_deliver</code> on <code>$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.&lt;stream&gt;.&lt;consumer&gt;</code>. Sent once when a message reaches MaxDeliver; only if MaxDeliver is greater than zero. Fields: type, id, timestamp, stream, consumer, stream_seq, deliveries. (Lesson 7)</td></tr>
+  <tr><td><strong>Terminated advisory</strong></td><td>Advisory of type <code>io.nats.jetstream.advisory.v1.terminated</code> on <code>…CONSUMER.MSG_TERMINATED.&lt;stream&gt;.&lt;consumer&gt;</code>, sent when a handler terms a message. Adds <code>consumer_seq</code> and the optional <code>reason</code> text. (Lesson 7)</td></tr>
+  <tr><td><strong>Nak advisory</strong></td><td>Advisory of type <code>io.nats.jetstream.advisory.v1.nak</code> on <code>…CONSUMER.MSG_NAKED.&lt;stream&gt;.&lt;consumer&gt;</code>, sent on every nak. (Lesson 7)</td></tr>
+  <tr><td><strong>Capture stream</strong></td><td>A stream whose subjects are advisory subjects, so each advisory is stored as a normal message. Also counts as interest, so the server publishes the advisory in the first place. (Lesson 7)</td></tr>
+  <tr><td><strong>Dead-letter queue (DLQ)</strong></td><td>A durable place where messages a consumer gave up on end up, with enough context to inspect and replay them. JetStream has none built in; on NATS it is a stream the design creates and fills. (Lesson 8)</td></tr>
+  <tr><td><strong>Advisory-capture stream</strong></td><td>A stream bound to advisory subjects (for a DLQ, <code>MAX_DELIVERIES</code> and <code>MSG_TERMINATED</code> for one source stream). It counts as interest and keeps each advisory until a worker acks it, so give-up events survive worker downtime. (Lesson 8)</td></tr>
+  <tr><td><strong>DLQ worker</strong></td><td>A consumer on the capture stream that fetches each failed message by <code>stream_seq</code> and copies payload and context headers into the DLQ stream. Itself an ordinary JetStream consumer: naks on transient failure, acks last. (Lesson 8)</td></tr>
+  <tr><td><strong>Copy at capture</strong></td><td>Republishing the original payload into the DLQ stream when the advisory is processed, so the dead letter no longer depends on the source stream's retention or limits. (Lesson 8)</td></tr>
+  <tr><td><strong>Stream message get</strong></td><td><code>jsm.streams.getMessage(stream, { seq })</code>: reads one stored message by sequence from the stream leader. Returns <code>null</code> in nats.js v3 when the message is gone. (Lesson 8)</td></tr>
+  <tr><td><strong>Direct Get</strong></td><td>A by-sequence or by-subject read any replica can answer (<code>allow_direct</code>, server 2.9.0). Not read-after-write coherent, so not the first choice for DLQ lookups. (Lesson 8)</td></tr>
+  <tr><td><strong>Replay</strong></td><td>Republishing dead letters to their original subject after the defect is fixed. A reused <code>Nats-Msg-Id</code> inside the duplicate window is refused. (Lesson 8)</td></tr>
+  <tr><td><strong>Error class</strong></td><td>The handler's classification of a failure, which decides its response: success (ack), permanent (term with reason), known transient (nak with delay), slow but healthy (working), unknown (no response; AckWait and BackOff take over). (Lesson 9)</td></tr>
+  <tr><td><strong>Retry window</strong></td><td>Roughly the sum of the delays the <code>max_deliver</code> budget reaches. An outage longer than the window sends in-flight messages to the DLQ. (Lesson 9)</td></tr>
+  <tr><td><strong>Idempotent handler</strong></td><td>A handler that produces the same result when it processes a message twice, keyed on a natural ID. Required because JetStream delivery to consumers is at least once. (Lesson 9)</td></tr>
+</table>

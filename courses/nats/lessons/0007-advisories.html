@@ -1,0 +1,156 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 7 — Advisories</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 3 · Lesson 7</p>
+<h1>Advisories</h1>
+<p class="lede">Lesson 6 ended on a silent drop: a message reaches MaxDeliver and the consumer's output says nothing. JetStream does report that moment, and the report is called an advisory. It is a plain NATS message on a reserved subject, and it follows the same at-most-once rule as Lesson 1. A design that relies on advisories has to make sure something is always there to receive them.</p>
+
+<h2>The concept</h2>
+
+<p>The docs define it in two sentences: "An advisory is a transient JSON message that JetStream publishes once, the moment something noteworthy happens to a stream or a consumer. It's a normal NATS message on a well-known subject."<sup><a href="#s1">1</a></sup> Those subjects live under <code>$JS.EVENT.ADVISORY.</code>, inside the <code>$</code> namespace that Lesson 1 described as reserved for the system.</p>
+
+<p>The word that matters for failure handling is "transient". An advisory is not kept anywhere unless something keeps it.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  e["1 · event in the server<br/>e.g. message reaches MaxDeliver"] --> i{"2 · any interest<br/>on the advisory subject?"}
+  i -->|"no"| skip["not published at all"]
+  i -->|"yes"| pub["3 · published once<br/>on a $JS.EVENT.ADVISORY subject"]
+  pub --> sub["4a · core subscriber connected:<br/>gets it, nothing kept"]
+  pub --> st["4b · stream on that subject:<br/>stored, readable later"]
+</pre>
+<p class="cap">Only path 4b leaves a record. Everything else is at-most-once delivery from Lesson 1.</p>
+</div>
+
+<h3>Step 1 — An event fires in the server</h3>
+<p>Many events produce an advisory: streams and consumers created or deleted, leader elections, storage running out, and others.<sup><a href="#s2">2</a></sup> Three are about individual messages on a consumer, and those are the ones a failure-handling design reads:<sup><a href="#s2">2</a></sup><sup><a href="#s3">3</a></sup></p>
+
+<table>
+  <tr><th>Advisory</th><th>Fires when</th><th>Subject</th></tr>
+  <tr><td>Max deliveries</td><td>A message reaches MaxDeliver without a final ack</td><td><code>$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.&lt;stream&gt;.&lt;consumer&gt;</code></td></tr>
+  <tr><td>Terminated</td><td>The handler sends term</td><td><code>$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.&lt;stream&gt;.&lt;consumer&gt;</code></td></tr>
+  <tr><td>Nak</td><td>The handler sends any nak</td><td><code>$JS.EVENT.ADVISORY.CONSUMER.MSG_NAKED.&lt;stream&gt;.&lt;consumer&gt;</code></td></tr>
+</table>
+
+<p>The max-deliveries advisory depends on Lesson 6. The server only sends it when MaxDeliver is greater than zero, so a consumer left at the default of <code>-1</code> never produces one.<sup><a href="#s4">4</a></sup> The server code also sends it only once per message. Reading the code, it fires when the server would otherwise make the next delivery, which is after the last attempt's ack deadline runs out or after its nak, not at the moment of the last delivery.<sup><a href="#s4">4</a></sup> That timing comes from the source, not from a documented statement.</p>
+
+<h3>Step 2 — The server checks for interest</h3>
+<p>Before it publishes, the server checks whether anything is subscribed to that subject. If nothing is, it skips the publish. The comment in the source reads: "If there is no one listening for this advisory then save ourselves the effort."<sup><a href="#s5">5</a></sup> This is the empty interest graph from Lesson 1, applied to the server's own messages. With no subscriber, the event leaves no trace at all.</p>
+
+<h3>Step 3 — The advisory is published once</h3>
+<p>The payload is JSON with a <code>type</code> string naming its schema. The max-deliveries schema from the reference docs:<sup><a href="#s3">3</a></sup></p>
+
+<pre><code>{
+  "type": "io.nats.jetstream.advisory.v1.max_deliver",
+  "id": "…",                 // unique correlation ID for this event
+  "timestamp": "…",          // RFC3339
+  "stream": "ORDERS",
+  "consumer": "shipping",
+  "stream_seq": 987,         // the failed message's sequence in the stream
+  "deliveries": 5
+}</code></pre>
+
+<p>The terminated advisory (<code>io.nats.jetstream.advisory.v1.terminated</code>) carries the same fields plus <code>consumer_seq</code> and an optional <code>reason</code>, the free text passed to <code>term()</code>. The nak advisory (<code>io.nats.jetstream.advisory.v1.nak</code>) carries the same fields as terminated, without a reason.<sup><a href="#s6">6</a></sup> The reference page lists <code>consumer_seq</code> as a string; the server struct is an unsigned integer and sends a JSON number, so trust the server.<sup><a href="#s6">6</a></sup></p>
+
+<p>None of these payloads includes the message body or its headers. An advisory says which message failed, by stream name and stream sequence (Lesson 3), and how many attempts were made. It does not say what the message was.</p>
+
+<h3>Step 4 — Who receives it</h3>
+<p>The docs state the consequence plainly: "An advisory is published exactly once, the moment its event fires, and it is not stored in any stream. If you're not subscribed at that instant, you never learn the event happened."<sup><a href="#s1">1</a></sup></p>
+
+<p>A core subscription receives advisories only while it is connected. The docs show the TypeScript form, using a literal subject:<sup><a href="#s7">7</a></sup></p>
+
+<pre><code>const sub = nc.subscribe(
+  "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ORDERS.shipping",
+);
+for await (const m of sub) {
+  console.log(`max deliveries reached: ${m.string()}`);
+}</code></pre>
+
+<p>nats.js also has a helper, <code>jsm.advisories()</code>, that yields <code>{ kind, data }</code> objects. It is built on a core subscription to <code>$JS.EVENT.ADVISORY.&gt;</code>, so it has the same weakness, and its list of kinds includes <code>max_deliver</code> and <code>terminated</code> but not nak.<sup><a href="#s8">8</a></sup> It is a monitoring tool.</p>
+
+<p>The documented fix is a stream whose subjects are the advisory subjects, so the server stores each advisory as it would any other message. A stream listening on the subject also counts as interest, so the server publishes in the first place.<sup><a href="#s5">5</a></sup> The docs give the CLI form:<sup><a href="#s1">1</a></sup></p>
+
+<pre><code>nats stream add ADVISORIES --subjects '$JS.EVENT.ADVISORY.&gt;' \
+  --storage file --retention limits --max-age 168h --defaults</code></pre>
+
+<p>A narrower capture uses the wildcards from Lesson 1. In nats.js, composed from verified APIs and not run:<sup><a href="#s9">9</a></sup></p>
+
+<pre><code>import { nanos } from "@nats-io/transport-node";
+import { StorageType } from "@nats-io/jetstream";
+
+await jsm.streams.add({
+  name: "ORDERS_FAILURES",
+  subjects: [
+    "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ORDERS.*",
+    "$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ORDERS.*",
+  ],
+  storage: StorageType.File,
+  max_age: nanos(7 * 24 * 60 * 60 * 1000), // 7 days
+});</code></pre>
+
+<p>The <code>*</code> in the last token matches any consumer on the <code>ORDERS</code> stream. The capture stream needs room: a full stream with the discard-new policy from Lesson 3 rejects new messages, and an advisory rejected there is lost like any other.<sup><a href="#s10">10</a></sup></p>
+
+<h2>Why it matters</h2>
+
+<p>On Synadia Cloud, as on any NATS server, the advisory is the only record that a message was given up on. For the max-deliveries case it is the only signal at all, since the consumer reports nothing. So every failure-handling design built on JetStream starts with three decisions: a finite MaxDeliver so the advisory exists, a capture stream so it survives, and that stream created before the consumers it watches so no event falls into a gap.</p>
+
+<p>Two limits shape what can be built on top. An advisory carries a pointer, the stream sequence, not the message, so anything that needs the payload has to look it up in the source stream. And advisories are published in the account that owns the stream. That scoping is read from the server code; whether Synadia Cloud lets an application account capture its own <code>$JS.EVENT.ADVISORY</code> subjects is not covered in public docs and is worth confirming with Synadia early.<sup><a href="#s5">5</a></sup></p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  An advisory is a core NATS message the server publishes once, and only if something is listening. To rely on it, bind a stream to the advisory subjects. Even then it holds a stream sequence, not the message.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "JetStream advisories are durable because they come from JetStream." They come from JetStream and travel over core NATS, with no storage unless a stream captures them. A service subscribing to advisories that restarts at the wrong moment misses the event for good, and the server does not publish at all when nothing is subscribed. The second slip is expecting a max-deliveries advisory from a consumer left at the default MaxDeliver of <code>-1</code>. It never fires.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A team subscribes to max-deliveries advisories with <code>jsm.advisories()</code> in a monitoring service. That service is redeploying when a message hits MaxDeliver. What record of the event exists afterwards?</p>
+  <details><summary>show answer</summary>
+  <p class="a">None. The helper is a core subscription, and advisories are published once and not stored. With no listener at that instant, the server may skip publishing entirely. Only a stream bound to the advisory subject would have kept it.</p></details>
+  <p>② What does a max-deliveries advisory payload tell you, and what does it not?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It names the stream, the consumer, the message's stream sequence and the number of deliveries, plus an event ID and timestamp. It does not include the message body or headers.</p></details>
+  <p>③ A consumer has <code>max_deliver</code> unset. A capture stream exists on <code>$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ORDERS.*</code>. A poison message fails repeatedly. What lands in the capture stream?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Nothing. MaxDeliver defaults to <code>-1</code>, unlimited, so the message is redelivered forever and the server never sends a max-deliveries advisory. If the handler naks, nak advisories fire, but this stream does not capture that subject.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/monitoring/advisories-and-events">"Advisories and events"</a>. Defines advisories, lists the subjects, shows the max-deliveries payload, and has the pitfall section with the capture-stream command. Pair it with the <a href="https://docs.nats.io/reference/jetstream/advisory/">advisory reference</a> for exact schemas.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask what the other advisory subjects are useful for, how to size retention on a capture stream, or why the server skips advisories with no interest. Next: the dead-letter pattern, which turns a captured advisory back into the failed message.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0006-maxdeliver-and-backoff.html">← Lesson 6</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0008-the-dlq-pattern.html"><em>Next: Lesson 8, The DLQ pattern →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Advisories and events". <a href="https://docs.nats.io/learn/monitoring/advisories-and-events">docs.nats.io/learn/monitoring/advisories-and-events</a>. Definition, publish-once and not-stored behaviour, and the capture-stream CLI command.<br>
+<span id="s2">2.</span> nats-server source, <code>jetstream_api.go</code>, advisory subjects. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/jetstream_api.go#L271-L358">github.com/nats-io/nats-server/…/jetstream_api.go#L271-L358</a>. Full list of advisory subject prefixes.<br>
+<span id="s3">3.</span> NATS docs reference, "Max Deliveries Exceeded". <a href="https://docs.nats.io/reference/jetstream/advisory/max-deliver">docs.nats.io/reference/jetstream/advisory/max-deliver</a>. Subject and event schema.<br>
+<span id="s4">4.</span> nats-server source, <code>consumer.go</code>, max-deliveries emission. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L4886-L4900">github.com/nats-io/nats-server/…/consumer.go#L4886-L4900</a> and <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L2427-L2437">#L2427-L2437</a>. Sent only when MaxDeliver is set, once per message.<br>
+<span id="s5">5.</span> nats-server source, <code>consumer.go</code>, <code>sendAdvisory</code>. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L2006-L2015">github.com/nats-io/nats-server/…/consumer.go#L2006-L2015</a>. Early return with no interest; published in the stream's account.<br>
+<span id="s6">6.</span> NATS docs reference, <a href="https://docs.nats.io/reference/jetstream/advisory/terminated">"Message Terminated"</a> and <a href="https://docs.nats.io/reference/jetstream/advisory/nak">"Message Negative Acknowledgement"</a>; server structs in <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/jetstream_events.go#L120-L163"><code>jetstream_events.go</code></a>. Terminated and nak schemas, and the <code>consumer_seq</code> type.<br>
+<span id="s7">7.</span> NATS docs, "Ack responses and redelivery", JavaScript tab. <a href="https://docs.nats.io/learn/jetstream/acknowledgment">docs.nats.io/learn/jetstream/acknowledgment</a>. Core subscription to the max-deliveries advisory.<br>
+<span id="s8">8.</span> nats.js source, <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/jsclient.ts#L244-L263"><code>jsclient.ts</code> advisories()</a> and <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/types.ts#L1464-L1479"><code>AdvisoryKind</code></a>, v3.4.0. Core subscription; no nak kind.<br>
+<span id="s9">9.</span> nats.js, JetStream README, "JetStreamManager". <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/README.md#jetstreammanager-jsm">github.com/nats-io/nats.js/…/jetstream/README.md</a>. <code>jsm.streams.add</code>.<br>
+<span id="s10">10.</span> nats.docs (previous docs site source), "Streams", discard policy. <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/streams.md">github.com/nats-io/nats.docs/…/streams.md</a>. Discard-new rejecting messages on a full stream.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

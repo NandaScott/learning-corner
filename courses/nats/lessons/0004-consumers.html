@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 4 — Consumers: a cursor on the stream</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 2 · Lesson 4</p>
+<h1>Consumers — a cursor on the stream</h1>
+<p class="lede">A stream stores messages. It does not decide who reads them or how far each reader has got. That is the job of a consumer: an object on the server that holds one reader's position in one stream. Every failure-handling setting in the rest of this course lives on the consumer, so the shape of this object comes first.</p>
+
+<h2>The concept</h2>
+
+<p>The docs define it in one line: "A consumer is a server-side cursor on a stream."<sup><a href="#s1">1</a></sup> A client connects to the consumer to receive messages, and "the consumer tracks how far that client has progressed and hands out the next one."<sup><a href="#s1">1</a></sup></p>
+
+<p>Two properties follow. The consumer is not part of the application: "it's an object on the server, sitting next to the stream."<sup><a href="#s1">1</a></sup> And a stream can feed many consumers at once, "each reading at its own pace and each with its own position."<sup><a href="#s1">1</a></sup> Reading a message through one consumer does not remove it from the stream or hide it from another consumer. Removal is a retention decision on the stream, covered in Lesson 3.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  s["1 · stream ORDERS<br/>seq 1 · 2 · 3 · 4 · 5 · 6"] --> c1["2 · consumer billing<br/>durable, position after 5"]
+  s --> c2["2 · consumer shipping<br/>durable, position after 2"]
+  c1 --> w1["3 · billing worker"]
+  c2 --> w2["3 · shipping worker A"]
+  c2 --> w3["3 · shipping worker B"]
+</pre>
+<p class="cap">One stream, two consumers, two independent positions. Two workers share the shipping position.</p>
+</div>
+
+<h3>Step 1 — The consumer holds the position, not the client</h3>
+<p>Because the position lives on the server, "the client can disconnect and reconnect without losing its place or tracking any sequence numbers itself."<sup><a href="#s1">1</a></sup> A worker process can crash, restart, or be replaced by a new deployment, and it resumes where the consumer left off.</p>
+
+<p>The consumer also keeps a counter of its own. Each consumer has a <em>consumer sequence</em>: a counter the server bumps on every delivery, redeliveries included, "so it counts deliveries, not distinct messages."<sup><a href="#s1">1</a></sup> The stream sequence from Lesson 3 identifies a message; the consumer sequence counts handovers. The difference matters once redelivery enters the picture in Lesson 5.</p>
+
+<h3>Step 2 — Durable or ephemeral</h3>
+<p>A consumer is <em>durable</em> when it is created with a durable name; otherwise it is <em>ephemeral</em>.<sup><a href="#s2">2</a></sup> A durable consumer's state is kept by the server under that name, so a reader "resumes where it left off after a disconnect or a server restart instead of starting over."<sup><a href="#s1">1</a></sup> An ephemeral consumer has no persisted state or fault tolerance and is removed automatically after a period of inactivity.<sup><a href="#s2">2</a></sup></p>
+
+<p>Setting <code>inactive_threshold</code> controls only that automatic cleanup. It does not make a consumer durable, and since server 2.9 it applies to durable consumers as well.<sup><a href="#s2">2</a></sup> For a service that processes work, the choice is a durable consumer, because the position and the record of what is in flight must survive a restart.</p>
+
+<h3>Step 3 — Pull: the worker asks</h3>
+<p>"Pull means the client asks the server for messages when it's ready, rather than having the server push them on its own. Pull is the default for new consumers; an older push model exists."<sup><a href="#s1">1</a></sup> The older docs give the recommendation directly: pull consumers for new projects, "in particular when scalability, detailed flow control or error handling are a concern."<sup><a href="#s2">2</a></sup></p>
+
+<p>In nats.js v3 a durable is created with the JetStream manager and read through <code>js.consumers.get()</code>, which returns a pull consumer. The client offers three ways to pull: one message (<code>next</code>), a bounded batch (<code>fetch</code>), or a continuous loop where the library issues pulls in the background (<code>consume</code>).<sup><a href="#s3">3</a></sup><sup><a href="#s4">4</a></sup> Adapted from the JetStream README:<sup><a href="#s3">3</a></sup></p>
+
+<pre><code>import { AckPolicy, DeliverPolicy, jetstream, jetstreamManager } from "@nats-io/jetstream";
+
+const jsm = await jetstreamManager(nc);
+await jsm.consumers.add("ORDERS", {
+  durable_name: "shipping",
+  ack_policy: AckPolicy.Explicit,      // Lesson 5
+  deliver_policy: DeliverPolicy.All,
+  filter_subject: "orders.created",
+});
+
+const js = jetstream(nc);
+const c = await js.consumers.get("ORDERS", "shipping");
+
+const messages = await c.consume();    // continuous pull loop
+for await (const m of messages) {
+  console.log(m.seq, m.subject);       // m.seq is the stream sequence
+  m.ack();
+}</code></pre>
+
+<p>The ack line closes each delivery. What it means, and what the alternatives are, is the whole of Lesson 5.</p>
+
+<h3>Step 4 — Where it starts and what it sees</h3>
+<p>Two settings shape what a consumer hands out. The <em>deliver policy</em> picks the starting point: <code>all</code> (the default, from the first stored message), <code>last</code>, <code>last_per_subject</code>, <code>new</code> (only messages stored after creation), or a start sequence or start time.<sup><a href="#s2">2</a></sup> It cannot be changed after creation.<sup><a href="#s2">2</a></sup></p>
+
+<p>A <em>filter subject</em> narrows what the consumer sees. "A filter is a subject pattern attached to a consumer. The consumer receives only the messages whose subject matches the filter; the rest of the stream is skipped."<sup><a href="#s5">5</a></sup> It uses the same <code>*</code> and <code>&gt;</code> wildcards as core subscriptions in Lesson 1, which is why the subject hierarchy chosen early carries through to here.</p>
+
+<h3>Step 5 — Fan out with consumers, share work within one</h3>
+<p>Two different jobs look alike and need different shapes. To give each service its own copy of every message, create one consumer per service: billing and shipping each read the full stream at their own pace. To spread one service's work across replicas, point every replica at the same consumer. "Point several processes at the same shipping consumer and they share the load: the server hands each stored order to exactly one worker."<sup><a href="#s6">6</a></sup></p>
+
+<p>The docs put the distinction in one sentence: "The workers share a position, not the messages."<sup><a href="#s6">6</a></sup> This resembles a queue group from Lesson 2, with a difference that decides failure behaviour. A queue group spreads live deliveries among whoever is subscribed, and nothing is kept. A shared consumer spreads stored messages from one cursor, so a message survives the worker that was handling it.</p>
+
+<h2>Why it matters</h2>
+
+<p>A consumer is where JetStream keeps the facts that failure handling depends on: which messages a service has been handed, which it has finished, and how many handovers each has had. The stream only holds the messages. So the failure policy for a service is a property of that service's consumer, and two services reading the same stream can have different retry rules without affecting each other.</p>
+
+<p>It also fixes three early design choices. Each service that must not miss work gets its own durable consumer, not an ephemeral one, because the in-flight record has to outlive a restart. Scaling a service means adding workers to its consumer, not adding consumers, since a second consumer would hand every message out a second time. And the filter subject plus deliver policy decide, at creation, exactly which slice of the stream that service is responsible for.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A consumer is a server-side cursor on a stream. One consumer per service fans out; many workers on one consumer share the work. The position lives on the server, so the worker can die and the work does not.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "consuming a message takes it off the stream." Reading through a consumer moves that consumer's position and nothing else; whether the message is ever removed is the stream's retention policy. The second slip is scaling a service by giving each replica its own consumer. Each consumer reads the whole stream, so every replica would process every message. Replicas of one service belong on one shared consumer.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A shipping service runs three replicas and must process each order once. Billing must also see every order. How many consumers, and which workers attach to which?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Two durable consumers on the stream: one for billing, one for shipping. All three shipping replicas attach to the shipping consumer, which hands each stored message to exactly one of them. Billing reads from its own consumer at its own pace.</p></details>
+  <p>② A worker on an ephemeral consumer is down for an hour over a weekend. What is the risk, compared with a durable consumer?</p>
+  <details><summary>show answer</summary>
+  <p class="a">An ephemeral consumer has no persisted state and is removed after a period of inactivity, so its position can be gone when the worker returns. A durable consumer keeps its position under its name across disconnects and server restarts.</p></details>
+  <p>③ How does a shared consumer differ from a queue group from Lesson 2, given that both hand each message to one member?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A queue group divides live core deliveries and keeps nothing, so a message is lost if no member is there to take it. A shared consumer divides stored messages from one server-side position, so the message stays in the stream and the position survives any one worker.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/jetstream/reading-back">"Reading back the stream"</a>. Defines the consumer as a server-side cursor, separates stream sequence from consumer sequence, and creates a durable with a TypeScript tab. Follow it with <a href="https://docs.nats.io/learn/jetstream/worker-pool">"Scaling a consumer"</a> for the shared-consumer pattern.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask about ordered consumers for read-back, when <code>fetch</code> fits better than <code>consume</code>, or how a filtered consumer interacts with a WorkQueue stream. Next: the four answers a worker can give a delivered message, and what the server does when no answer comes.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0003-streams-and-retention.html">← Lesson 3</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0005-acks-and-redelivery.html"><em>Next: Lesson 5, Acks and redelivery →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Reading back the stream". <a href="https://docs.nats.io/learn/jetstream/reading-back">docs.nats.io/learn/jetstream/reading-back</a>. Consumer as a server-side cursor, consumer sequence counting deliveries, durable position across restarts, and pull as the default.<br>
+<span id="s2">2.</span> NATS docs (previous edition, GitHub source), "Consumers". <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/consumers.md">github.com/nats-io/nats.docs/…/consumers.md</a>. Durable against ephemeral, <code>InactiveThreshold</code>, the pull recommendation, and the deliver policy values.<br>
+<span id="s3">3.</span> nats.js, JetStream README. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/README.md">github.com/nats-io/nats.js/…/jetstream/README.md</a>. <code>jsm.consumers.add</code>, <code>js.consumers.get</code>, and <code>next</code>, <code>fetch</code>, <code>consume</code>. Source of the code example, with a filter and deliver policy added.<br>
+<span id="s4">4.</span> NATS docs, "Pull consumers in depth". <a href="https://docs.nats.io/learn/jetstream/pull-consumers">docs.nats.io/learn/jetstream/pull-consumers</a>. Fetch against continuous consume.<br>
+<span id="s5">5.</span> NATS docs, "Filtering what you consume". <a href="https://docs.nats.io/learn/jetstream/filtering">docs.nats.io/learn/jetstream/filtering</a>. Filter subjects on a consumer.<br>
+<span id="s6">6.</span> NATS docs, "Scaling a consumer". <a href="https://docs.nats.io/learn/jetstream/worker-pool">docs.nats.io/learn/jetstream/worker-pool</a>. Many workers on one consumer, each stored message to exactly one worker, and sharing a position rather than messages.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

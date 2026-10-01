@@ -1,0 +1,127 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 3 — Streams and retention</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 2 · Lesson 3</p>
+<h1>Streams and retention</h1>
+<p class="lede">Lessons 1 and 2 ended on the same gap: core NATS keeps nothing, so nothing can be retried. A JetStream stream closes that gap. It stores messages on the server before anyone reads them, numbers each one, and removes them only when a rule says so. Which rule removes a message is the decision this lesson is about.</p>
+
+<h2>The concept</h2>
+
+<p>The docs define it in two sentences: "Plain core NATS drops any of these messages the moment no service is listening. A stream saves them instead. A stream is a store that runs on the server and keeps every message on the subjects you choose."<sup><a href="#s1">1</a></sup> Publishers do not change much. They still publish to a subject. If a stream's subject list matches, the server stores the message and confirms it.</p>
+
+<p>Storing is half the design. The other half is when a stored message leaves. Two separate mechanisms decide that: <em>limits</em>, which remove messages when the stream is too old or too large, and the <em>retention policy</em>, which can remove a message once readers are finished with it.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  p["1 · publish to<br/>orders.created"] --> s["2 · stream ORDERS<br/>captures orders.&gt;"]
+  s --> a["3 · PubAck<br/>stream + sequence"]
+  s --> l["4 · limits remove<br/>when too old or too big"]
+  s --> r["5 · retention removes<br/>when readers are done"]
+</pre>
+<p class="cap">One way in, two ways out. Limits and retention are independent, and both always apply.</p>
+</div>
+
+<h3>Step 1 — A stream captures subjects</h3>
+<p>A stream has a name and a list of subjects, and the list may use wildcards. The docs' example stream <code>ORDERS</code> captures <code>orders.&gt;</code>, so <code>orders.created</code> and <code>orders.shipped</code> are stored, and so would a new <code>orders.refunded</code> subject be, with no change to the stream.<sup><a href="#s1">1</a></sup> This is where the subject hierarchy from Lesson 1 pays off. A subject may be bound by only one stream.<sup><a href="#s6">6</a></sup></p>
+
+<p>Two settings are fixed at creation. <em>Storage</em> is file (the default) or memory, and memory storage does not survive a server restart.<sup><a href="#s6">6</a></sup><sup><a href="#s7">7</a></sup> <em>Replicas</em> sets how many servers hold a copy, defaulting to 1 with a maximum of 5.<sup><a href="#s6">6</a></sup> In nats.js v3 the stream is created through the JetStream manager:<sup><a href="#s1">1</a></sup><sup><a href="#s7">7</a></sup></p>
+
+<pre><code>import { jetstreamManager, RetentionPolicy } from "@nats-io/jetstream";
+
+const jsm = await jetstreamManager(nc);
+await jsm.streams.add({
+  name: "ORDERS",
+  subjects: ["orders.&gt;"],
+  retention: RetentionPolicy.Limits,   // the default, stated for clarity
+});</code></pre>
+
+<h3>Step 2 — A publish is confirmed with a sequence number</h3>
+<p>A plain publish returns nothing. A JetStream publish waits for a <em>PubAck</em>, which "contains the name of the stream that stored the message and the sequence number the stream gave it. Sequence numbers start at 1 and only increase. The server gives each new message the next number and never reuses one."<sup><a href="#s2">2</a></sup></p>
+
+<pre><code>import { jetstream } from "@nats-io/jetstream";
+
+const js = jetstream(nc);
+const pa = await js.publish("orders.created", data, { msgID: "ord_8w2k-created" });
+console.log(pa.stream, pa.seq, pa.duplicate);</code></pre>
+
+<p>The PubAck has a precise meaning. It confirms the message is stored. "It does not confirm that any consumer has received it."<sup><a href="#s2">2</a></sup> The stream sequence is the message's permanent address inside the stream, which matters whenever something later needs to find one specific message.</p>
+
+<h3>Step 3 — Retries are made safe with a message ID</h3>
+<p>If a publish fails or its PubAck never arrives, the publisher should retry, and the docs say to "make the retry safe with the Nats-Msg-Id header."<sup><a href="#s2">2</a></sup> The <code>msgID</code> option above sets it. Inside the stream's <em>duplicate window</em>, two minutes by default, the server stores a repeated ID once and returns a PubAck with <code>duplicate: true</code>.<sup><a href="#s1">1</a></sup><sup><a href="#s2">2</a></sup> The ID should be one the producer can recompute, "such as an order ID, a request ID, or a hash of the payload."<sup><a href="#s2">2</a></sup> A retry after the window has passed is stored again.<sup><a href="#s6">6</a></sup></p>
+
+<h3>Step 4 — Limits remove messages when the stream is too old or too big</h3>
+<p><code>MaxAge</code>, <code>MaxMsgs</code> and <code>MaxBytes</code> cap the stream, and "whichever one is reached first triggers a discard."<sup><a href="#s3">3</a></sup> All are unlimited by default.<sup><a href="#s1">1</a></sup> The <em>discard policy</em> chooses the victim: "the server discards the new message or the oldest stored one."<sup><a href="#s3">3</a></sup> <code>DiscardOld</code>, the default, deletes the oldest messages to make room. <code>DiscardNew</code> rejects the publish that would exceed the limit, so the publisher sees an error instead of silent loss of old data.<sup><a href="#s6">6</a></sup></p>
+
+<h3>Step 5 — Retention removes messages when readers are done</h3>
+<p>Streams are read through <em>consumers</em>, named readers that confirm each message they have handled with an <em>ack</em>. The next two lessons cover both in depth; retention needs only that much. "A stream has exactly one retention policy," and there are three:<sup><a href="#s4">4</a></sup></p>
+
+<pre>Limits     (default)  removed only by limits. Reading and acking change nothing.
+Interest              removed once every consumer whose filter covers it has acked.
+                      No interested consumer when it arrives: removed right away.
+WorkQueue             removed by the first ack. Each message is handled once, then gone.</pre>
+
+<p>The docs pair each with a kind of work: an audit log or event history uses Limits, a fan-out where every consumer must process each message uses Interest, and a job queue where each message is work for one worker uses WorkQueue.<sup><a href="#s4">4</a></sup> Limits still apply under all three, as "the backstop that keeps it bounded when consumers fall behind."<sup><a href="#s4">4</a></sup> Retention cannot be changed later. The docs advise to "create a new stream with the right policy rather than editing the running one."<sup><a href="#s4">4</a></sup></p>
+
+<p>Since version 2.11 a stream with <code>AllowMsgTTL</code> also accepts a per-message <code>Nats-TTL</code> header, a third way for a stored message to expire. That setting can be enabled and never disabled.<sup><a href="#s5">5</a></sup></p>
+
+<h2>Why it matters</h2>
+
+<p>A stream is what makes failure handling possible at all. A message that a reader fails to handle is still in the stream, under a known sequence number, so it can be delivered again. That is the property Lessons 1 and 2 lacked.</p>
+
+<p>Retention decides how long that second chance lasts, and it is fixed at creation. On a Limits stream a handled message stays until age or size removes it, so it can still be read back by sequence for inspection or replay. On a WorkQueue stream the first ack deletes it, and on an Interest stream the last interested ack does. Those two keep the stream small, but nothing remains to look at afterwards unless the design copies it somewhere first. Two other choices remove messages nobody has handled yet: a <code>MaxAge</code> shorter than the longest outage a reader might have, or <code>DiscardOld</code> with a <code>MaxMsgs</code> cap that a backlog can reach. Both should be chosen with failure in mind, not only disk size.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A stream stores every message on its subjects and gives each one a sequence number that is never reused. Limits remove messages when the stream is too old or too big. Retention removes them when readers are done. Pick retention from the kind of work, because it cannot be changed later.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "a PubAck means the message was delivered." It means the message was stored in a stream at a given sequence. No consumer may have read it yet, and on a stream with a short <code>MaxAge</code> none may ever read it. The second slip is assuming WorkQueue or Interest retention replaces limits. Retention adds a second way out; limits still apply, and a WorkQueue stream with <code>DiscardOld</code> and a message cap can drop work before any reader saw it.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A publisher retries after a network blip and both attempts reach the server within a minute. What prevents a duplicate, and what does the second PubAck report?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A <code>Nats-Msg-Id</code> header (the <code>msgID</code> option) with a stable ID. Inside the duplicate window, two minutes by default, the server stores it once, and the second PubAck reports <code>duplicate: true</code> with the same sequence.</p></details>
+  <p>② On which retention policy does a message stay in the stream after it has been read and acked, and what removes it eventually?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Limits. Acks have no effect on what a Limits stream keeps; the message leaves when <code>MaxAge</code>, <code>MaxMsgs</code> or <code>MaxBytes</code> is reached, per the discard policy.</p></details>
+  <p>③ A team creates a Limits stream for a job queue and later wants WorkQueue behaviour. What are the options?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Retention cannot be edited after creation. Create a new stream with WorkQueue retention and move the work to it.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/jetstream/retention-policies">"Retention policies"</a>. The three policies, the kind of work each fits, why limits remain the backstop, and why retention cannot be changed. Read <a href="https://docs.nats.io/learn/jetstream/publishing">"Publishing"</a> for the PubAck and duplicate window.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask how replicas behave when a server is lost, what <code>MaxMsgsPerSubject</code> is for, or how mirrors and sources copy one stream into another. Next: consumers, the stateful readers that take messages out of a stream.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0002-queue-groups-and-request-reply.html">← Lesson 2</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0004-consumers.html"><em>Next: Lesson 4, Consumers →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Your first stream". <a href="https://docs.nats.io/learn/jetstream/your-first-stream">docs.nats.io/learn/jetstream/your-first-stream</a>. What a stream is, subject capture with wildcards, the TypeScript <code>jsm.streams.add</code> call, and default values (one replica, file storage, unlimited limits, 2-minute duplicate window).<br>
+<span id="s2">2.</span> NATS docs, "Publishing". <a href="https://docs.nats.io/learn/jetstream/publishing">docs.nats.io/learn/jetstream/publishing</a>. PubAck contents, sequence numbers, storage not delivery, and <code>Nats-Msg-Id</code> deduplication.<br>
+<span id="s3">3.</span> NATS docs, "Shaping the stream". <a href="https://docs.nats.io/learn/jetstream/shaping-the-stream">docs.nats.io/learn/jetstream/shaping-the-stream</a>. <code>MaxAge</code>, <code>MaxMsgs</code>, <code>MaxBytes</code>, and the discard policy.<br>
+<span id="s4">4.</span> NATS docs, "Retention policies". <a href="https://docs.nats.io/learn/jetstream/retention-policies">docs.nats.io/learn/jetstream/retention-policies</a>. Limits, Interest and WorkQueue, choosing by kind of work, limits as backstop, and retention fixed at creation.<br>
+<span id="s5">5.</span> NATS docs, "Per-message TTL". <a href="https://docs.nats.io/learn/jetstream/message-ttl">docs.nats.io/learn/jetstream/message-ttl</a>; and ADR-43, <a href="https://github.com/nats-io/nats-architecture-and-design/blob/1cb267ca1112db4ebb360405777e8335eb01cbc0/adr/ADR-43.md">github.com/nats-io/nats-architecture-and-design/…/ADR-43.md</a>. <code>Nats-TTL</code> and <code>AllowMsgTTL</code> (2.11).<br>
+<span id="s6">6.</span> NATS docs repository, stream configuration table (previous docs generation, kept for its field and version columns). <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/streams.md">github.com/nats-io/nats.docs/…/streams.md</a>. One stream per subject, storage types, replica maximum, discard policies, and deduplication after the window.<br>
+<span id="s7">7.</span> nats.js source, <code>jetstream/src/jsapi_types.ts</code>. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/jsapi_types.ts">github.com/nats-io/nats.js/…/jsapi_types.ts</a>. <code>RetentionPolicy</code>, <code>DiscardPolicy</code>, and <code>StorageType</code> (memory "doesn't survive server restarts").</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../assets/course.css">
+<title>NATS and JetStream for failure handling — course overview</title>
+
+<p class="eyebrow"><a href="../../index.html" style="color:inherit">↑ Learning Corner</a> · Course</p>
+<h1>NATS and JetStream for failure handling</h1>
+<p class="lede">The mechanics behind failed messages on NATS, built for making design decisions in a microservice system. NATS has no built-in dead-letter queue. Failure handling is assembled from acks, delivery limits and advisories, so the course builds those up in order: core NATS first, then streams, consumers and acks, then how delivery gives up and the DLQ pattern. Code examples use TypeScript (nats.js v3). Nine lessons, an interleaved quiz, a glossary, and a printable cheat sheet.</p>
+
+<div class="home-group">
+  <p class="label">Arc 1 · Core NATS</p>
+  <p class="blurb">What NATS does with no persistence at all, and why that is the baseline every later decision is measured against.</p>
+
+  <a class="lesson-card" href="lessons/0001-subjects-and-at-most-once.html">
+    <span class="num">L1</span>
+    <span class="body"><strong>Subjects and at-most-once delivery</strong><span>Subjects, tokens and wildcards. Delivery goes to whoever is listening right now, and nothing is kept, so nothing can be retried.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0002-queue-groups-and-request-reply.html">
+    <span class="num">L2</span>
+    <span class="body"><strong>Queue groups and request-reply</strong><span>Spreading work across replicas and asking for one answer, both with nothing stored, and why no-responders and a timeout mean different things to a caller.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 2 · JetStream</p>
+  <p class="blurb">Storage, the cursor that reads it, and the acknowledgement loop that turns at-most-once into retry.</p>
+
+  <a class="lesson-card" href="lessons/0003-streams-and-retention.html">
+    <span class="num">L3</span>
+    <span class="body"><strong>Streams and retention</strong><span>A stream stores and numbers every message on its subjects. Limits, Interest and WorkQueue decide when a message is removed, which later decides whether a failed one can still be found.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0004-consumers.html">
+    <span class="num">L4</span>
+    <span class="body"><strong>Consumers: a cursor on the stream</strong><span>A consumer is a server-side position on a stream. One consumer per service fans out; many workers on one consumer share the work.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0005-acks-and-redelivery.html">
+    <span class="num">L5</span>
+    <span class="body"><strong>Acks and redelivery</strong><span>Ack, nak, term and in-progress, the AckWait timeout that covers crashes, and MaxAckPending as the cap on work in flight.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<div class="home-group">
+  <p class="label">Arc 3 · When delivery fails</p>
+  <p class="blurb">How delivery gives up, the signal it sends, and how a dead-letter queue is assembled from those parts. Closes on one service designed end to end.</p>
+
+  <a class="lesson-card" href="lessons/0006-maxdeliver-and-backoff.html">
+    <span class="num">L6</span>
+    <span class="body"><strong>Giving up: MaxDeliver and BackOff</strong><span>MaxDeliver defaults to unlimited. BackOff spaces out timeout redeliveries only. A term counts as an ack and hitting MaxDeliver does not, which decides whether the original survives.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0007-advisories.html">
+    <span class="num">L7</span>
+    <span class="body"><strong>Advisories</strong><span>The signal JetStream sends when it gives up on a message: published once, never stored, and skipped when nothing listens, so it has to be captured in a stream.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0008-the-dlq-pattern.html">
+    <span class="num">L8</span>
+    <span class="body"><strong>The DLQ pattern on NATS</strong><span>Capture the give-up advisories, fetch each failed message by stream sequence, and copy it into a DLQ stream while it still exists. Plus the places the pattern leaks.</span></span>
+    <span class="arrow">→</span>
+  </a>
+  <a class="lesson-card" href="lessons/0009-designing-failure-handling.html">
+    <span class="num">L9</span>
+    <span class="body"><strong>Designing failure handling for one service</strong><span>An order-fulfilment worker designed end to end: layer and retention, consumer config, handler responses per error class, the DLQ, replay and monitoring.</span></span>
+    <span class="arrow">→</span>
+  </a>
+</div>
+
+<a class="quiz-cta" href="lessons/0010-interleaved-review.html">
+  <span class="body"><strong>Interleaved review</strong><span>35 questions across all nine lessons, shuffled every run. Run it cold, then again in a few days.</span></span>
+  <span class="icon">↻</span>
+</a>
+
+<div class="ref-links">
+  <a href="reference/glossary.html">Glossary</a>
+  <a href="reference/failure-handling-cheatsheet.html">Failure-handling cheat sheet</a>
+</div>

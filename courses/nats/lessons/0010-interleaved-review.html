@@ -1,0 +1,387 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<link rel="stylesheet" href="../../../assets/quiz.css">
+<title>Lesson 10 — Interleaved review</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Lesson 10 · Review</p>
+<h1>Interleaved review</h1>
+<p class="lede">Re-reading the lessons builds fluency, the feeling of knowing. Retrieving each answer cold, with all nine lessons shuffled together, builds storage strength: the version that is still there in a design review, when a config has to be judged on the spot.</p>
+
+<h2>How to use this</h2>
+<p>Questions are drawn from all nine lessons and <strong>shuffled</strong> every run, by design. Interleaving beats reviewing one lesson at a time, and the extra difficulty is the reason it works.<sup><a href="#s1">1</a></sup> Most questions set the right answer against a <strong>near-miss</strong>: the version that sounds right and is subtly wrong, such as treating a term like a hit on MaxDeliver, or expecting an advisory to be stored. Answer from memory before reading the feedback. Then press <em>Shuffle and retry</em>, and run it again in a few days.</p>
+
+<div id="quiz"></div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Missed the same lesson twice? Say which one, and it can be explained a different way. The harder test is the <a href="../reference/failure-handling-cheatsheet.html">cheat sheet</a> with its tables covered: fill in the retention and give-up outcome matrix from a blank page.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0009-designing-failure-handling.html">← Lesson 9</a></span>
+  <span><a href="../reference/failure-handling-cheatsheet.html">Cheat sheet ↗</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Source</strong><br>
+<span id="s1">1.</span> Interleaving and spacing as desirable difficulties, Bjork and Bjork; research summaries at <a href="https://www.retrievalpractice.org/">retrievalpractice.org</a>.</p>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+// 4 options each. options[0] is correct; options[1] is a deliberate near-miss.
+// The engine shuffles option order on render, so position never leaks the answer.
+Quiz.mount("#quiz", [
+  { lesson: "Lesson 1",
+    q: "A subscriber is restarting when a core NATS message is published to its subject. What happens?",
+    options: [
+      "The message is discarded for it, and the publisher gets no signal",
+      "The message is discarded for it, and the publisher gets an error",
+      "The server holds the message until the subscriber reconnects again",
+      "The server retries delivery a few times before it drops the message"
+    ], answer: 0,
+    explain: "Core NATS is at-most-once and fire-and-forget. An absent subscriber gets zero copies, and publish reports nothing either way. (<a href='0001-subjects-and-at-most-once.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Which subjects does the subscription orders.*.created match?",
+    options: [
+      "orders.eu.created only, because * matches exactly one token",
+      "orders.eu.created and orders.created, because * can match zero",
+      "orders.eu.created and orders.eu.de.created, because * spans tokens",
+      "All three, because * matches any remaining part of the subject"
+    ], answer: 0,
+    explain: "The single-token wildcard matches exactly one token, not zero and not two. Only > spans one or more tokens. (<a href='0001-subjects-and-at-most-once.html'>L1</a>)" },
+
+  { lesson: "Lesson 1",
+    q: "Why does core NATS have nothing to dead-letter?",
+    options: [
+      "It stores no messages, so a missed delivery leaves nothing behind",
+      "It stores messages briefly, but drops them before any retry runs",
+      "It retries forever, so no message is ever considered to have failed",
+      "It routes failed messages to a reserved $ subject automatically"
+    ], answer: 0,
+    explain: "Persistence, redelivery and replay are JetStream features. Core NATS keeps nothing, so a failed delivery leaves no record. (<a href='0001-subjects-and-at-most-once.html'>L1</a>)" },
+
+{ lesson: "Lesson 2",
+    q: "Three replicas share a queue group. The chosen replica crashes right after a message is delivered. What happens?",
+    options: [
+      "The message is lost, because core NATS does not redeliver it",
+      "The message is lost unless another replica was idle at the time",
+      "The server redelivers it to another member after a short timeout",
+      "The publisher receives an error and can choose to publish it again"
+    ], answer: 0,
+    explain: "Queue groups spread load but store nothing. Delivery is at most once, so the server never retries with another member. (<a href='0002-queue-groups-and-request-reply.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A subject has a queue group of three members and one plain subscriber. One message is published. How many copies are delivered?",
+    options: [
+      "Two: one to a single group member, one to the plain subscriber",
+      "One: the group member and plain subscriber compete for the message",
+      "Four: every group member and the plain subscriber each get a copy",
+      "Three: each group member gets one, the plain subscriber gets none"
+    ], answer: 0,
+    explain: "The server runs the group distribution and the plain distribution independently. (<a href='0002-queue-groups-and-request-reply.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "A request fails at once with a no-responders error. What does that tell the caller?",
+    options: [
+      "No subscriber existed, so the request reached no one at all",
+      "A subscriber existed but was too slow to answer within the timeout",
+      "The responder received it, crashed, and the server reported a failure",
+      "The reply was published but lost on its way back to the inbox"
+    ], answer: 0,
+    explain: "No-responders is a 503 status the server sends when nothing subscribes to the subject. A slow responder produces a timeout instead. (<a href='0002-queue-groups-and-request-reply.html'>L2</a>)" },
+
+  { lesson: "Lesson 2",
+    q: "Why must a retry after a request timeout be safe to repeat?",
+    options: [
+      "The responder may have done the work before its reply was lost",
+      "The server queues the request and will deliver it again on its own",
+      "A timeout means no subscriber existed, so the work never happened",
+      "The inbox is reused, so a late reply may answer the wrong request"
+    ], answer: 0,
+    explain: "A timeout only says no reply arrived in time. Unlike no-responders, the request may have been handled. (<a href='0002-queue-groups-and-request-reply.html'>L2</a>)" },
+
+{ lesson: "Lesson 3",
+    q: "A JetStream publish returns a PubAck. What does it confirm?",
+    options: [
+      "The message is stored in a stream at a given sequence number",
+      "The message is stored and at least one consumer has received it",
+      "The message reached every subscriber interested at publish time",
+      "The message passed deduplication and was acknowledged by a reader"
+    ], answer: 0,
+    explain: "A PubAck confirms storage, with the stream name and sequence. It does not confirm that any consumer received it. (<a href='0003-streams-and-retention.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "On a Limits retention stream, what removes a message that has been read and acked?",
+    options: [
+      "Only a limit such as MaxAge, MaxMsgs or MaxBytes being reached",
+      "The ack, once every consumer whose filter covers it has acked it",
+      "The first ack from any consumer reading from that stream",
+      "Nothing at all, since Limits streams keep every message forever"
+    ], answer: 0,
+    explain: "Under Limits, acks change nothing. The near-miss describes Interest retention. Limits are unlimited by default, but a stream with limits set does remove messages. (<a href='0003-streams-and-retention.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A job-queue stream was created with Limits retention. The team now wants WorkQueue. What is required?",
+    options: [
+      "Create a new WorkQueue stream and move the work over to it",
+      "Edit the stream's retention field after pausing every publisher",
+      "Edit the retention field; existing messages keep the old policy",
+      "Add a WorkQueue consumer, which switches the stream's behaviour"
+    ], answer: 0,
+    explain: "Retention is fixed at creation. The docs advise creating a new stream with the right policy. (<a href='0003-streams-and-retention.html'>L3</a>)" },
+
+  { lesson: "Lesson 3",
+    q: "A publisher retries a message with the same Nats-Msg-Id ten minutes later. The stream uses default settings. What happens?",
+    options: [
+      "It is stored again, because the two-minute window has passed",
+      "It is rejected, because the ID was already seen in this stream",
+      "It is stored once, and the PubAck reports duplicate set to true",
+      "It is stored again, and the PubAck reports duplicate set to true"
+    ], answer: 0,
+    explain: "Deduplication only applies inside the duplicate window, two minutes by default. (<a href='0003-streams-and-retention.html'>L3</a>)" },
+
+{ lesson: "Lesson 4",
+    q: "What does reading a message through a JetStream consumer change?",
+    options: [
+      "That consumer's position only; the stream keeps the message as before",
+      "That consumer's position, and the message is removed from the stream",
+      "Every consumer's position, since all consumers share one stream cursor",
+      "Nothing on the server, because the client tracks its own read position"
+    ], answer: 0,
+    explain: "A consumer is a server-side cursor. Removal is a stream retention decision, not a side effect of reading. (<a href='0004-consumers.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "A shipping service runs three replicas that must each handle different orders. How should they read the stream?",
+    options: [
+      "All three replicas attach to one shared durable shipping consumer",
+      "Each replica gets its own durable consumer filtered to shipping",
+      "All three replicas join a core queue group on the order subject",
+      "Each replica gets its own ephemeral consumer started at new only"
+    ], answer: 0,
+    explain: "Workers on one consumer share a position, so each stored message goes to one worker. A consumer per replica hands every message to every replica. (<a href='0004-consumers.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "Why should a work-processing service use a durable consumer rather than an ephemeral one?",
+    options: [
+      "Its position is kept under a name across restarts and disconnects",
+      "Its inactive threshold is disabled, so cleanup can never remove it",
+      "Its messages are copied to disk, while ephemeral ones live in memory",
+      "Its workers receive messages faster because the server pushes them"
+    ], answer: 0,
+    explain: "Durability means the server keeps the consumer's state under its name. Inactive threshold only controls cleanup and applies to durables too since 2.9. (<a href='0004-consumers.html'>L4</a>)" },
+
+  { lesson: "Lesson 4",
+    q: "How does the consumer sequence differ from the stream sequence?",
+    options: [
+      "It counts deliveries including redeliveries, not distinct messages",
+      "It counts distinct messages delivered, skipping any redeliveries",
+      "It counts messages stored in the stream since the consumer began",
+      "It counts acknowledgments received from workers on the consumer"
+    ], answer: 0,
+    explain: "The stream sequence identifies a stored message. The consumer sequence is bumped on every handover, redeliveries included. (<a href='0004-consumers.html'>L4</a>)" },
+
+{ lesson: "Lesson 5",
+    q: "A worker is killed mid-message and never answers. What happens to that message?",
+    options: [
+      "After AckWait runs out, the server redelivers it to the consumer",
+      "After AckWait runs out, the server redelivers it to the same worker",
+      "The server drops it, because no worker was left to send a final nak",
+      "The server keeps it pending until a worker reconnects and sends nak"
+    ], answer: 0,
+    explain: "No answer before AckWait (default 30s) counts as a silent failure. Redelivery goes to the consumer, so any of its workers may receive it. (<a href='0005-acks-and-redelivery.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "A downstream API is down for a few minutes. Which answer fits a message that failed because of it?",
+    options: [
+      "nak with a delay, so the message returns after a pause",
+      "nak with no delay, so the message returns straight away",
+      "term with a reason, so the message is never delivered again",
+      "in-progress repeatedly, so AckWait never runs out on it"
+    ], answer: 0,
+    explain: "Transient failures want redelivery after a pause. A plain nak redelivers immediately and fails again; term gives up on work that could succeed. (<a href='0005-acks-and-redelivery.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "What does term do with a message on a Limits-retention stream?",
+    options: [
+      "Clears its pending entry; it stays in the stream, not redelivered here",
+      "Clears its pending entry and moves it to the stream's dead-letter area",
+      "Deletes it from the stream, so no consumer can ever read it back again",
+      "Delays its redelivery until a worker sends an explicit ack for it"
+    ], answer: 0,
+    explain: "Term runs through the same path as an ack. Nothing is moved; under Limits retention other consumers still see the message. (<a href='0005-acks-and-redelivery.html'>L5</a>)" },
+
+  { lesson: "Lesson 5",
+    q: "Why is ack_policy all risky on a consumer with several parallel workers?",
+    options: [
+      "Acking a later message can retire an earlier one still awaiting retry",
+      "Acking a later message forces every earlier message to be redelivered",
+      "Acking any message pauses delivery until all earlier ones are acked",
+      "Acking is disabled, so failed messages are never redelivered at all"
+    ], answer: 0,
+    explain: "With all, one ack answers every earlier message too. Acking 10 can retire a failed 7 waiting for redelivery: silent data loss. (<a href='0005-acks-and-redelivery.html'>L5</a>)" },
+
+{ lesson: "Lesson 6",
+    q: "What is the default MaxDeliver on a new JetStream consumer, and what does it mean?",
+    options: [
+      "Minus one, so a failing message is redelivered without any limit",
+      "Minus one, so a failing message is delivered once and then dropped",
+      "Five, so a failing message is redelivered five times and then dropped",
+      "Zero, so redelivery is disabled until a limit is configured explicitly"
+    ], answer: 0,
+    explain: "The default is -1, unlimited. The near-miss keeps the value and reverses its meaning. A consumer left at the default retries a poison message forever. (<a href='0006-maxdeliver-and-backoff.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A consumer has a BackOff list of [10s, 60s]. The handler catches an error and calls nak() with no delay. When is the message redelivered?",
+    options: [
+      "Right away, because BackOff only spaces out the redeliveries after AckWait timeouts",
+      "After ten seconds, because BackOff spaces out every kind of redelivery",
+      "After thirty seconds, because a bare nak falls back to the AckWait default",
+      "Never, because a bare nak is treated the same as a terminate"
+    ], answer: 0,
+    explain: "A bare nak redelivers immediately and BackOff does not slow it. BackOff applies to AckWait timeouts; a nak needs its own delay, such as m.nak(5_000). (<a href='0006-maxdeliver-and-backoff.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "On a WorkQueue stream, a message reaches MaxDeliver. What happens to it?",
+    options: [
+      "It stays in the stream until deleted, since reaching the limit never acks",
+      "It is removed from the stream, since reaching the limit counts as an ack",
+      "It moves to a dead-letter stream that the server creates automatically",
+      "It is redelivered to a different consumer that filters the same subject"
+    ], answer: 0,
+    explain: "Reaching MaxDeliver stops delivery without acking, so on a WorkQueue stream the message remains until it is deleted through the API or removed by limits. The near-miss describes term, which is treated as an ack. (<a href='0006-maxdeliver-and-backoff.html'>L6</a>)" },
+
+  { lesson: "Lesson 6",
+    q: "A consumer sets ack_wait to 30s and backoff to [2s, 10s]. What is the ack deadline for the first delivery?",
+    options: [
+      "Two seconds, because the first BackOff entry replaces the AckWait value",
+      "Thirty seconds, because BackOff applies only from the second delivery on",
+      "Thirty-two seconds, because the first BackOff entry is added to AckWait",
+      "Ten seconds, because the server uses the longest entry as the deadline"
+    ], answer: 0,
+    explain: "Setting a backoff replaces AckWait, and its first entry becomes the ack deadline for the first delivery. A job slower than 2s would be redelivered while still running. (<a href='0006-maxdeliver-and-backoff.html'>L6</a>)" },
+
+{ lesson: "Lesson 7",
+    q: "A service subscribes to max-deliveries advisories with a plain core subscription. It is restarting when a message hits MaxDeliver. What record of the event remains?",
+    options: [
+      "None, because advisories are published once and are not stored anywhere",
+      "One copy, because the server retries advisories until a subscriber acks",
+      "One copy, kept in a built-in system stream that holds every advisory",
+      "One copy, held on the consumer until the next client fetches its info"
+    ], answer: 0,
+    explain: "An advisory is published exactly once and not stored in any stream. With no listener, the server may skip publishing it entirely. Only a capture stream keeps a record. (<a href='0007-advisories.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Which fields does a max-deliveries advisory payload carry about the failed message?",
+    options: [
+      "The stream, consumer, stream sequence and delivery count, but no body",
+      "The stream, consumer, stream sequence and delivery count, plus the body",
+      "The subject, headers and body of the message, but no stream sequence",
+      "The consumer sequence and handler error text, but no stream sequence"
+    ], answer: 0,
+    explain: "The payload names stream, consumer, stream_seq and deliveries, plus id and timestamp. It carries no body or headers, so the message must be looked up by its stream sequence. (<a href='0007-advisories.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "A capture stream listens on the max-deliveries subject for a consumer with MaxDeliver unset. A poison message keeps failing. What does the capture stream receive?",
+    options: [
+      "Nothing, because the advisory is sent only when MaxDeliver is above zero",
+      "One advisory, sent after the default of five failed delivery attempts",
+      "One advisory per failed attempt, since each redelivery is reported",
+      "One advisory after AckWait expires for the first failed delivery"
+    ], answer: 0,
+    explain: "MaxDeliver defaults to -1, unlimited, and the server sends the max-deliveries advisory only when MaxDeliver is greater than zero. The message loops forever with no advisory. (<a href='0007-advisories.html'>L7</a>)" },
+
+  { lesson: "Lesson 7",
+    q: "Why does a stream bound to an advisory subject make the advisory reliable to receive?",
+    options: [
+      "It stores each advisory and counts as interest, so the server publishes",
+      "It stores each advisory, though the server still skips it with no client",
+      "It makes the server resend each advisory until the stream confirms it",
+      "It converts the advisory subject into a JetStream API request subject"
+    ], answer: 0,
+    explain: "The stream stores advisories like any message, and its subscription to the subject counts as interest, so the server does not skip publishing. The near-miss misses the interest half. (<a href='0007-advisories.html'>L7</a>)" },
+
+{ lesson: "Lesson 8",
+    q: "Why does a NATS DLQ need a stream bound to the advisory subjects instead of a worker subscribing to them?",
+    options: [
+      "Advisories are published once, never stored, and skipped when nothing listens",
+      "Advisories are stored briefly, but only a stream can read them back later",
+      "Core subscriptions cannot match subjects that begin with the $ prefix at all",
+      "Advisories are only delivered to streams, never to ordinary client sockets"
+    ], answer: 0,
+    explain: "The near-miss assumes advisories are kept for a while. They are not stored anywhere, and the server skips publishing with no interest, so only an always-listening stream catches them. (<a href='0008-the-dlq-pattern.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "A DLQ worker handles a MSG_TERMINATED advisory for a WorkQueue stream and getMessage returns null. Why?",
+    options: [
+      "Term counts as an ack, and the first ack removes it from a WorkQueue",
+      "Term marks it deleted, but the leader keeps it until the next compaction",
+      "The advisory carries the consumer sequence, which is not a stream sequence",
+      "WorkQueue streams reject message gets until every consumer has caught up"
+    ], answer: 0,
+    explain: "A term is processed like an ack, so on a WorkQueue stream the original is gone. The near-miss gets the deletion right but invents a delay. Copy at capture, or use Limits retention. (<a href='0008-the-dlq-pattern.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "Which read should a DLQ worker prefer when fetching the failed message by sequence?",
+    options: [
+      "jsm.streams.getMessage, because it asks the stream leader for the message",
+      "jsm.direct.getMessage, because any replica sees the same state at once",
+      "An ordered consumer starting at that sequence, then closed after one message",
+      "A core request to the original subject, asking the publisher to resend it"
+    ], answer: 0,
+    explain: "getMessage goes to the leader. Direct Get can be answered by any replica and is not read-after-write coherent, which is exactly the near-miss claim. (<a href='0008-the-dlq-pattern.html'>L8</a>)" },
+
+  { lesson: "Lesson 8",
+    q: "A handler publishes a copy to dlq.> before every term. Which failures does this still miss?",
+    options: [
+      "Messages that exhaust MaxDeliver through AckWait timeouts after a crash",
+      "Messages that are termed with a reason longer than the header size limit",
+      "Messages naked with a delay, since naks never count toward MaxDeliver",
+      "Messages on Limits streams, because the term leaves the original in place"
+    ], answer: 0,
+    explain: "When the budget runs out on timeouts, no handler is running to see the last failure, so only the max-deliveries advisory reports it. The near-miss is wrong: naks do count toward MaxDeliver. (<a href='0008-the-dlq-pattern.html'>L8</a>)" },
+
+{ lesson: "Lesson 9",
+    q: "A handler catches a 503 and calls m.nak() with no delay. The consumer has max_deliver 5 and a BackOff list. What happens?",
+    options: [
+      "Five immediate redeliveries burn the budget, then the message dead-letters",
+      "BackOff spaces the five redeliveries, so the outage is ridden out in time",
+      "The nak is ignored because BackOff is set, so AckWait decides the timing",
+      "The server converts the bare nak into a term after the first redelivery"
+    ], answer: 0,
+    explain: "BackOff only spaces redeliveries after AckWait timeouts, not naks. The handler must supply its own delay, growing with deliveryCount. (<a href='0009-designing-failure-handling.html'>L9</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "Why must the first BackOff entry exceed normal processing time?",
+    options: [
+      "BackOff replaces AckWait, so its first entry becomes the ack deadline",
+      "BackOff adds to AckWait, so a short entry only shortens the first retry",
+      "The first entry sets MaxAckPending, so a short one throttles the consumer",
+      "The first entry is the nak delay used when the handler sends a bare nak"
+    ], answer: 0,
+    explain: "With BackOff set, the server uses its first entry as the ack deadline. Too short and healthy slow work is redelivered while still running. The near-miss says it adds to AckWait; it replaces it. (<a href='0009-designing-failure-handling.html'>L9</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "Billing and fulfilment both read order events. Why does the design pick Limits retention for ORDERS?",
+    options: [
+      "WorkQueue rejects overlapping consumers, and Limits keeps the originals after a term",
+      "Interest would work too, and it keeps originals after a term as well",
+      "Limits is required for durable consumers, and WorkQueue allows only ephemerals",
+      "Limits is the only policy that supports Nats-Msg-Id deduplication on publish"
+    ], answer: 0,
+    explain: "WorkQueue removes on first ack and refuses overlapping consumers. Limits also keeps the original after a term, so the DLQ lookup still finds it. The near-miss is wrong about Interest: a term from the last interested consumer removes the message. (<a href='0009-designing-failure-handling.html'>L9</a>)" },
+
+  { lesson: "Lesson 9",
+    q: "A worker books a shipment, then crashes before acking. What keeps the order from shipping twice?",
+    options: [
+      "An idempotent handler keyed on the order ID, since delivery is at least once",
+      "Nats-Msg-Id on the publish, since it stops the consumer redelivering a message",
+      "MaxAckPending of one, since only one unacked delivery can exist at a time",
+      "A term sent from the crash handler, since term suppresses any redelivery"
+    ], answer: 0,
+    explain: "AckWait expires and the message is redelivered. Nats-Msg-Id dedupes publishes into the stream, not deliveries to a consumer, which is the near-miss. (<a href='0009-designing-failure-handling.html'>L9</a>)" }
+]);
+</script>

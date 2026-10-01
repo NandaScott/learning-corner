@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 6 — Giving up: MaxDeliver and BackOff</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 3 · Lesson 6</p>
+<h1>Giving up: MaxDeliver and BackOff</h1>
+<p class="lede">Lesson 5 showed how a consumer brings a message back: a nak, or an AckWait that runs out. By default nothing ever stops that loop. Three settings decide how often a message comes back, how long the server waits between attempts, and when it gives up. This lesson covers those settings and what giving up actually does to the message.</p>
+
+<h2>The concept</h2>
+
+<p>The docs name the limit directly: "MaxDeliver is the limit on attempts."<sup><a href="#s1">1</a></sup> Its default is <code>-1</code>, which means unlimited.<sup><a href="#s1">1</a></sup> A consumer created with defaults retries a failing message forever. BackOff and the nak delay from Lesson 5 decide the spacing between attempts. Term, also from Lesson 5, lets the handler give up before the server does.</p>
+
+<p>Giving up is not the same as deleting. When a message reaches MaxDeliver, the consumer stops delivering it, and the message itself is left where it was. Most of the design consequences in this arc follow from that difference.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  d["1 · delivery n<br/>to a worker"] --> o{"2 · outcome"}
+  o -->|"ack"| done["done"]
+  o -->|"term"| t["5 · handler gives up<br/>treated like an ack"]
+  o -->|"AckWait runs out"| bo["3a · wait: next BackOff entry"]
+  o -->|"nak"| nk["3b · wait: nak delay,<br/>or none if bare nak"]
+  bo --> c{"4 · n reached<br/>MaxDeliver?"}
+  nk --> c
+  c -->|"no"| d
+  c -->|"yes"| stop["5 · consumer stops delivering it<br/>message stays in the stream"]
+</pre>
+<p class="cap">Two ways a message stops coming back: the handler terms it, or the count reaches MaxDeliver. Only the first one acks.</p>
+</div>
+
+<h3>Step 1 — Delivery n reaches a worker</h3>
+<p>MaxDeliver counts every delivery of a message to the consumer, the first one included. Redeliveries caused by a nak count, and so do redeliveries caused by an AckWait timeout.<sup><a href="#s2">2</a></sup> A consumer set to <code>max_deliver: 5</code> hands a message to a worker at most five times in total.</p>
+
+<p>With the default of <code>-1</code>, a broken payload never stops. The docs describe the cost even with a finite limit: without term, "a broken payload is nak'd over and over until MaxDeliver gives up, using the full set of attempts and holding up the messages behind it."<sup><a href="#s1">1</a></sup> With no limit, that holding up has no end.</p>
+
+<h3>Step 2 — The outcome decides what comes next</h3>
+<p>The four responses from Lesson 5 map onto the diagram. An ack ends the story. A term ends it too, from the handler's side. A nak, or silence until AckWait runs out, sends the message round again. Each of those last two paths has its own wait.</p>
+
+<p>This is also where MaxAckPending from Lesson 5 comes in. It caps how many delivered but unacked messages a consumer may have, and delivery stops when the cap is reached.<sup><a href="#s2">2</a></sup> A message cycling through redelivery has not been acked, so it occupies one of those slots for as long as it cycles. A few poison messages with unlimited MaxDeliver keep their slots for good. That last point follows from the MaxAckPending definition; the docs phrase it as the message "holding up the messages behind it".</p>
+
+<h3>Step 3 — The wait before the next attempt</h3>
+<p><strong>Timeouts use BackOff.</strong> BackOff is a list of delays on the consumer. "Setting a backoff replaces AckWait: the first entry in the list becomes the wait before the first redelivery, so it's also the ack deadline for the first delivery."<sup><a href="#s1">1</a></sup> The server code does the same thing literally: <code>config.AckWait = config.BackOff[0]</code>.<sup><a href="#s3">3</a></sup> "If the list has fewer entries than MaxDeliver allows, the server reuses the last entry for the remaining attempts."<sup><a href="#s1">1</a></sup> A list longer than MaxDeliver is rejected, unless MaxDeliver is <code>-1</code>.<sup><a href="#s3">3</a></sup> BackOff needs server 2.7.1 or later.<sup><a href="#s2">2</a></sup></p>
+
+<pre>backoff: [1s, 5s, 30s]   max_deliver: 5
+
+delivery 1   ack deadline 1s    (backoff[0] replaces AckWait)
+delivery 2   after 1s timeout,  ack deadline 5s
+delivery 3   after 5s timeout,  ack deadline 30s
+delivery 4   after 30s timeout, ack deadline 30s  (last entry reused)
+delivery 5   after 30s timeout, ack deadline 30s
+             no answer: consumer stops delivering it</pre>
+
+<p><strong>Naks do not use BackOff.</strong> The docs are explicit: "A bare nak redelivers right away, and a configured backoff doesn't slow it." Instead, "to delay a nak, the client attaches the delay to the nak itself."<sup><a href="#s1">1</a></sup> In nats.js that is <code>m.nak(5_000)</code>, the delayed nak from Lesson 5. A handler that catches an error and sends a bare nak burns through MaxDeliver in milliseconds, whatever the BackOff list says.</p>
+
+<h3>Step 4 — The count against MaxDeliver</h3>
+<p>When the count reaches the limit, the consumer stops delivering the message. It does not ack it. Under Limits retention, "the message itself stays in the stream … other consumers still see it, and it ages out with the stream's limits like any other message."<sup><a href="#s1">1</a></sup> On a WorkQueue stream, where only an ack removes a message (Lesson 3), the old developer docs state the result: messages that reached MaxDeliver "will remain in the stream and must be manually deleted via the JetStream API."<sup><a href="#s4">4</a></sup> On an Interest stream the same reasoning says the message is kept until the stream's limits remove it, because the consumer never acks it. That last case is inferred from the Interest definition, not stated in the docs.</p>
+
+<p>The consumer's normal output says nothing about any of this. "MaxDeliver drops a message with no dead-letter. The message stays in the stream, but the shipping consumer's normal output says nothing, so the drop is easy to miss."<sup><a href="#s1">1</a></sup></p>
+
+<h3>Step 5 — Term against MaxDeliver: two different endings</h3>
+<p>Term is the handler deciding the failure is permanent. The server processes it like an ack, so it suppresses redelivery at once.<sup><a href="#s5">5</a></sup> That has a retention consequence: "On a WorkQueue or Interest stream, where a handled message is removed, a term removes it just as an ack would."<sup><a href="#s1">1</a></sup> Reaching MaxDeliver never acks, so the message stays.</p>
+
+<table>
+  <tr><th></th><th>term</th><th>MaxDeliver reached</th></tr>
+  <tr><td>Who decides</td><td>The handler</td><td>The server, by counting</td></tr>
+  <tr><td>Treated as ack</td><td>Yes</td><td>No</td></tr>
+  <tr><td>Limits stream</td><td>Message stays</td><td>Message stays</td></tr>
+  <tr><td>WorkQueue stream</td><td>Message removed</td><td>Message stays until deleted</td></tr>
+  <tr><td>Carries a reason</td><td>Optional free text</td><td>No</td></tr>
+</table>
+
+<p>A consumer that uses all of these looks like this. The field names come from the nats.js <code>ConsumerConfig</code> type, and durations are in nanoseconds, hence <code>nanos()</code>. This snippet is composed from verified signatures and has not been run.<sup><a href="#s6">6</a></sup></p>
+
+<pre><code>import { nanos } from "@nats-io/transport-node";
+import { AckPolicy } from "@nats-io/jetstream";
+
+await jsm.consumers.add("ORDERS", {
+  durable_name: "shipping",
+  ack_policy: AckPolicy.Explicit,
+  max_deliver: 5,
+  backoff: [nanos(1_000), nanos(5_000), nanos(30_000)], // replaces ack_wait
+});
+
+// in the handler:
+//   invalid payload   -&gt; m.term("invalid payload")   permanent, acts as an ack
+//   downstream error  -&gt; m.nak(5_000)                transient, delayed retry
+//   success           -&gt; m.ack()</code></pre>
+
+<h2>Why it matters</h2>
+
+<p>Every consumer in the design needs a finite MaxDeliver. The default retries forever and quietly takes MaxAckPending slots from healthy messages. Picking the number is a design decision: it is the number of attempts after which a message is judged unprocessable.</p>
+
+<p>The other decisions follow from the table. Use term for failures the handler can recognise as permanent, such as a payload that fails validation, and choose the stream's retention knowing that term removes the message from a WorkQueue stream. Use a delayed nak for transient errors the handler catches, and BackOff for the case where the handler crashes or hangs and never answers. Size the first BackOff entry above normal processing time, because it becomes the ack deadline. For a long downstream outage, burning attempts is the wrong tool: server 2.11 added consumer pause, which stops delivery until a deadline and keeps redelivery counts.<sup><a href="#s7">7</a></sup> Which server version Synadia Cloud runs is not stated publicly, so check before relying on it.</p>
+
+<p>The gap is visible now. A message that reaches MaxDeliver stops being delivered and nothing in the consumer's output reports it. A design that must handle failed messages needs a signal for that moment.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  MaxDeliver defaults to unlimited, and reaching it stops delivery without deleting anything. BackOff spaces out timeouts only; a nak needs its own delay. Term acts as an ack, so on a WorkQueue stream it removes the message, while hitting MaxDeliver leaves it in place.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "BackOff controls the delay between retries." It controls the delay between retries caused by an AckWait timeout. A handler that catches an exception and calls a bare <code>nak()</code> gets immediate redelivery regardless of the BackOff list, and uses up MaxDeliver in a tight loop. The second slip is assuming a message that reached MaxDeliver is gone. It is still in the stream, and on a WorkQueue stream it stays there until something deletes it.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A consumer has <code>ack_wait</code> 30s and <code>backoff: [2s, 10s]</code>. What is the ack deadline for the first delivery, and why?</p>
+  <details><summary>show answer</summary>
+  <p class="a">2 seconds. Setting a backoff replaces AckWait, and the first entry becomes the ack deadline for the first delivery. A job that normally takes 5 seconds would be redelivered while still running.</p></details>
+  <p>② A handler catches every error and calls <code>m.nak()</code> with no argument. The consumer has <code>max_deliver: 10</code> and a BackOff list of minutes. How long until the consumer gives up on a broken message?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Close to no time. A bare nak redelivers right away and BackOff does not slow it, since BackOff only spaces out AckWait timeouts. The ten attempts are spent in a tight loop. A delayed nak, such as <code>m.nak(5_000)</code>, fixes it.</p></details>
+  <p>③ On a WorkQueue stream, one message is termed and another reaches MaxDeliver. Which of the two is still in the stream afterwards?</p>
+  <details><summary>show answer</summary>
+  <p class="a">The one that reached MaxDeliver. Term is processed like an ack, and on a WorkQueue stream an ack removes the message. Reaching MaxDeliver never acks, so that message stays until it is deleted through the API or removed by the stream's limits.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/jetstream/acknowledgment">"Ack responses and redelivery"</a>, the sections "The server controls", "Backoff" and "Pitfalls". They state the MaxDeliver default, the BackOff replacement rule, the nak exception, and the no-dead-letter behaviour in a few paragraphs.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask how to pick MaxDeliver for a payment call against a cache refresh, how consumer pause interacts with redelivery counts, or what happens to strict ordering when one message is stuck in redelivery. Next: advisories, the signal JetStream publishes at the moment a message is given up on.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0005-acks-and-redelivery.html">← Lesson 5</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0007-advisories.html"><em>Next: Lesson 7, Advisories →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Ack responses and redelivery". <a href="https://docs.nats.io/learn/jetstream/acknowledgment">docs.nats.io/learn/jetstream/acknowledgment</a>. MaxDeliver and its default, BackOff replacing AckWait and reusing its last entry, naks not slowed by BackOff, term removing messages on WorkQueue and Interest streams, and MaxDeliver dropping with no dead-letter.<br>
+<span id="s2">2.</span> nats.docs (previous docs site source), "Consumers", configuration tables. <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/consumers.md">github.com/nats-io/nats.docs/…/consumers.md</a>. MaxDeliver counting every delivery, BackOff introduced in 2.7.1, MaxAckPending stopping delivery when reached.<br>
+<span id="s3">3.</span> nats-server source, <code>consumer.go</code>. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L677-L682">BackOff[0] replacing AckWait</a> and <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L806-L808">BackOff length validation against MaxDeliver</a>.<br>
+<span id="s4">4.</span> nats.docs (previous docs site source), "Consumers" developer page, "Dead Letter Queues type functionality". <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/using-nats/developing-with-nats/js/consumers.md#dead-letter-queues-type-functionality">github.com/nats-io/nats.docs/…/js/consumers.md</a>. Max-delivered messages remaining in the stream until deleted.<br>
+<span id="s5">5.</span> nats-server source, <code>consumer.go</code>, <code>processTerm</code>. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L3334-L3361">github.com/nats-io/nats-server/…/consumer.go#L3334-L3361</a>. Term treated like an ack to suppress redelivery.<br>
+<span id="s6">6.</span> nats.js, <code>ConsumerConfig</code> type. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/jsapi_types.ts#L1139-L1197">github.com/nats-io/nats.js/…/jsapi_types.ts</a>. Field names for <code>max_deliver</code>, <code>backoff</code>, <code>ack_wait</code>, v3.4.0.<br>
+<span id="s7">7.</span> NATS docs, "Pausing consumers". <a href="https://docs.nats.io/learn/jetstream/pausing">docs.nats.io/learn/jetstream/pausing</a>. Consumer pause, server 2.11.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

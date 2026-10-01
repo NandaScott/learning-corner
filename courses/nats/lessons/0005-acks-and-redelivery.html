@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 5 — Acks and redelivery</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 2 · Lesson 5</p>
+<h1>Acks and redelivery</h1>
+<p class="lede">A consumer hands a message to a worker and then waits for an answer. The worker can say done, failed, give up, or still working. If no answer comes in time, the server assumes the worker died and hands the message out again. This loop is what turns a stored message into at-least-once processing, and every failure-handling choice in a NATS design is made inside it.</p>
+
+<h2>The concept</h2>
+
+<p>The docs describe the loop as "one of the pieces that give JetStream its at-least-once delivery: a message stays available and is redelivered until a reader confirms it, so it's handled at least once even when things fail."<sup><a href="#s1">1</a></sup> The durable stream from Lesson 3 keeps the message. The consumer from Lesson 4 keeps track of which deliveries are still unanswered. An <em>ack</em> is the answer.</p>
+
+<p>Whether answers are expected at all is set by the consumer's <em>ack policy</em>. Everything in this lesson assumes <code>explicit</code>, the policy for "work that must not be lost."<sup><a href="#s2">2</a></sup></p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  d["1 · consumer delivers<br/>message to a worker"] --> p["2 · server adds it to the<br/>pending list, starts AckWait"]
+  p --> a{"3 · worker answers"}
+  a -->|"ack"| done["done: off pending,<br/>never delivered again"]
+  a -->|"nak, optional delay"| re["redeliver<br/>to the consumer"]
+  a -->|"term"| gone["give up: off pending,<br/>never delivered again"]
+  a -->|"in-progress"| p
+  p -->|"no answer before<br/>AckWait ends"| re
+  re --> d
+</pre>
+<p class="cap">Three final answers, one keep-alive, and a timeout that behaves like a nak the worker never sent.</p>
+</div>
+
+<h3>Step 1 — Choose the ack policy</h3>
+<p>The ack policy has three values that matter for work consumers.<sup><a href="#s2">2</a></sup></p>
+
+<pre>explicit   each message is answered on its own; the basis for redelivery
+none       done the moment it is delivered: no pending list,
+           no AckWait, no redelivery
+all        one ack answers every earlier message too</pre>
+
+<p><code>none</code> gives up everything in this lesson; it is at-most-once again, with storage. <code>all</code> is cheaper but is a trap for parallel work: acking message 10 "also retires a message 7 that failed and was waiting to come back," which is silent data loss.<sup><a href="#s2">2</a></sup> The ack policy cannot be changed after the consumer is created.<sup><a href="#s3">3</a></sup></p>
+
+<h3>Step 2 — The pending list and AckWait</h3>
+<p>When the server delivers a message, it "keeps a copy on the pending list and starts a timer. If the answer never comes, the server assumes the worker stopped and delivers the message again."<sup><a href="#s2">2</a></sup> The timer is <em>AckWait</em>, and "it defaults to 30 seconds."<sup><a href="#s2">2</a></sup> A delivery that is not acked, nak'd, or kept alive before AckWait runs out is treated "as a silent failure" and redelivered.<sup><a href="#s2">2</a></sup></p>
+
+<p>That timeout is what protects against a crashed worker, a killed pod, or a handler stuck on a network call. No code in the worker has to run for the message to come back.</p>
+
+<h3>Step 3 — The four answers</h3>
+<p>"A client answers a delivered message in exactly one of four ways."<sup><a href="#s2">2</a></sup></p>
+
+<pre>ack           the work succeeded; off the pending list, never delivered again
+nak           the work failed; redeliver, at once or after a delay
+term          this can never succeed; off the pending list, never delivered again
+in-progress   still working; resets the AckWait timer, not a final answer</pre>
+
+<p>"ack, nak, and term are final. Each one closes out a delivery. in-progress extends the timer instead."<sup><a href="#s2">2</a></sup></p>
+
+<p><strong>nak</strong> is for transient failures: a dependency is briefly down, a row is locked, a rate limit was hit.<sup><a href="#s2">2</a></sup> A plain nak redelivers immediately, so "the message retries over and over with no pause"; the fix is a nak with a delay.<sup><a href="#s2">2</a></sup> Delayed nak needs server 2.7.1 or later.<sup><a href="#s4">4</a></sup> A nak "returns the message to the consumer, not to the worker that nak'd it," so the retry can land on a different replica.<sup><a href="#s2">2</a></sup></p>
+
+<p><strong>term</strong> is for permanent failures, such as a payload that will never parse. The server drops it from the pending list as it does for an ack, "but the work was never done."<sup><a href="#s2">2</a></sup> Term runs through the same path as an ack, so under the default Limits retention the message stays in the stream and other consumers still see it.<sup><a href="#s2">2</a></sup> A term can carry a reason string, which needs server 2.11 or later.<sup><a href="#s5">5</a></sup></p>
+
+<p><strong>in-progress</strong> resets AckWait "so a long job doesn't trip redelivery."<sup><a href="#s2">2</a></sup></p>
+
+<p>In nats.js these are methods on the delivered message: <code>ack()</code>, <code>nak(millis?)</code>, <code>term(reason?)</code>, and <code>working()</code>.<sup><a href="#s5">5</a></sup> A handler that maps outcomes to answers (composed from those signatures, not run against a server):</p>
+
+<pre><code>const c = await js.consumers.get("ORDERS", "shipping");
+for await (const m of await c.consume()) {
+  const order = parse(m.data);
+  if (!order) { m.term("unparseable payload"); continue; }   // permanent
+
+  const keepAlive = setInterval(() =&gt; m.working(), 10_000);    // long job
+  try {
+    await ship(order);
+    m.ack();                                                   // success
+  } catch {
+    m.nak(5_000);                                              // transient: retry in 5s
+  } finally {
+    clearInterval(keepAlive);
+  }
+}</code></pre>
+
+<h3>Step 4 — Recognise a redelivery</h3>
+<p>Each delivered message carries its delivery count. In nats.js, <code>m.info.deliveryCount</code> is the number of times this consumer has handed the message out, and <code>m.redelivered</code> is true when that count is above one.<sup><a href="#s5">5</a></sup> This is the per-message view of the consumer sequence from Lesson 4, which counts every handover.</p>
+
+<p>Two consequences follow from at-least-once. A handler can see the same message more than once, for example when it finished the work but the ack was lost, or when the work outran AckWait. Handlers therefore need to be idempotent. And a redelivered message "arrives after later messages unless MaxAckPending is 1": redelivery does not hold the line for the failed message.<sup><a href="#s2">2</a></sup></p>
+
+<h3>Step 5 — MaxAckPending caps work in flight</h3>
+<p><em>MaxAckPending</em> limits how many delivered-but-unanswered messages a consumer may have. The default is 1000 for explicit-ack consumers.<sup><a href="#s6">6</a></sup> The limit applies across every worker on the consumer, and delivery stops when it is reached.<sup><a href="#s3">3</a></sup></p>
+
+<p>That makes it flow control. Set too low, it limits throughput; the docs note that a worker pool "shares this single limit across every worker, so it matters even more there."<sup><a href="#s7">7</a></sup> It also means that messages waiting on slow answers or long nak delays occupy slots that new work cannot use.</p>
+
+<p>Nothing configured so far limits how many times a failing message is redelivered. That limit, and the spacing between attempts, is the subject of Lesson 6.</p>
+
+<h2>Why it matters</h2>
+
+<p>This loop is the vocabulary a failure-handling design is written in. Each failure a handler can detect maps to an answer: transient failures to a delayed nak, permanent failures to term, slow work to in-progress. Failures the handler cannot detect, such as a crash, a hang, or a lost connection, are covered by AckWait without any code running. A design that names, for each kind of failure, which of these paths it takes is already most of the way to a DLQ design.</p>
+
+<p>It also shows why NATS has no DLQ object to switch on. The server's part is limited to keeping a pending list and a timer per consumer. Deciding that a message is poison, and what should happen to it, is the worker's answer. AckWait also has to be chosen against real processing time: "If a job often takes longer than AckWait and the worker never sends in-progress, the server decides the worker stopped and redelivers a message that's still being handled, so two workers run the same order."<sup><a href="#s2">2</a></sup></p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Every delivery waits on an answer: ack for done, nak for try again, term for never, in-progress for not yet. No answer before AckWait counts as failure, and the message goes back to the consumer. That loop is what JetStream's at-least-once means.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "term sends the message to a dead-letter queue." Term only clears the pending entry and stops this consumer from delivering the message again; nothing is moved anywhere. The second slip is treating a nak as a gentle retry. A plain nak redelivers at once, so a handler that naks on every error against a down dependency spins through attempts with no pause. Transient failures need a nak with a delay.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A worker pulls a message, then its pod is killed before it answers. No code runs. What happens to the message, and when?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It stays on the consumer's pending list until AckWait runs out (30 seconds by default). The server then treats the missing answer as a failure and redelivers it to the consumer, so any worker on that consumer can receive it.</p></details>
+  <p>② A payment provider returns a 503 for a few minutes. Which answer should the handler give, and why not the alternatives?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A nak with a delay. The failure is transient, so the message should come back, but after a pause. A plain nak retries at once and fails again; term would drop it for good although it could succeed later; ack would mark unfinished work as done.</p></details>
+  <p>③ Why is <code>ack_policy: all</code> risky on a consumer with several workers?</p>
+  <details><summary>show answer</summary>
+  <p class="a">One ack retires every earlier message too. With parallel workers, an ack for message 10 can retire message 7 that failed and was waiting for redelivery, so message 7 is lost without any error.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/jetstream/acknowledgment">"Ack responses and redelivery"</a>. The four answers, AckWait, delayed nak, term as the poison-message path, the other ack policies, and the pitfalls list, with a TypeScript tab for every example. The single most useful page for this course.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask about <code>ackAck()</code> and when confirming the ack is worth a round trip, how to make a handler idempotent with the stream sequence, or how a late ack after redelivery is treated. Next: putting a ceiling on attempts with MaxDeliver, and spacing them with BackOff.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0004-consumers.html">← Lesson 4</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0006-maxdeliver-and-backoff.html"><em>Next: Lesson 6, MaxDeliver and BackOff →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Delivery and acknowledgment". <a href="https://docs.nats.io/learn/jetstream/delivery-and-acknowledgment">docs.nats.io/learn/jetstream/delivery-and-acknowledgment</a>. The ack and redeliver loop as the basis of at-least-once delivery.<br>
+<span id="s2">2.</span> NATS docs, "Ack responses and redelivery". <a href="https://docs.nats.io/learn/jetstream/acknowledgment">docs.nats.io/learn/jetstream/acknowledgment</a>. Pending list, AckWait default, the four responses, delayed nak, term, in-progress, the other ack policies, redelivery order, and the AckWait pitfall.<br>
+<span id="s3">3.</span> NATS docs (previous edition, GitHub source), "Consumers". <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/consumers.md">github.com/nats-io/nats.docs/…/consumers.md</a>. AckPolicy not editable after creation; MaxAckPending applying across all subscribers.<br>
+<span id="s4">4.</span> nats.js, JetStream README. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/README.md">github.com/nats-io/nats.js/…/jetstream/README.md</a>. Delayed nak requiring server 2.7.1.<br>
+<span id="s5">5.</span> nats.js source, <code>jsmsg.ts</code>. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/jsmsg.ts">github.com/nats-io/nats.js/…/jetstream/src/jsmsg.ts</a>. <code>ack</code>, <code>nak</code>, <code>working</code>, <code>term</code> (reason needs server 2.11.0), <code>info.deliveryCount</code>, and <code>redelivered</code>.<br>
+<span id="s6">6.</span> nats-server source, <code>consumer.go</code>. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L596-L604">github.com/nats-io/nats-server/…/server/consumer.go</a>. Default AckWait of 30 seconds and default MaxAckPending of 1000.<br>
+<span id="s7">7.</span> NATS docs, "Pull consumers in depth". <a href="https://docs.nats.io/learn/jetstream/pull-consumers">docs.nats.io/learn/jetstream/pull-consumers</a>. MaxAckPending set too low limits throughput, shared across a worker pool.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

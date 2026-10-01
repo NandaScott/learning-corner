@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 1 — Subjects and at-most-once delivery</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 1 · Lesson 1</p>
+<h1>Subjects and at-most-once delivery</h1>
+<p class="lede">Core NATS does one thing: it hands a message published to a subject to every client subscribed to that subject at that moment. It keeps nothing. Every later lesson about retries, advisories and dead letters exists because of that one fact, so it comes first.</p>
+
+<h2>The concept</h2>
+
+<p>The docs state the whole model in a sentence: "Core NATS has one fundamental operation: a client publishes a message to a subject, and every client subscribed to that subject right now gets a copy."<sup><a href="#s1">1</a></sup> There is no queue object to create and no topic to declare. A <em>subject</em> is a string, and the server matches publishers to subscribers by that string.</p>
+
+<p>The important words are "right now". The server does not hold a message for a subscriber that is not there. Persistence, redelivery and replay belong to JetStream, which later lessons build on top of this layer.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  p["1 · publisher<br/>names one literal subject"] --> s["2 · server<br/>matches subject against<br/>current subscriptions"]
+  s --> a["3a · subscriber connected<br/>and interested: one copy"]
+  s --> b["3b · subscriber absent,<br/>slow or disconnected:<br/>zero copies"]
+  s -.-> d["3c · no interest at all:<br/>message discarded"]
+</pre>
+<p class="cap">The whole of core delivery. Nothing in this picture stores a message.</p>
+</div>
+
+<h3>Step 1 — The publisher names one literal subject</h3>
+<p>A subject is a dot-separated string such as <code>orders.us.created</code>. The dots split it into <em>tokens</em>, and the server matches token by token.<sup><a href="#s2">2</a></sup> Subjects are case-sensitive and contain no whitespace. A publisher always names one full subject: "Wildcards are a subscriber-only tool."<sup><a href="#s2">2</a></sup></p>
+
+<p>Subjects are never declared. The server keeps an entry only while something subscribes, so a design can use very fine-grained subjects (one per order, per tenant, per region) at little cost.<sup><a href="#s2">2</a></sup> Subjects that start with <code>$</code> are reserved for the system. <code>$JS.</code>, the JetStream API and advisory namespace, is the one this course comes back to.</p>
+
+<h3>Step 2 — Subscribers match with wildcards</h3>
+<p>A subscriber can name a literal subject or a pattern. Two wildcards exist:<sup><a href="#s2">2</a></sup></p>
+
+<pre>orders.*.created    *  matches exactly one token
+                       matches  orders.us.created
+                       misses   orders.created          (zero tokens)
+                       misses   orders.us.west.created  (two tokens)
+
+orders.&gt;            &gt;  matches one or more tokens, last position only
+                       matches  orders.us.created, orders.us.west.created
+                       misses   orders                  (needs at least one)</pre>
+
+<p>Token order is therefore a design decision. Put the dimensions you will filter on in positions a wildcard can reach. <code>orders.&lt;region&gt;.&lt;event&gt;</code> lets one service take <code>orders.*.created</code> and another take <code>orders.eu.&gt;</code>. JetStream streams and consumers also select messages by subject pattern, so this hierarchy carries through the rest of the design.</p>
+
+<h3>Step 3 — The server delivers to whoever is interested now</h3>
+<p>Publishing is fire-and-forget: "the call hands the message to the server and returns."<sup><a href="#s1">1</a></sup> The publisher learns nothing about how many subscribers received the message, or whether any did. The guarantee is named directly: "Core NATS delivers each message at-most-once. … A subscriber that's absent, slow, or disconnected at that instant gets it zero times."<sup><a href="#s1">1</a></sup></p>
+
+<p>The no-subscriber case needs to be named, because it is the quiet one. A message published where nothing is subscribed "was published into an empty interest graph and discarded."<sup><a href="#s1">1</a></sup> No error is raised. The publisher cannot tell the difference.</p>
+
+<h3>Step 4 — What a message is, in nats.js</h3>
+<p>In nats.js v3 the core API lives in the modular <code>@nats-io/*</code> packages. On Node, <code>@nats-io/transport-node</code> exports <code>connect()</code>.<sup><a href="#s3">3</a></sup> Adapted from the core README (the README imports the Deno transport; the rest is identical):<sup><a href="#s4">4</a></sup></p>
+
+<pre><code>import { connect } from "@nats-io/transport-node";
+
+const nc = await connect({ servers: "demo.nats.io:4222" });
+
+const sub = nc.subscribe("orders.*.created");
+(async () =&gt; {
+  for await (const m of sub) {
+    console.log(m.subject, m.string());
+  }
+})();
+
+nc.publish("orders.us.created", "order 42");  // returns at once, no ack
+
+await nc.drain();</code></pre>
+
+<p>Note what is absent. There is no ack, no retry setting and no "failed" state. A core subscription has nothing to give up on, because the server never promised a second attempt.</p>
+
+<h2>Why it matters</h2>
+
+<p>The design doc asks how the system handles messages that fail. On core NATS that question has no answer at the messaging layer. A message that never reaches a handler, because the handler crashed, was slow or was not deployed yet, is gone, and nothing records that it existed. Nothing exists to dead-letter, because nothing was kept.</p>
+
+<p>That is not a flaw. The docs name the workloads where at-most-once is correct: "telemetry you sample, cache invalidations, a live dashboard feed."<sup><a href="#s1">1</a></sup> Some flows in a microservice system fit that list. Many, such as orders, payments and state changes another service depends on, do not. The first design decision per flow is which layer it belongs on, and every failure-handling feature this course covers (acks, redelivery limits, advisories, the DLQ pattern) exists only on the JetStream side of that line.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  Core NATS delivers to whoever is listening right now, at most once, and keeps nothing. If a message must survive a crash or a missing consumer, it belongs on JetStream, because there is nothing in core NATS to retry or dead-letter.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "core NATS is unreliable, so messages get lost in transit." The transport is not the issue. The guarantee is defined by interest at publish time: a subscriber that is connected and keeping up receives the message. What core NATS does not do is store a message for a subscriber that is absent, slow or disconnected, and it gives the publisher no signal either way. The second slip is assuming a publish to a subject with no subscribers raises an error. It is discarded silently.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A service restarts for ten seconds. During that window, three messages are published on a subject only it subscribes to, using core NATS. What happens to them, and what does the publisher see?</p>
+  <details><summary>show answer</summary>
+  <p class="a">They are discarded. Delivery is at-most-once and decided by interest at publish time, so an absent subscriber gets zero copies. The publisher sees nothing, because publish is fire-and-forget and reports no delivery result.</p></details>
+  <p>② Which of these does <code>orders.*.created</code> match: <code>orders.created</code>, <code>orders.eu.created</code>, <code>orders.eu.de.created</code>? What would match all three region shapes with one or more tokens after <code>orders</code>?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Only <code>orders.eu.created</code>, because <code>*</code> matches exactly one token. <code>orders.&gt;</code> matches the other two as well, but it also matches every other event under <code>orders</code>, not only <code>created</code>.</p></details>
+  <p>③ Why can a publisher not use a wildcard?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Wildcards are subscriber-only. A publish names one literal subject, and the server matches that subject against the subscription patterns.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/core-nats/publish-subscribe">"Publish-subscribe"</a>. Short, and it contains the two-terminal exercise that shows at-most-once delivery directly: publish with no subscriber, then subscribe, and watch nothing arrive.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask about subject naming for a multi-tenant system, how the server handles a slow subscriber, or what <code>drain()</code> does that <code>close()</code> does not. Next: queue groups and request-reply, and how core NATS spreads work across replicas of a service with no broker-side queue.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0002-queue-groups-and-request-reply.html"><em>Next: Lesson 2, Queue groups and request-reply →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Publish-subscribe". <a href="https://docs.nats.io/learn/core-nats/publish-subscribe">docs.nats.io/learn/core-nats/publish-subscribe</a>. The one fundamental operation, fire-and-forget publish, at-most-once delivery, discard on empty interest, and fitting workloads.<br>
+<span id="s2">2.</span> NATS docs, "Subjects and wildcards". <a href="https://docs.nats.io/learn/core-nats/subjects-and-wildcards">docs.nats.io/learn/core-nats/subjects-and-wildcards</a>. Tokens, case sensitivity, undeclared subjects, reserved <code>$</code> prefix, and the <code>*</code> and <code>&gt;</code> wildcards.<br>
+<span id="s3">3.</span> nats.js, transport-node README. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/transport-node/README.md">github.com/nats-io/nats.js/…/transport-node/README.md</a>. The <code>connect()</code> export for Node, v3.4.0.<br>
+<span id="s4">4.</span> nats.js, core README, "Publish and subscribe". <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/core/README.md#publish-and-subscribe">github.com/nats-io/nats.js/…/core/README.md</a>. Source of the code example, adapted to the Node transport and to a wildcard subject.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

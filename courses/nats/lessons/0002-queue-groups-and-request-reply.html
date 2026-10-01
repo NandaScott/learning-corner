@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 2 — Queue groups and request-reply</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 1 · Lesson 2</p>
+<h1>Queue groups and request-reply</h1>
+<p class="lede">Lesson 1 delivered every message to every interested subscriber. A microservice system needs two more shapes: spread work across replicas of one service, and ask a question that gets one answer. Core NATS builds both from the same publish and subscribe, with no queue on the server. That last part decides what happens when something fails.</p>
+
+<h2>The concept</h2>
+
+<p>A <em>queue group</em> turns several subscribers into one logical subscriber, so each message goes to exactly one replica. <em>Request-reply</em> uses publish and subscribe twice, once out and once back, so a caller can wait for an answer. Neither adds storage. Both inherit the at-most-once guarantee from Lesson 1, but request-reply gives the caller something a plain publish never does: a signal when nothing answered.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  p["publisher"] --> s["server"]
+  s -->|"1 · one copy"| q["queue group 'packers'<br/>one member chosen"]
+  s -->|"2 · every copy"| a["plain subscriber<br/>still gets each message"]
+  c["3 · requester"] -->|"request + reply inbox"| s
+  s --> r["responder"]
+  r -->|"4 · reply on inbox,<br/>or 503 if no responder"| c
+</pre>
+<p class="cap">Steps 1 and 2 are load spreading. Steps 3 and 4 are a round trip. None of them stores a message.</p>
+</div>
+
+<h3>Step 1 — A queue group picks one member per message</h3>
+<p>The docs define it directly: "A queue group is a set of subscribers on the same subject that share a name. The server treats the whole group as one logical subscriber: for each message, it picks exactly one member of the group and delivers to that member alone."<sup><a href="#s1">1</a></sup> Running three replicas of a service with the same group name spreads the load across them.</p>
+
+<p>No setup is involved: "There's nothing to configure on the server. … The server learns a group exists the moment its first member subscribes."<sup><a href="#s1">1</a></sup> In nats.js the group is one option on the subscription:<sup><a href="#s2">2</a></sup></p>
+
+<pre><code>const sub = nc.subscribe("orders.created", { queue: "packers" });
+for await (const m of sub) {
+  console.log(`packer handling: ${m.string()}`);
+}</code></pre>
+
+<h3>Step 2 — Plain subscribers still get every message</h3>
+<p>A queue group and a plain subscriber can share a subject. Plain subscribers always get every message, while the group gets one copy shared among its members. "The server runs the two distributions independently."<sup><a href="#s1">1</a></sup> One subject can therefore feed an analytics service that counts every order and a packing pool that handles each order once.</p>
+
+<h3>Step 3 — A request carries its own reply subject</h3>
+<p>"Request-reply isn't a new protocol; it's the pub/sub you already know, used twice."<sup><a href="#s3">3</a></sup> The client creates a private reply subject called an <em>inbox</em>, under the reserved <code>_INBOX.</code> prefix, and sends it with the request. The responder publishes its answer to that inbox. The client subscribes once to a wildcard such as <code>_INBOX.&lt;connection&gt;.*</code> and gives each request a fresh last token, so "thousands of concurrent requests cost one subscription, not thousands."<sup><a href="#s3">3</a></sup></p>
+
+<p>Responders are ordinary subscribers, so a service usually answers requests from a queue group. Each request then reaches one replica.</p>
+
+<h3>Step 4 — The caller learns about two different failures</h3>
+<p>The reply is a core message too, so it can be lost. Every request has a timeout, and in nats.js the default is one second.<sup><a href="#s2">2</a></sup> If no subscriber exists at all, the client does not wait out the timeout. The server replies at once with a status <code>503</code> and no payload, and the client raises a separate error. The docs put the difference plainly: "A missing service surfaces immediately as NoRespondersError; a slow one as TimeoutError."<sup><a href="#s3">3</a></sup></p>
+
+<p>In nats.js v3 a timeout rejects with <code>TimeoutError</code>. A no-responders reply rejects with a <code>RequestError</code> whose cause is <code>NoRespondersError</code>, which <code>isNoResponders()</code> checks.<sup><a href="#s4">4</a></sup> Composed from those types, not run against a server:</p>
+
+<pre><code>import { connect, errors } from "@nats-io/transport-node";
+
+try {
+  const m = await nc.request("orders.inventory.check", order, { timeout: 2000 });
+  console.log(m.string());
+} catch (err) {
+  if (err instanceof errors.RequestError &amp;&amp; err.isNoResponders()) {
+    // nobody subscribed: the service is down or not deployed
+  } else if (err instanceof errors.TimeoutError) {
+    // someone may have received it: slow, crashed mid-work, or reply lost
+  }
+}</code></pre>
+
+<h2>Why it matters</h2>
+
+<p>A queue group is load balancing, not a work queue. The docs name the limit: core NATS is at-most-once, "so if the server picks a packer and it dies after delivery, that message is gone," and "the server won't retry it with another member." They also give the remedy: "Work that must survive a worker crash belongs in a durable work queue in JetStream."<sup><a href="#s1">1</a></sup> Running many replicas does not change this. Nothing holds the message for a second attempt.</p>
+
+<p>Request-reply changes who owns failure. The caller is waiting, so the caller decides: retry, report an error upstream, or fall back. No-responders means the request reached nobody, so a retry cannot cause the work to happen twice. A timeout is ambiguous. The responder may have done the work and the reply was lost, so a retry after a timeout must be safe to repeat. For a design, the question per flow becomes: does the sender need an answer now, so failure surfaces to it (request-reply)? Or does the sender move on, so something other than the sender must keep the message (JetStream, from the next lesson on)?</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A queue group spreads messages across replicas but keeps none of them, so a replica that dies mid-message loses it. Request-reply keeps nothing either, but it hands failure back to the caller, with no-responders and timeout as two different signals.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is treating a timeout like no-responders and retrying freely. No-responders is a 503 the server sends because no subscription existed, so the request reached nobody. A timeout only says no reply arrived in time. The responder may have handled the request and crashed before replying, or the reply may have been lost, so a blind retry can do the work twice. The second slip is calling a queue group a queue. Nothing waits in it. If no member is subscribed, the message is discarded, exactly as in Lesson 1.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① Three replicas of a service share the queue group <code>billing</code>. One crashes right after receiving a message. What happens to that message?</p>
+  <details><summary>show answer</summary>
+  <p class="a">It is gone. Core NATS delivered it at most once to the one member it picked, and nothing stores it for another member. Surviving a worker crash requires JetStream.</p></details>
+  <p>② On <code>orders.created</code> there is a queue group <code>packers</code> with three members and one plain subscriber <code>analytics</code>. One message is published. How many copies are delivered, and to whom?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Two. One goes to a single member of <code>packers</code>, and one goes to <code>analytics</code>. The server runs the group distribution and the plain distribution independently.</p></details>
+  <p>③ A request fails. Why does it matter whether the error is no-responders or a timeout before retrying?</p>
+  <details><summary>show answer</summary>
+  <p class="a">No-responders is an immediate 503 meaning no subscriber existed, so the request reached nobody and a retry is safe. A timeout means no reply arrived in time; the responder may have done the work, so a retry must be safe to repeat.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  NATS docs, <a href="https://docs.nats.io/learn/core-nats/queue-groups">"Queue groups"</a>. Short, with a multi-terminal exercise showing one member chosen per message, a plain subscriber alongside the group, and the explicit at-most-once limit on crashed members. Read <a href="https://docs.nats.io/learn/core-nats/request-reply">"Request-reply"</a> after it.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask how the server picks a member, how scatter-gather collects several replies to one request, or how the inbox prefix interacts with permissions. Next: JetStream streams, where a message is stored before anyone reads it.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0001-subjects-and-at-most-once.html">← Lesson 1</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="0003-streams-and-retention.html"><em>Next: Lesson 3, Streams and retention →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Queue groups". <a href="https://docs.nats.io/learn/core-nats/queue-groups">docs.nats.io/learn/core-nats/queue-groups</a>. Definition, no server configuration, coexistence with plain subscribers, and the at-most-once limit when a member dies.<br>
+<span id="s2">2.</span> nats.js, core README. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/core/README.md#queue-groups">github.com/nats-io/nats.js/…/core/README.md</a>. The <code>queue</code> subscription option, and the request example noting the default 1000 ms timeout.<br>
+<span id="s3">3.</span> NATS docs, "Request-reply". <a href="https://docs.nats.io/learn/core-nats/request-reply">docs.nats.io/learn/core-nats/request-reply</a>. Inboxes, the shared wildcard subscription, timeouts, and no-responders against timeout.<br>
+<span id="s4">4.</span> nats.js source, <code>core/src/errors.ts</code> and <code>core/src/nats.ts</code>. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/core/src/errors.ts">github.com/nats-io/nats.js/…/core/src/errors.ts</a>. <code>TimeoutError</code>, <code>NoRespondersError</code>, <code>RequestError.isNoResponders()</code>, and the 503 check in <code>request()</code>.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>

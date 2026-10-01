@@ -1,0 +1,184 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../../assets/course.css">
+<title>Lesson 8 — The DLQ pattern on NATS</title>
+
+<p class="eyebrow"><a href="../overview.html" style="color:inherit">NATS and JetStream for failure handling</a> · Arc 3 · Lesson 8</p>
+<h1>The DLQ pattern on NATS</h1>
+<p class="lede">JetStream has no dead-letter queue setting. What it has is the set of parts one is built from: a bounded delivery count, a terminate response, advisories that name the failed message by stream sequence, and streams to hold whatever needs keeping. This lesson assembles them into a dead-letter queue and names the places where the assembly can leak.</p>
+
+<h2>The concept</h2>
+
+<p>The docs are blunt: "JetStream has no built-in dead-letter queue."<sup><a href="#s1">1</a></sup> The Synadia blog says the same and goes further: "There is no <code>dead_letter: true</code> field on a consumer. What NATS has instead is the set of primitives you assemble one from, and the DLQ you build is an ordinary JetStream stream."<sup><a href="#s2">2</a></sup> No release up to nats-server 2.15 adds one. The only mentions of DLQ in the server source are comments calling these advisories "a candidate for DLQ handling."<sup><a href="#s3">3</a></sup></p>
+
+<p>A <em>dead-letter queue</em> here means a durable place where messages that a consumer gave up on end up, with enough context to inspect them and replay them. On NATS that place is a stream the design creates, and something the design runs has to put messages into it.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  src[("1 · source stream<br/>ORDERS")] -->|"deliver"| c["consumer<br/>finite MaxDeliver"]
+  c -->|"gives up:<br/>MaxDeliver or term"| adv["advisory<br/>stream + stream_seq"]
+  adv -->|"2 · captured by"| cap[("advisory-capture<br/>stream")]
+  cap --> w["3 · DLQ worker"]
+  w -->|"getMessage by seq"| src
+  w -->|"4 · copy payload<br/>+ headers"| dlq[("DLQ stream<br/>dlq.ORDERS.shipping")]
+  dlq -->|"5 · replay after fix"| src
+</pre>
+<p class="cap">Five parts. Only the advisory is produced by the server; every box after it is something the design owns.</p>
+</div>
+
+<h3>Step 1 — Make the failure produce a signal</h3>
+<p>The pattern starts on the consumer, with the settings from Lessons 5 and 6. The consumer needs an explicit ack policy and a finite <code>max_deliver</code>, because the max-deliveries advisory never fires under the default of -1 (unlimited).<sup><a href="#s3">3</a></sup> The handler acks on success, naks with a delay on a transient failure, and terms a message it knows can never succeed. Each give-up path then produces one advisory from Lesson 7: <code>MAX_DELIVERIES</code> when the budget runs out, <code>MSG_TERMINATED</code> when the handler terms.</p>
+
+<p>Both carry <code>stream</code>, <code>consumer</code> and <code>stream_seq</code>. Neither carries the message body or its headers.<sup><a href="#s4">4</a></sup> The advisory is a pointer to the failed message, not a copy of it.</p>
+
+<h3>Step 2 — Capture the advisories in a stream</h3>
+<p>Advisories are transient. "An advisory is published exactly once, the moment its event fires, and it is not stored in any stream."<sup><a href="#s5">5</a></sup> The server also skips publishing an advisory when nothing in the account is subscribed to its subject.<sup><a href="#s6">6</a></sup> A DLQ worker that subscribes with core NATS loses every event that fires while it is restarting.</p>
+
+<p>The documented fix is a stream bound to the advisory subjects, which is always listening and counts as interest.<sup><a href="#s5">5</a></sup> The docs bind all of <code>$JS.EVENT.ADVISORY.&gt;</code>; a DLQ only needs the two give-up subjects for its own source stream. Composed from verified nats.js v3 APIs (not run):<sup><a href="#s7">7</a></sup></p>
+
+<pre><code>import { nanos } from "@nats-io/transport-node";
+import { AckPolicy, RetentionPolicy, StorageType } from "@nats-io/jetstream";
+
+await jsm.streams.add({
+  name: "ORDERS_DLQ_EVENTS",
+  subjects: [
+    "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ORDERS.*",
+    "$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ORDERS.*",
+  ],
+  storage: StorageType.File,
+  retention: RetentionPolicy.Workqueue,   // each advisory handled once
+  max_age: nanos(7 * 24 * 60 * 60 * 1000),
+});
+await jsm.consumers.add("ORDERS_DLQ_EVENTS", {
+  durable_name: "dlq-worker",
+  ack_policy: AckPolicy.Explicit,
+});</code></pre>
+
+<p>The capture stream must exist before the first failure. An advisory that fires while it is missing is lost for good, and nothing records the loss.</p>
+
+<h3>Step 3 — Fetch the original by stream sequence</h3>
+<p>The DLQ worker consumes the capture stream, reads <code>stream</code> and <code>stream_seq</code> from each advisory, and asks the source stream for that message. In nats.js, <code>jsm.streams.getMessage(stream, { seq })</code> sends the request to the stream leader, so it always sees the latest state.<sup><a href="#s8">8</a></sup> Direct Get (<code>jsm.direct.getMessage</code>) can be answered by any replica, and the docs warn it "is not read-after-write coherent."<sup><a href="#s8">8</a></sup> For a DLQ lookup, prefer the leader read.</p>
+
+<p>In v3, <code>getMessage</code> returns <code>null</code> when the message no longer exists.<sup><a href="#s7">7</a></sup> The worker has to handle that case. The failure-mode table below shows it happens in normal operation, not only after mistakes.</p>
+
+<h3>Step 4 — Copy the payload into a DLQ stream at capture time</h3>
+<p>The Synadia version of the pattern does not leave the failed message where it is. It republishes the original payload and headers to a subject such as <code>dlq.&lt;stream&gt;.&lt;consumer&gt;</code>, captured by its own DLQ stream.<sup><a href="#s2">2</a></sup> The blog states the reason: "on any retention policy that removes messages once they are terminally handled, capture the payload while it still exists."<sup><a href="#s2">2</a></sup> Once copied, the dead letter no longer depends on what the source stream does next. The DLQ stream itself is one call: <code>await jsm.streams.add({ name: "DLQ", subjects: ["dlq.&gt;"] })</code>, the nats.js form of the blog's Go example.<sup><a href="#s2">2</a></sup></p>
+
+<p>Composed worker (not run), adapted from the research notes:<sup><a href="#s7">7</a></sup></p>
+
+<pre><code>import { headers } from "@nats-io/transport-node";
+
+type GiveUpAdvisory = {
+  id: string; type: string; stream: string; consumer: string;
+  stream_seq: number; deliveries: number; reason?: string;
+};
+
+const events = await js.consumers.get("ORDERS_DLQ_EVENTS", "dlq-worker");
+for await (const m of await events.consume()) {
+  const adv = m.json&lt;GiveUpAdvisory&gt;();
+  try {
+    const original = await jsm.streams.getMessage(adv.stream, { seq: adv.stream_seq });
+    const h = headers();
+    h.set("Dlq-Advisory-Type", adv.type);
+    h.set("Dlq-Stream-Seq", String(adv.stream_seq));
+    h.set("Dlq-Deliveries", String(adv.deliveries));
+    if (adv.reason) h.set("Dlq-Reason", adv.reason);   // term reason only
+    if (original === null) h.set("Dlq-Original-Missing", "true");
+    else h.set("Dlq-Original-Subject", original.subject);
+    await js.publish(`dlq.${adv.stream}.${adv.consumer}`,
+      original?.data ?? "", { headers: h, msgID: adv.id });
+    m.ack();
+  } catch {
+    m.nak(5_000);   // source stream unreachable: retry this advisory later
+  }
+}</code></pre>
+
+<p>The worker is an ordinary JetStream consumer, so it follows the same rules as any handler: nak on a transient failure, ack only after the DLQ publish returns its PubAck. Using the advisory's <code>id</code> as the <code>Nats-Msg-Id</code> is a composition, not a documented step. It makes a retry after a crash between publish and ack a duplicate the DLQ stream refuses, inside the 2-minute duplicate window from Lesson 3.</p>
+
+<h3>Step 5 — Clean up and replay</h3>
+<p>On a WorkQueue stream, a message that reached <code>MaxDeliver</code> "will remain in the stream and must be manually deleted via the JetStream API."<sup><a href="#s9">9</a></sup> After copying it, the worker can remove it with <code>jsm.streams.deleteMessage(stream, seq)</code>.<sup><a href="#s7">7</a></sup> On a Limits stream nothing needs deleting; the original ages out with the stream's limits.</p>
+
+<p>Replay is a publish. Once the defect is fixed, a tool reads the DLQ stream and republishes each payload to its <code>Dlq-Original-Subject</code>. The blog frames this as the benefit of the design: the DLQ "is itself a replayable stream."<sup><a href="#s2">2</a></sup> If the original publisher set a <code>Nats-Msg-Id</code>, a replay with the same ID inside the duplicate window is refused as a duplicate. That follows from Lesson 3's dedupe rule; it is an inference, not a documented warning.</p>
+
+<h2>Where the pattern leaks</h2>
+
+<table>
+  <tr><th>Failure mode</th><th>Cause</th><th>Mitigation</th></tr>
+  <tr><td>Advisory never captured</td><td>Capture stream missing, deleted, or full under <code>DiscardNew</code> when the event fired. The server publishes once, and skips publishing with no interest.<sup><a href="#s6">6</a></sup></td><td>Create the capture stream with the source stream, in the same deploy. Give it <code>DiscardOld</code> and room.</td></tr>
+  <tr><td>Original gone after a term</td><td>Term counts as an ack. "On a WorkQueue or Interest stream … a term removes it just as an ack would."<sup><a href="#s1">1</a></sup> The lookup returns <code>null</code>.</td><td>Have the handler log or attach context before it terms, or choose Limits retention for the source stream.</td></tr>
+  <tr><td>Original aged out</td><td><code>max_age</code>, <code>max_msgs</code> or <code>max_bytes</code> removed it before the worker ran.<sup><a href="#s2">2</a></sup></td><td>Keep the worker running near the source. Size limits with margin over worker downtime.</td></tr>
+  <tr><td>Residue on WorkQueue</td><td>Max-delivered messages never get the ack that removes them.<sup><a href="#s9">9</a></sup></td><td>Delete by sequence after the copy succeeds.</td></tr>
+  <tr><td>Worker fails mid-copy</td><td>Crash after publishing to the DLQ, before acking the advisory.</td><td>Ack last; dedupe the DLQ publish on the advisory <code>id</code>.</td></tr>
+  <tr><td>Consumer budget</td><td>From 2.15.0, streams default to a limit of 1000 consumers; DLQ and capture consumers count.<sup><a href="#s10">10</a></sup></td><td>Count them in capacity planning.</td></tr>
+  <tr><td>Synadia Cloud unknowns</td><td>The server version Synadia Cloud runs, and whether an account may capture <code>$JS.EVENT.ADVISORY</code> subjects, are not in public docs. Plan limits bound streams and consumers.<sup><a href="#s11">11</a></sup></td><td>Verify with Synadia before the design depends on it.</td></tr>
+</table>
+
+<p>One row needs a caveat. On an Interest stream, a message that hit <code>MaxDeliver</code> never gets an ack from that consumer, so it should stay until limits remove it. That is an inference from the Interest definition in Lesson 3, not a documented statement.</p>
+
+<h3>An alternative — the handler publishes the dead letter itself</h3>
+<p>A handler that detects a permanent failure already holds the full message and the error. It could publish a copy to <code>dlq.&gt;</code> and then term. This is a composition of Lesson 5's primitives, not a documented NATS pattern, and its trade-offs follow from the mechanics. It keeps the payload even on a WorkQueue stream and can attach the real error. It cannot cover the <code>MaxDeliver</code> path, because when the budget runs out on a timeout, no handler is running to see the last failure. The publish and the term are also two separate calls, so a crash between them can leave a dead letter for a message that is redelivered. Designs that use it still need advisory capture for the timeout path.</p>
+
+<h2>Why it matters</h2>
+
+<p>The design doc's question, "what happens to a message that fails," has a precise answer on NATS once these parts are in place: the consumer stops delivering it, the server emits one advisory naming its stream sequence, a stream catches that advisory, and a worker copies the payload somewhere durable and replayable. Each arrow in that chain is a design decision with its own failure mode. Retention policy decides whether the original survives a term. Limits decide how long the worker can be down. The capture stream decides whether the signal survives at all.</p>
+
+<p>For the Synadia Cloud evaluation, the absence of a DLQ setting is not a missing feature to work around. It is the normal NATS shape. What needs confirming with Synadia is narrower: that the account can bind advisory subjects to a stream, which server version is running, and what the plan allows in streams and consumers.</p>
+
+<div class="callout interview">
+  <span class="tag">Key line</span>
+  A NATS dead-letter queue is three things the design builds: a stream that captures the give-up advisories, a worker that fetches each failed message by stream sequence, and a DLQ stream it copies the payload into while the payload still exists.
+</div>
+
+<div class="callout gotcha">
+  <span class="tag">The common trap</span>
+  The near-miss is "capture the advisories and the DLQ is done." The advisory holds a stream sequence, not the message. On a WorkQueue or Interest stream a term removes the original as an ack would, and on any stream the limits can age it out, so a DLQ that stores only advisories can point at messages that no longer exist. The second slip is subscribing to advisories with core NATS or <code>jsm.advisories()</code>: both miss every event that fires while the subscriber is down.
+</div>
+
+<div class="recall">
+  <p class="q">Recall: answer before peeking.</p>
+  <p>① A DLQ worker reads a <code>MSG_TERMINATED</code> advisory for a WorkQueue stream and calls <code>getMessage</code> with its <code>stream_seq</code>. It gets <code>null</code>. Why, and what design change would have kept the payload?</p>
+  <details><summary>show answer</summary>
+  <p class="a">A term is processed like an ack, and on a WorkQueue stream the first ack removes the message. The fix is to keep the payload before or at the term: have the handler record it, or use Limits retention so the original stays until limits remove it.</p></details>
+  <p>② Why does the pattern need a capture stream instead of a DLQ worker that subscribes to the advisory subjects directly?</p>
+  <details><summary>show answer</summary>
+  <p class="a">Advisories are published once and never stored, and the server skips publishing when nothing is interested. A core subscription misses every advisory that fires while the worker is down. A stream bound to the subjects is always listening and keeps each advisory until the worker acks it.</p></details>
+  <p>③ Why use <code>jsm.streams.getMessage</code> rather than Direct Get for the lookup?</p>
+  <details><summary>show answer</summary>
+  <p class="a"><code>getMessage</code> asks the stream leader, which always sees the latest state. Direct Get can be answered by any replica and is not read-after-write coherent, so it can lag behind.</p></details>
+</div>
+
+<div class="callout">
+  <span class="tag">Primary source: read this one</span>
+  Synadia blog, <a href="https://www.synadia.com/blog/jetstream-reliable-delivery-dlq-replay">"Reliable Message Delivery in NATS JetStream: Acks, Retries, Dead Letters, and Replay"</a> (Andrew Connolly, 24 July 2026). The full DLQ pattern from the vendor under evaluation, including the retention interactions section. The code is Go; the shape maps directly onto the nats.js calls above.
+</div>
+
+<div class="ask-teacher">
+  <strong>Ask follow-up questions.</strong> Ask about building a replay tool, giving DLQ copies their own lifetime with per-message TTL, or how to alert on the DLQ stream's message count. Next: one service designed end to end, every choice from the course in one place.
+</div>
+
+<div class="course-nav">
+  <span><a href="../overview.html">⌂ Overview</a></span>
+  <span><a href="0007-advisories.html">← Lesson 7</a></span>
+  <span><a href="../reference/glossary.html">Glossary ↗</a></span>
+  <span><a href="../reference/failure-handling-cheatsheet.html">Cheat sheet ↗</a></span>
+  <span><a href="0009-designing-failure-handling.html"><em>Next: Lesson 9, Designing failure handling →</em></a></span>
+</div>
+
+<hr style="border:none;border-top:1px solid var(--rule);margin:2.5rem 0 1rem">
+<p class="src"><strong>Sources</strong><br>
+<span id="s1">1.</span> NATS docs, "Ack responses and redelivery". <a href="https://docs.nats.io/learn/jetstream/acknowledgment">docs.nats.io/learn/jetstream/acknowledgment</a>. No built-in dead-letter queue; term removes the message on WorkQueue and Interest streams.<br>
+<span id="s2">2.</span> Synadia blog, "Reliable Message Delivery in NATS JetStream: Acks, Retries, Dead Letters, and Replay", 2026-07-24. <a href="https://www.synadia.com/blog/jetstream-reliable-delivery-dlq-replay">synadia.com/blog/jetstream-reliable-delivery-dlq-replay</a>. The three-part pattern, copy at capture time, retention interactions, replay.<br>
+<span id="s3">3.</span> nats-server source, <code>jetstream_events.go</code> and <code>consumer.go</code> at commit a44c356. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/jetstream_events.go#L120-L163">jetstream_events.go#L120-L163</a>; <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L2427-L2437">consumer.go#L2427-L2437</a>. DLQ candidate comments; max-deliveries advisory only when MaxDeliver is above 0.<br>
+<span id="s4">4.</span> NATS docs, JetStream advisory reference. <a href="https://docs.nats.io/reference/jetstream/advisory/">docs.nats.io/reference/jetstream/advisory/</a>. Payload schemas for max_deliver and terminated.<br>
+<span id="s5">5.</span> NATS docs, "Advisories and events". <a href="https://docs.nats.io/learn/monitoring/advisories-and-events">docs.nats.io/learn/monitoring/advisories-and-events</a>. Advisories are transient; the capture-stream fix.<br>
+<span id="s6">6.</span> nats-server source, <code>sendAdvisory</code>. <a href="https://github.com/nats-io/nats-server/blob/a44c356c4271a23da98ee83c53c90d3f14f75682/server/consumer.go#L2006-L2015">consumer.go#L2006-L2015</a>. Early return when nothing is listening.<br>
+<span id="s7">7.</span> nats.js v3.4.0, JetStream README and types. <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/README.md">jetstream/README.md</a>; <a href="https://github.com/nats-io/nats.js/blob/3a7b736b175d9a387130210c88f851d71e1b014f/jetstream/src/types.ts#L395-L405">types.ts</a>. <code>getMessage</code> returning <code>StoredMsg | null</code>, <code>deleteMessage</code>, publish options.<br>
+<span id="s8">8.</span> NATS docs, "Get direct". <a href="https://docs.nats.io/learn/jetstream/get-direct">docs.nats.io/learn/jetstream/get-direct</a>. Leader reads against any-replica Direct Get; read-after-write coherence.<br>
+<span id="s9">9.</span> NATS docs (previous site source), streams configuration. <a href="https://github.com/nats-io/nats.docs/blob/f115becf6563e3bbe16bb94cbf87bfceb84199c1/nats-concepts/jetstream/streams.md">nats.docs/…/streams.md</a>. Max-delivered messages remain in a WorkQueue stream until deleted via the API.<br>
+<span id="s10">10.</span> nats-server v2.15.0 release notes. <a href="https://github.com/nats-io/nats-server/releases/tag/v2.15.0">github.com/nats-io/nats-server/releases/tag/v2.15.0</a>. Default limit of 1000 consumers per stream.<br>
+<span id="s11">11.</span> Synadia Cloud docs, overview. <a href="https://docs.synadia.com/cloud/user-guides/sc-overview">docs.synadia.com/cloud/user-guides/sc-overview</a>. JetStream usage bounded by plan.</p>
+
+<script src="../../../assets/mermaid.min.js"></script>
+<script src="../../../assets/mermaid-init.js"></script>
